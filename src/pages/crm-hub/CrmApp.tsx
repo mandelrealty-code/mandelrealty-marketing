@@ -61,7 +61,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export type CrmAppProps = {
-  onModeChange: (mode: AdminProductMode) => void;
+  onModeChange: (mode: AdminProductMode, patch?: Partial<import("../../lib/adminRoute").AdminRoute>) => void;
   /** The tab and lead in the URL. */
   initialTab?: CrmTab;
   initialLeadId?: string | null;
@@ -132,7 +132,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         PERMIT_LABEL,
         STR_LABEL,
       },
-      go: (mode: string) => propsRef.current.onModeChange(mode as AdminProductMode),
+      go: (mode: string, patch?: Record<string, unknown>) =>
+        propsRef.current.onModeChange(mode as AdminProductMode, patch as Parameters<CrmAppProps["onModeChange"]>[1]),
       onError: (e: unknown) => setError(e instanceof Error ? e.message : "That did not work."),
       getRoute: () => routeRef.current,
       setRoute: (next: { tab?: CrmTab; leadId?: string | null }) => {

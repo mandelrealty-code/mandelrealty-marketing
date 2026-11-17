@@ -45,7 +45,7 @@ async function onboardingAct(op: string, payload: Record<string, unknown>): Prom
   return data;
 }
 
-export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: { onModeChange: (mode: AdminProductMode) => void; onOpenLead?: (leadId: string) => void; onNewLead?: () => void }) {
+export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: { onModeChange: (mode: AdminProductMode, patch?: Partial<import("../../lib/adminRoute").AdminRoute>) => void; onOpenLead?: (leadId: string) => void; onNewLead?: () => void }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -83,7 +83,8 @@ export default function OnboardingApp({ onModeChange, onOpenLead, onNewLead }: {
           data,
           load,
           act: onboardingAct,
-          go: (mode: string) => modeRef.current(mode as AdminProductMode),
+          go: (mode: string, patch?: Record<string, unknown>) =>
+            modeRef.current(mode as AdminProductMode, patch as Parameters<typeof modeRef.current>[1]),
           openLead: (id: string) => leadRef.current?.(id),
           openCrmLeadForm: () => newLeadRef.current?.(),
           open: takeOpenRequest(),

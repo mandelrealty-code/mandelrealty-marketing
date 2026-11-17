@@ -18,7 +18,7 @@ import {
   writeStoredAdminMode,
   type AdminProductMode,
 } from "./clients/mode";
-import { emptyAdminRoute, useAdminRoute } from "../lib/adminRoute";
+import { emptyAdminRoute, useAdminRoute, type AdminRoute } from "../lib/adminRoute";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
 import { LeadSaleBlock, type LeadOnboarding } from "./crm/LeadSale";
@@ -912,9 +912,9 @@ export function AdminPage() {
   };
   const crmTab = tab;
 
-  const switchProduct = (mode: AdminProductMode) => {
+  const switchProduct = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
     writeStoredAdminMode(mode);
-    setRoute(emptyAdminRoute(mode), { push: true });
+    setRoute({ ...emptyAdminRoute(mode), ...patch, mode }, { push: true });
   };
 
   /* The CRM and Onboarding link both ways: a lead opens its unit, a sold lead starts onboarding, a unit opens its lead. */

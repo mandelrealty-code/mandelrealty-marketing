@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mandel Realty: Clients design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* =========================================================
+   Tokens: same as the hub (OKLCH palette, alpha borders, one type scale)
+   ========================================================= */
+:root{
+  --bg:#ffffff; --panel:#f2f2ef;
+  --ink: oklch(0.21 0.006 285); --ink2: oklch(0.32 0.006 285); --muted: oklch(0.45 0.008 285);
+  --line: rgb(0 0 0 / 0.11); --line-2: rgb(0 0 0 / 0.06); --hover: rgb(0 0 0 / 0.04); --press: rgb(0 0 0 / 0.07);
+  --gold:#c4a35a; --primary:#18181b;
+  --blue: oklch(0.6 0.15 255); --amber: oklch(0.6 0.14 65); --red: oklch(0.6 0.19 25); --grey: oklch(0.6 0.015 270);
+  --teal: oklch(0.6 0.11 185); --green: oklch(0.6 0.13 155);
+  --redink: oklch(0.48 0.17 25); --amberink: oklch(0.47 0.12 60); --greenink: oklch(0.42 0.1 155); --tealink: oklch(0.42 0.09 185);
+  --t-xs:12px; --t-sm:13px; --t-base:14px; --t-md:16px; --t-lg:24px;
+  --r-card:16px; --r-ctl:10px; --r-pill:999px;
+  --ease: cubic-bezier(.65,0,.35,1); --fast:110ms; --med:180ms;
+}
+*{box-sizing:border-box}
+html,body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;font-size:var(--t-base);line-height:1.5;color:var(--ink2);-webkit-font-smoothing:antialiased}
+body{background:#e6e6e2}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,h3,h4,h5,h6{margin:0;color:var(--ink)}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}
+svg.i.xs{width:14px;height:14px}
+
+/* ===================== Design board ===================== */
+.boardbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 24px;background:rgb(255 255 255 / .88);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.boardbar h1{font-size:var(--t-md);font-weight:650;display:flex;align-items:center;gap:10px}
+.boardbar h1 img{width:26px;height:26px}
+.boardbar .sp{flex:1}
+.boardbar .toc{display:flex;gap:4px;flex-wrap:wrap}
+.boardbar a{font-size:var(--t-xs);font-weight:600;color:var(--ink2);text-decoration:none;padding:5px 9px;border-radius:8px}
+.boardbar a:hover{background:var(--hover)}
+.zoom{display:inline-flex;background:var(--panel);border-radius:10px;padding:3px}
+.zoom button{border:0;background:none;border-radius:7px;height:28px;padding:0 10px;font-size:var(--t-xs);font-weight:600;color:var(--ink2)}
+.zoom button.on{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.board{zoom:var(--z,.5);padding:48px}
+.sect{margin:0 0 120px}
+.sect>h2{font-size:44px;font-weight:700;letter-spacing:-.8px;margin:0 0 8px}
+.sect>p{font-size:22px;margin:0 0 40px;max-width:1400px;color:var(--ink2)}
+.state{margin:0 0 72px}
+.state>h3{font-size:28px;font-weight:650;margin:0 0 6px}
+.state>p{font-size:19px;margin:0 0 22px;max-width:1500px}
+.row{display:flex;gap:56px;align-items:flex-start;flex-wrap:nowrap}
+.fwrap>span{display:block;font-size:18px;font-weight:600;color:var(--muted);margin:0 0 10px}
+.frame{position:relative;overflow:hidden;background:var(--bg);border-radius:14px;box-shadow:0 1px 0 rgb(0 0 0 / .04),0 18px 50px rgb(0 0 0 / .12)}
+.frame.d{width:1440px;height:960px}
+.frame.p{width:390px;height:844px;border-radius:40px;box-shadow:0 0 0 10px #18181b,0 24px 60px rgb(0 0 0 / .2);margin:10px}
+
+/* ===================== Shared UI (matches hub) ===================== */
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-card)}
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:var(--r-ctl);padding:0 14px;height:40px;font-size:var(--t-sm);font-weight:500;border:1px solid var(--line);background:var(--bg);color:var(--ink);white-space:nowrap}
+.btn.sm{height:32px;padding:0 11px;font-size:var(--t-xs);border-radius:8px}
+.btn.primary{background:var(--primary);border-color:transparent;color:#fff;font-weight:600}
+.btn.primary svg.i{stroke-width:2.1}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink2)}
+.btn.danger{background:oklch(0.55 0.17 25);border-color:transparent;color:#fff;font-weight:600}
+.btn.dangerline{color:var(--redink);border-color:oklch(0.6 0.19 25 / .35)}
+.btn.ok{background:oklch(0.94 0.05 155);border-color:oklch(0.6 0.13 155 / .35);color:var(--greenink)}
+.btn[disabled]{opacity:.5}
+.iconbtn{position:relative;width:36px;height:36px;border-radius:9px;border:1px solid transparent;background:none;display:inline-grid;place-items:center;color:var(--ink2);flex:none}
+.iconbtn.bd{border-color:var(--line)}
+.chip{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:2px 9px;font-size:var(--t-xs);font-weight:600;white-space:nowrap;line-height:1.4}
+.count{font-size:var(--t-xs);font-weight:600;color:var(--ink2);background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-pill);padding:1px 8px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.meta{color:var(--muted);font-size:var(--t-xs);font-weight:500}
+.gap{color:var(--amberink);font-weight:600}
+.gapchip{display:inline-flex;align-items:center;gap:4px;border-radius:var(--r-pill);padding:1px 8px;font-size:11px;font-weight:600;background:oklch(0.6 0.14 65 / .14);color:var(--amberink)}
+.input{border:1px solid var(--line);border-radius:var(--r-ctl);padding:0 12px;height:40px;font-size:var(--t-sm);background:var(--bg);width:100%;color:var(--ink)}
+select.input{-webkit-appearance:none;appearance:none;padding-right:34px;background:var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center/16px}
+textarea.input{height:auto;min-height:84px;padding:10px 12px;resize:none;line-height:1.5}
+.input.ph{color:oklch(0.55 0.008 285)}
+.input.focus{border-color:oklch(0.6 0.15 255 / .6);box-shadow:0 0 0 3px oklch(0.6 0.15 255 / .12)}
+.input.warn{border-color:oklch(0.6 0.14 65 / .7);box-shadow:0 0 0 3px oklch(0.6 0.14 65 / .14)}
+.field label,.flabel{display:block;font-size:var(--t-xs);font-weight:600;color:var(--ink);margin-bottom:5px}
+.field label em{font-style:normal;font-weight:500;color:var(--muted)}
+.hint{font-size:var(--t-xs);font-weight:500;color:var(--muted);margin-top:5px;display:flex;gap:5px;align-items:center}
+.hint.bad{color:var(--redink)} .hint.warn{color:var(--amberink)} .hint.good{color:var(--greenink)}
+.switch{position:relative;width:44px;height:26px;flex:none;display:inline-block}
+.switch i{position:absolute;inset:0;border-radius:var(--r-pill);background:oklch(0.82 0.005 285)}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .2)}
+.switch.on i{background:var(--primary)} .switch.on i::after{left:21px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:3px}
+.seg span{display:inline-flex;align-items:center;gap:6px;border-radius:9px;height:32px;padding:0 14px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.seg span.on{background:var(--bg);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.av{width:36px;height:36px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;font-weight:600;color:#fff;flex:none}
+.av.sm{width:28px;height:28px;font-size:11px}
+.frost{background:rgb(255 255 255 / .86);backdrop-filter:blur(22px) saturate(1.5);border:1px solid var(--line);box-shadow:0 12px 40px rgb(0 0 0 / .12)}
+.scrim{position:absolute;inset:0;background:rgb(20 20 25 / .2);backdrop-filter:blur(3px);z-index:40;display:flex;align-items:center;justify-content:center}
+.scrim.bottom{align-items:flex-end}
+.modal{border-radius:20px;padding:24px;width:540px}
+.modal h2{font-size:20px;font-weight:650}
+.modal .lede{font-size:var(--t-sm);margin:4px 0 18px}
+.mfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.sheet{width:100%;border-radius:20px 20px 0 0;padding:20px 18px 28px}
+.toast{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--primary);color:#fff;border-radius:12px;padding:0 16px;height:44px;font-size:var(--t-sm);font-weight:500;display:flex;align-items:center;gap:8px;white-space:nowrap;z-index:60}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fgrid .full{grid-column:1 / -1}
+
+/* ===================== App shell (desktop) ===================== */
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);height:100%}
+.side{border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 12px 14px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 8px}
+.brand img{width:34px;height:34px}
+.brand b{flex:1;font-size:var(--t-md);font-weight:650;color:var(--ink);white-space:nowrap}
+.jump{display:flex;align-items:center;gap:10px;margin:18px 0 6px;height:40px;padding:0 10px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);color:var(--ink2)}
+.jump span{flex:1}
+kbd{font:600 11px/1 Inter,sans-serif;color:var(--ink2);background:#fff;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:3px 5px}
+.ng{margin-top:16px}
+.ng h4{font-size:var(--t-xs);font-weight:600;color:var(--muted);padding:0 12px 4px}
+.nb{display:flex;align-items:center;gap:11px;height:40px;padding:0 12px;border-radius:10px;border:1px solid transparent;font-size:var(--t-base);font-weight:500;color:var(--ink2);position:relative}
+.nb.on{border-color:rgb(0 0 0 / .1);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
+.nb.on::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--gold)}
+.nb.on svg.i{stroke-width:2.1}
+.side .spc{flex:1}
+.me{display:flex;align-items:center;gap:10px;padding:12px 12px 0;border-top:1px solid var(--line-2);margin-top:8px;font-size:var(--t-sm);color:var(--ink);font-weight:500}
+.me small{display:block;color:var(--muted);font-size:var(--t-xs);font-weight:400}
+.main{min-width:0;display:flex;flex-direction:column;height:100%;overflow:hidden}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:26px 32px 0}
+.head .date{color:var(--muted);font-size:var(--t-sm);font-weight:500}
+.head h1{font-size:var(--t-lg);font-weight:700;letter-spacing:-.4px;line-height:1.25}
+.headacts{display:flex;gap:8px;align-items:center}
+.aipill{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.subnav{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 32px 0}
+.content{flex:1;min-height:0;padding:16px 32px 28px;overflow:hidden}
+
+/* ===================== Inbox ===================== */
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));padding:6px;gap:6px;margin-bottom:14px}
+.stat{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px}
+.stat+.stat{box-shadow:-7px 0 0 -6px var(--line)}
+.stat .ic{width:34px;height:34px;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--ink2)}
+.stat b{display:block;font-size:20px;font-weight:650;color:var(--ink);line-height:1.15}
+.stat span.l{font-size:var(--t-xs);font-weight:500;color:var(--muted)}
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.search{position:relative;flex:1 1 280px;max-width:420px}
+.search svg{position:absolute;left:12px;top:12px;color:var(--muted)}
+.search .input{padding-left:38px}
+.fsel{position:relative}
+.fsel .input{height:36px;font-size:var(--t-sm);width:auto;min-width:0}
+.fsel.on .input,.ftog.on{background-color:oklch(0.6 0.11 185 / .1);border-color:oklch(0.6 0.11 185 / .55);box-shadow:inset 0 -2px 0 var(--teal);color:var(--ink);font-weight:600}
+.ftog{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:var(--r-ctl);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.ftog .switch{transform:scale(.75);margin:0 -5px}
+.ftog.on .switch i{background:var(--teal)}
+.chipseg{display:inline-flex;gap:4px}
+.chipseg span{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.chipseg span.on{background:var(--primary);color:#fff;border-color:transparent;font-weight:600}
+.chipseg span.on .count{background:rgb(255 255 255 / .18);color:#fff;border-color:transparent}
+.clear{color:var(--tealink);font-size:var(--t-sm);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.listhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 8px;font-size:var(--t-sm);color:var(--ink2)}
+.refreshing{display:inline-flex;align-items:center;gap:6px;color:var(--ink2);font-size:var(--t-xs);font-weight:600}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid oklch(0.85 0.005 285);border-top-color:var(--ink);display:inline-block}
+table{width:100%;border-collapse:collapse}
+th{background:var(--panel);text-align:left;font-size:var(--t-xs);font-weight:600;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+td{padding:11px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle;font-size:var(--t-sm)}
+tr:last-child td{border-bottom:0}
+tr.sel td{background:oklch(0.975 0.003 95)}
+.lead{display:flex;gap:11px;align-items:flex-start;min-width:0}
+.lead .t{min-width:0;flex:1}
+.lead .nm{display:flex;align-items:center;gap:7px;font-weight:600;color:var(--ink);font-size:var(--t-base)}
+.lead .sub{display:block;color:var(--ink2);font-size:var(--t-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:330px}
+.lead .reasons{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.unread{width:8px;height:8px;border-radius:50%;background:var(--blue);flex:none}
+.reason{display:inline-flex;align-items:center;gap:4px;border-radius:var(--r-pill);padding:1px 8px;font-size:11px;font-weight:600}
+.aim{display:inline-flex;align-items:center;gap:5px;font-size:var(--t-xs);font-weight:600;color:var(--ink2);white-space:nowrap}
+.time{font-size:var(--t-xs);font-weight:500;color:var(--muted);white-space:nowrap}
+.onb a,.lnk{color:var(--tealink);font-weight:600;text-decoration:none;font-size:var(--t-sm)}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:56px 24px;color:var(--ink2)}
+.empty .eic{width:52px;height:52px;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--ink2);margin-bottom:6px}
+.empty b{font-size:var(--t-md);color:var(--ink)}
+
+/* compact list (when a lead is open) */
+.clist{display:flex;flex-direction:column}
+.crow{display:flex;gap:11px;padding:11px 12px;border-bottom:1px solid var(--line-2);position:relative}
+.crow.sel{background:oklch(0.975 0.003 95)}
+.crow.sel::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--ink)}
+.crow .t{flex:1;min-width:0}
+.crow .l1{display:flex;align-items:center;gap:6px}
+.crow .l1 b{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font-weight:600}
+.crow .sub{display:block;font-size:var(--t-sm);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .l3{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
+
+/* ===================== Lead panel ===================== */
+.split{display:grid;grid-template-columns:400px minmax(0,1fr);gap:16px;height:100%}
+.lpanel{display:grid;grid-template-columns:minmax(0,1fr) 352px;height:100%;overflow:hidden}
+.lph{grid-column:1 / -1;display:flex;align-items:center;gap:12px;padding:12px 14px 12px 16px;border-bottom:1px solid var(--line-2)}
+.lph .t{flex:1;min-width:0}
+.lph .t b{display:block;font-size:var(--t-md);color:var(--ink);font-weight:600}
+.lph .t span{display:flex;gap:10px;align-items:center;font-size:var(--t-xs)}
+.thread{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line-2)}
+.msgs{flex:1;min-height:0;overflow:hidden;padding:16px;display:flex;flex-direction:column;gap:4px;justify-content:flex-end}
+.daysep{align-self:center;font-size:11px;font-weight:600;color:var(--muted);margin:4px 0 8px}
+.bub{max-width:82%;padding:9px 13px;border-radius:16px;font-size:var(--t-sm);line-height:1.45;color:var(--ink)}
+.bub.out{align-self:flex-end;background:oklch(0.94 0.004 285);border-bottom-right-radius:6px}
+.bub.in{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
+.bmeta{font-size:11px;font-weight:500;color:var(--muted);margin:2px 4px 10px}
+.bmeta.r{align-self:flex-end} .bmeta.l{align-self:flex-start}
+.draft{margin:0 16px 10px;border-radius:14px;border:1.5px dashed oklch(0.6 0.14 65 / .55);background:oklch(0.6 0.14 65 / .06);padding:12px 14px}
+.draft .dh{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:600;color:var(--amberink);margin-bottom:6px}
+.draft p{margin:0 0 10px;font-size:var(--t-sm);color:var(--ink)}
+.draft .da{display:flex;gap:6px;flex-wrap:wrap}
+.fup{display:flex;align-items:center;gap:10px;margin:0 16px 10px;padding:10px 12px;border-radius:12px;background:var(--panel);font-size:var(--t-sm);color:var(--ink)}
+.fup span{flex:1}
+.composer{display:flex;gap:8px;align-items:flex-end;padding:10px 16px 14px;border-top:1px solid var(--line-2)}
+.composer .input{min-height:44px;height:44px;border-radius:22px;padding:11px 16px;resize:none}
+.sendbtn{width:44px;height:44px;border-radius:50%;background:var(--primary);color:#fff;border:0;display:grid;place-items:center;flex:none}
+.sendbtn.off{background:oklch(0.85 0.005 285)}
+.firsttext{margin:auto;max-width:340px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+.firsttext .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.details{overflow:hidden;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.dsec{border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.dsec h5{font-size:var(--t-xs);font-weight:600;color:var(--ink2);margin:0 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.dsec.hl{background:var(--panel);border-color:transparent}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:7px 10px;font-size:var(--t-sm)}
+.kv dt{color:var(--muted);font-weight:500}
+.kv dd{margin:0;color:var(--ink);font-weight:500;min-width:0;overflow-wrap:anywhere}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.aiseg{display:grid;grid-template-columns:1fr 1fr;background:var(--panel);border-radius:10px;padding:3px}
+.aiseg span{display:flex;align-items:center;justify-content:center;height:32px;border-radius:8px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.aiseg span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.aiexp{font-size:var(--t-xs);color:var(--ink2);margin-top:6px}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm);color:var(--ink)}
+.steps li:last-child{border-bottom:0}
+.steps li span{flex:1}
+.steps li.done span{color:var(--muted);text-decoration:line-through}
+.steps li.skip span{color:var(--muted);text-decoration:line-through;text-decoration-color:rgb(0 0 0 / .3)}
+.cbx{width:18px;height:18px;border-radius:6px;border:1.5px solid rgb(0 0 0 / .28);flex:none;display:grid;place-items:center}
+.cbx.on{background:var(--primary);border-color:transparent;color:#fff}
+.warnbox{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:10px;background:oklch(0.6 0.14 65 / .12);color:var(--ink);font-size:var(--t-sm);margin-top:8px}
+.warnbox svg{color:var(--amberink);margin-top:2px}
+.warnbox b{color:var(--amberink)}
+.okbox{display:flex;gap:8px;align-items:center;padding:9px 11px;border-radius:10px;background:oklch(0.6 0.13 155 / .1);font-size:var(--t-sm);color:var(--ink);margin-top:8px}
+.menu{position:absolute;z-index:30;width:250px;border-radius:14px;padding:6px}
+.menu div{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:9px;font-size:var(--t-sm);font-weight:500;color:var(--ink)}
+.menu div.hov{background:var(--press)}
+.menu div.dng{color:var(--redink)}
+.menu hr{border:0;border-top:1px solid var(--line-2);margin:4px 6px}
+
+/* ===================== Knowledge + Settings ===================== */
+.krow{display:grid;grid-template-columns:36px minmax(0,1fr) 190px 120px 40px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line-2)}
+.krow:last-child{border-bottom:0}
+.kic{width:36px;height:36px;border-radius:10px;background:var(--panel);display:grid;place-items:center;color:var(--ink2)}
+.krow b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-sm)}
+.kst{display:inline-flex;align-items:center;gap:7px;font-size:var(--t-xs);font-weight:600}
+.cardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line-2)}
+.cardhead h3{font-size:var(--t-md);font-weight:600;display:flex;align-items:center;gap:8px}
+.cardbody{padding:14px 16px}
+.setgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.setrow{display:flex;align-items:center;gap:12px;justify-content:space-between}
+.setrow b{display:block;color:var(--ink);font-weight:600}
+.ptable{width:100%;border:1px solid var(--line-2);border-radius:12px;overflow:hidden;font-size:var(--t-sm)}
+.ptable div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;padding:8px 12px;border-bottom:1px solid var(--line-2)}
+.ptable div:last-child{border-bottom:0}
+.ptable dt{color:var(--muted);font-weight:500}
+.ptable dd{margin:0;color:var(--ink);font-weight:500}
+.people{list-style:none;margin:0;padding:0}
+.people li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.people li:last-child{border-bottom:0}
+.people li .t{flex:1;min-width:0}
+.people li .t b{display:block;color:var(--ink);font-weight:600}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--t-sm);font-weight:600;color:var(--ink);letter-spacing:.5px;margin-right:10px}
+.pastebox{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.55;color:var(--ink2);white-space:pre-wrap}
+
+/* ===================== Phone ===================== */
+.phn{display:flex;flex-direction:column;height:100%;position:relative}
+.phn .status{height:44px;flex:none}
+.ptop{display:flex;align-items:center;justify-content:space-between;gap:8px;height:52px;padding:0 12px 0 16px;border-bottom:1px solid var(--line-2);flex:none}
+.ptop .brand{padding:0}
+.ptop .brand img{width:30px;height:30px}
+.pbody{flex:1;min-height:0;overflow:hidden;padding:12px 16px 16px}
+.ptitle{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ptitle h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.pseg{display:grid;grid-template-columns:repeat(3,1fr);background:var(--panel);border-radius:12px;padding:3px;margin-bottom:12px}
+.pseg span{display:flex;align-items:center;justify-content:center;height:36px;border-radius:9px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.pseg span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.pseg.two{grid-template-columns:1fr 1fr}
+.bnav{display:flex;flex:none;border-top:1px solid var(--line);padding:4px 6px 20px;background:rgb(255 255 255 / .96)}
+.bnav span{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:500;color:var(--ink2);min-height:50px;border-radius:12px}
+.bnav span.on{color:var(--ink);font-weight:600;background:rgb(0 0 0 / .045);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .1)}
+.fab{position:absolute;right:16px;bottom:92px;z-index:20;height:52px;padding:0 20px;border-radius:var(--r-pill);background:var(--primary);color:#fff;font-weight:600;font-size:var(--t-base);display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgb(0 0 0 / .18)}
+.mcard{border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px;background:#fff}
+.mcard .l1{display:flex;align-items:center;gap:7px}
+.mcard .l1 b{flex:1;min-width:0;color:var(--ink);font-weight:600;font-size:var(--t-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcard .sub{display:block;font-size:var(--t-sm);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0 8px}
+.mcard .chips{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.mcard .ml{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line-2);font-size:var(--t-xs);font-weight:500}
+.pfilters{display:flex;gap:6px;overflow:hidden;margin-bottom:10px}
+.pfilters span{flex:none;display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.pfilters span.on{background:var(--primary);color:#fff;border-color:transparent;font-weight:600}
+.pfilters span.tf{background-color:oklch(0.6 0.11 185 / .1);border-color:oklch(0.6 0.11 185 / .55);color:var(--ink);font-weight:600}
+.plead{display:flex;flex-direction:column;height:100%}
+.plh{display:flex;align-items:center;gap:8px;height:60px;padding:0 8px;border-bottom:1px solid var(--line-2);flex:none}
+.plh .t{flex:1;min-width:0}
+.plh .t b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plseg{padding:8px 12px;flex:none;border-bottom:1px solid var(--line-2)}
+.plbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column}
+.plbody.pad{padding:12px;gap:10px}
+.phn .msgs{padding:12px}
+.phn .draft,.phn .fup{margin:0 12px 8px}
+.phn .composer{padding:8px 12px 24px}
+.phn .kv{grid-template-columns:100px minmax(0,1fr)}
+.phn .krow{grid-template-columns:36px minmax(0,1fr) 44px;row-gap:6px}
+.phn .krow .kst{grid-column:2 / -1}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:var(--t-xs);font-weight:500}
+.bpcard{font-size:19px}
+.bpcard table td,.bpcard table th{font-size:17px;padding:12px 16px}
+/* ===================== Clients additions (same tokens) ===================== */
+.backlink{display:inline-flex;align-items:center;gap:4px;font-size:var(--t-sm);font-weight:500;color:var(--ink2)}
+.head h1 .chip{font-size:var(--t-xs);letter-spacing:0}
+.cgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.client{display:flex;gap:11px;align-items:center;min-width:0}
+.client b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-base)}
+.client span.e{display:block;color:var(--ink2);font-size:var(--t-sm)}
+.ext{display:inline-flex}
+td.r,th.r{text-align:right}
+.num{font-variant-numeric:tabular-nums}
+.linkrow{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);font-size:var(--t-sm);color:var(--ink);margin-top:10px}
+.linkrow span.u{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:2px}
+.track i{height:4px;border-radius:2px;background:oklch(0.9 0.003 285)}
+.track i.on{background:var(--ink)}
+.tracklab{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-top:6px;font-size:11px;font-weight:500;color:var(--muted)}
+.tracklab span.on{color:var(--ink);font-weight:600}
+.pdesc{margin:10px 0 0;font-size:var(--t-sm);color:var(--ink)}
+.pbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.lrow2{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--line-2);font-size:var(--t-sm)}
+.lrow2:last-child{border-bottom:0}
+.lrow2 .t{flex:1;min-width:0}
+.lrow2 .t b{display:block;color:var(--ink);font-weight:600}
+.chk{list-style:none;margin:0;padding:0}
+.chk li{display:flex;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line-2);align-items:flex-start}
+.chk li:last-child{border-bottom:0}
+.chk .ck{width:20px;height:20px;border-radius:50%;flex:none;display:grid;place-items:center;margin-top:1px}
+.chk .ck.on{background:oklch(0.6 0.13 155 / .16);color:var(--greenink)}
+.chk .ck.off{border:1.5px dashed rgb(0 0 0 / .28)}
+.chk b{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.chk li.open b{color:var(--ink2);font-weight:500}
+.errbanner{display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:12px;background:oklch(0.6 0.19 25 / .09);border:1px solid oklch(0.6 0.19 25 / .28);color:var(--ink);font-size:var(--t-sm);margin-bottom:14px}
+.errbanner>svg{color:var(--redink)}
+.errbanner span{flex:1}
+.errbanner b{color:var(--redink)}
+.skel{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,oklch(0.93 0.003 285),oklch(0.96 0.002 285),oklch(0.93 0.003 285))}
+.mp{display:inline-flex;align-items:center;gap:4px}
+.mp .btn{min-width:170px;font-weight:600}
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.toolbar .acts{display:flex;gap:8px;flex-wrap:wrap}
+.stats.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+.yg{position:absolute;z-index:35;width:300px;border-radius:16px;padding:12px}
+.yg .yh{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.yg .yh b{font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.yg .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.yg .grid span{height:40px;border-radius:10px;display:grid;place-items:center;font-size:var(--t-sm);font-weight:500;color:var(--ink)}
+.yg .grid span.sel{background:var(--ink);color:#fff;font-weight:600}
+.yg .grid span.cur{box-shadow:inset 0 0 0 1px var(--line);font-weight:700}
+.yg .grid span.dis{color:oklch(0.78 0.004 285)}
+.dp{width:296px;border-radius:16px;padding:10px}
+.dphead{display:flex;align-items:center;justify-content:space-between;padding:0 0 6px}
+.dphead b{font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+.dpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.dpwd span{text-align:center;font-size:11px;font-weight:600;color:var(--muted);padding:4px 0}
+.dpgrid b{height:36px;border-radius:10px;display:grid;place-items:center;font-size:var(--t-sm);font-weight:500;color:var(--ink);position:relative}
+.dpgrid b.out{color:oklch(0.62 0.006 285)}
+.dpgrid b.today{font-weight:700}
+.dpgrid b.today::after{content:"";position:absolute;left:50%;bottom:5px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:currentColor}
+.dpgrid b.sel{background:var(--ink);color:#fff;font-weight:600}
+.dpfoot{display:flex;gap:6px;padding-top:8px;margin-top:6px;border-top:1px solid var(--line-2)}
+.dpfoot .btn{flex:1;padding:0 6px}
+.drop{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line);border-radius:12px;padding:12px 14px;font-size:var(--t-sm);color:var(--ink2)}
+.drop b{color:var(--ink);font-weight:600}
+.opt{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.opt div{border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:var(--t-sm);color:var(--ink2);display:flex;gap:10px;align-items:flex-start}
+.opt div b{display:block;color:var(--ink);font-weight:600}
+.opt div.on{border-color:rgb(0 0 0 / .4);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .4)}
+.radio{width:18px;height:18px;border-radius:50%;border:1.5px solid rgb(0 0 0 / .3);flex:none;margin-top:1px}
+.radio.on{border:5px solid var(--primary)}
+.cbrow{display:flex;align-items:center;gap:9px;font-size:var(--t-sm);color:var(--ink);margin-top:10px}
+.picker{border-radius:14px;padding:8px;margin-top:6px}
+.picker .pi{display:flex;align-items:center;gap:10px;height:48px;padding:0 8px;border-radius:10px}
+.picker .pi.hov{background:var(--press)}
+.picker .pi .t{flex:1;min-width:0}
+.picker .pi b{display:block;color:var(--ink);font-weight:600;font-size:var(--t-sm);line-height:1.3}
+.side-sheet{position:absolute;top:0;right:0;bottom:0;width:500px;border-radius:20px 0 0 20px;padding:24px;display:flex;flex-direction:column}
+.side-sheet .sbody{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:14px}
+.side-sheet h2{font-size:20px;font-weight:650}
+.leadbox{background:var(--panel);border-radius:14px;padding:12px 14px}
+.leadbox h5{margin:0 0 8px;font-size:var(--t-xs);font-weight:600;color:var(--ink2);display:flex;align-items:center;justify-content:space-between}
+.fakesel{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff}
+/* field placement */
+.pl{display:flex;flex-direction:column;height:100%;background:var(--panel)}
+.pltop{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#fff;border-bottom:1px solid var(--line-2);flex:none}
+.pltop .t{flex:1;min-width:0}
+.pltop .t b{display:block;font-size:var(--t-md);font-weight:650;color:var(--ink)}
+.pltools{display:flex;align-items:center;gap:8px;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);flex:none}
+.tool{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:var(--r-ctl);border:1px solid var(--line);font-size:var(--t-sm);font-weight:500;color:var(--ink2);background:#fff;white-space:nowrap;flex:none}
+.tool.on{border-color:rgb(0 0 0 / .38);background:rgb(0 0 0 / .045);color:var(--ink);font-weight:600}
+.vsep{width:1px;height:24px;background:var(--line);flex:none;margin:0 4px}
+.who{display:inline-flex;background:var(--panel);border-radius:11px;padding:3px;flex:none}
+.who span{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:8px;font-size:var(--t-sm);font-weight:500;color:var(--ink2);white-space:nowrap}
+.who span.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.who i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.plcanvas{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;align-items:center;padding:20px;gap:10px}
+.page{position:relative;width:560px;height:724px;background:#fff;box-shadow:0 1px 3px rgb(0 0 0 / .1),0 10px 28px rgb(0 0 0 / .07);border-radius:4px;padding:52px 56px;flex:none}
+.page h6{font-size:15px;font-weight:700;color:var(--ink);margin:0 0 18px}
+.page .ln{height:7px;border-radius:4px;background:oklch(0.92 0.003 285);margin-bottom:11px}
+.page .sl{position:absolute;height:1px;background:oklch(0.7 0.004 285)}
+.page .slab{position:absolute;font-size:10px;font-weight:600;color:var(--muted)}
+.fld{position:absolute;border:1.5px solid;border-radius:6px;display:flex;align-items:center;gap:6px;padding:0 8px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.fld.h{border-color:oklch(0.6 0.15 255 / .8);background:oklch(0.6 0.15 255 / .09);color:oklch(0.45 0.13 255)}
+.fld.m{border-color:oklch(0.55 0.15 300 / .8);background:oklch(0.55 0.15 300 / .09);color:oklch(0.42 0.14 300)}
+.fld.sel{border-style:solid;box-shadow:0 0 0 3px oklch(0.55 0.15 300 / .18)}
+.fld .hd{position:absolute;width:9px;height:9px;background:#fff;border:1.5px solid currentColor;border-radius:2px}
+.fld .del{position:absolute;top:-12px;right:-12px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center}
+.fld.ghost{border-style:dashed;opacity:.7}
+.plhint{display:flex;align-items:center;gap:8px;font-size:var(--t-xs);font-weight:500;color:var(--ink2)}
+.need{display:inline-flex;align-items:center;gap:6px;font-size:var(--t-xs);font-weight:600}
+.need.ok{color:var(--greenink)} .need.no{color:var(--amberink)}
+.sendwrap{display:flex;align-items:center;gap:12px}
+.pad{border-radius:12px;border:1px solid var(--line);background:#fff;height:200px;position:relative}
+.pad .base{position:absolute;left:24px;right:24px;bottom:44px;border-top:1px dashed oklch(0.75 0.004 285)}
+.pad .x{position:absolute;left:26px;bottom:50px;font-size:14px;color:var(--muted)}
+/* statement */
+.stmt{display:flex;flex-direction:column;height:100%;background:var(--panel)}
+.stmtbar{display:flex;align-items:center;gap:12px;padding:12px 24px;background:rgb(255 255 255 / .9);border-bottom:1px solid var(--line);flex:none}
+.paper{width:820px;margin:20px auto 0;background:#fff;border-radius:6px;box-shadow:0 1px 3px rgb(0 0 0 / .08),0 12px 32px rgb(0 0 0 / .06);padding:36px 44px;font-size:var(--t-sm);color:var(--ink)}
+.paper .ph1{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.paper h4{font-size:var(--t-xs);font-weight:700;color:var(--muted);letter-spacing:.4px;text-transform:uppercase;margin:18px 0 6px}
+.paper table td,.paper table th{padding:6px 8px;font-size:12.5px}
+.paper th{background:none;border-bottom:1px solid var(--line)}
+.paper .tot td{font-weight:700;border-top:1px solid var(--line);border-bottom:0}
+.paper .net{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:12px 14px;border-radius:10px;background:var(--panel);font-weight:700;font-size:var(--t-md)}
+.phn .paper{width:auto;margin:0;padding:18px 16px;border-radius:12px}
+.phn .paper table td,.phn .paper table th{padding:5px 4px;font-size:12px}
+.backrow{display:flex;align-items:center;gap:4px;font-size:var(--t-sm);font-weight:500;color:var(--ink2);margin:0 0 6px -2px;height:28px}
+.phn .ptitle h1{font-size:21px}
+.phn .card{margin-bottom:12px}
+.phn .cardhead{padding:12px 14px}
+.phn .cardbody{padding:12px 14px}
+.phn .lrow2{padding:10px 14px}
+.phn .chk li{padding:9px 14px}
+.phn .stats.four{grid-template-columns:1fr 1fr}
+.phn .stats.four .stat+.stat{box-shadow:none}
+.phn .stat{padding:8px 10px}
+.phn .stat b{font-size:17px}
+.urow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-2)}
+.urow:last-child{border-bottom:0}
+.urow .t{flex:1;min-width:0}
+.urow .t b{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:600}
+.urow .v{text-align:right;font-size:var(--t-sm);font-weight:600;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="boardbar">
+  <h1><img src="data:image/png;base64,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" alt="">Clients · design</h1>
+  <nav class="toc"><a href="#s-list">Client list</a><a href="#s-add">Add client</a><a href="#s-det">Details</a><a href="#s-portal">Portal and contract</a><a href="#s-month">Month earnings</a><a href="#s-stmt">Statement</a><a href="#s-bp">Breakpoints</a></nav>
+  <span class="sp"></span>
+  <span class="meta">Zoom</span>
+  <div class="zoom" id="zoom"><button data-z=".35">35%</button><button data-z=".5" class="on">50%</button><button data-z=".75">75%</button><button data-z="1">100%</button></div>
+</div>
+<div class="board" id="board"></div>
+<script>
+(function(){
+const LOGO = 'data:image/png;base64,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';
+/* ---------------- icons (same line set as the hub) ---------------- */
+const I = {
+  home:'<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M18 14.3c2.1.7 3.5 2.6 3.5 5.7"/>',
+  clip:'<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2.5" width="6" height="3" rx="1"/><path d="M9 11h6M9 15h4"/>',
+  building:'<rect x="4" y="3" width="11" height="18" rx="1"/><path d="M15 9h5v12h-5"/><path d="M8 7h3M8 11h3M8 15h3"/>',
+  team:'<circle cx="12" cy="7" r="3"/><circle cx="5" cy="10" r="2.2"/><circle cx="19" cy="10" r="2.2"/><path d="M6.5 20c0-3.3 2.4-5.5 5.5-5.5s5.5 2.2 5.5 5.5"/><path d="M1.5 19c0-2.3 1.4-3.9 3.5-4.2M22.5 19c0-2.3-1.4-3.9-3.5-4.2"/>',
+  brief:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M3 12.5h18"/>',
+  chart:'<path d="M4 4v16h16"/><path d="M8 16v-4M12 16V8M16 16v-6"/>',
+  spark:'<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  search:'<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  chev:'<path d="m6 9 6 6 6-6"/>',
+  back:'<path d="m15 6-6 6 6 6"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+  phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  pin:'<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  refresh:'<path d="M20 11a8 8 0 0 0-14.9-3.6M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3.6M20 20v-4h-4"/>',
+  more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  up:'<path d="M12 19V5M6 11l6-6 6 6"/>',
+  copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+  file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+  text:'<path d="M5 6h14M5 10h14M5 14h10M5 18h7"/>',
+  bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
+  out:'<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5M5 12h11"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>',
+  pause:'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  play:'<path d="M7 5v14l11-7z"/>',
+  alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h0"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  inbox:'<path d="M3 13h5l2 3h4l2-3h5"/><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z"/>',
+  book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5"/>',
+  sms:'<path d="M4 5h16v11H9l-5 4z"/>',
+  rec:'<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/>',
+  arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
+  eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'
+};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const ok=(h,c,L=.6,a)=>`oklch(${L} ${c} ${h}${a!=null?` / ${a}`:''})`;
+const tone=(h,c)=>({bg:ok(h,c,.6,.15),t:ok(h,c*.9,.45)});
+const chip=(txt,h,c)=>{const t=tone(h,c);return `<span class="chip" style="background:${t.bg};color:${t.t}">${txt}</span>`;};
+
+/* ---------------- vocab from the current CRM ---------------- */
+const STAGE={ 'New':[255,.14],'Engaging':[185,.11],'Nurturing':[300,.12],'Interested':[65,.14],'Booked':[275,.15],'Call done':[88,.11],'Won':[155,.13],'Low fit':[270,.02],'Skip':[270,.02] };
+const stageChip=s=>chip(s,...STAGE[s]);
+const REASON={draft:['Draft to review',65,.14],replied:['They replied',255,.14],noreply:['No reply',270,.02],booked:['Booked this week',275,.15]};
+const reason=k=>{const [t,h,c]=REASON[k];const x=tone(h,c);return `<span class="reason" style="background:${x.bg};color:${x.t}">${t}</span>`;};
+const AIM={live:['AI live','var(--green)'],paused:['AI paused','var(--amber)'],off:['AI off','oklch(0.75 0.005 285)']};
+const aim=k=>`<span class="aim"><i class="dot" style="background:${AIM[k][1]}"></i>${AIM[k][0]}</span>`;
+const CONTRACT={signed:['Signed',155,.13],sent:['Sent, awaiting signature',65,.14],not_sent:['Not sent',25,.18]};
+const conChip=c=>c?chip(...CONTRACT[c]):'<span class="gapchip">Not recorded</span>';
+const nr=v=>v?v:'<span class="gapchip">Not recorded</span>';
+const AVC=['255','300','155','355','65','185','275','25','210'];
+const av=(ini,i,cls='')=>`<span class="av ${cls}" style="background:oklch(0.5 0.11 ${AVC[i%AVC.length]})">${ini}</span>`;
+const NAV=[[null,[['home','Dashboard']]],['Operations',[['clip','Onboarding'],['building','Properties'],['team','Team']]],['Business',[['users','CRM'],['brief','Clients'],['chart','Revenue']]],['Assistant',[['spark','Copilot']]]];
+
+I.ext='<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>';
+I.next='<path d="m9 6 6 6-6 6"/>';
+I.user='<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>';
+I.move='<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>';
+I.sign='<path d="M3 17c3-1 4-8 6-8s-1 8 2 8 3-5 5-5 1 4 3 4h2"/><path d="M3 21h18"/>';
+I.font='<path d="M5 20 11 4h2l6 16"/><path d="M8 13h8"/>';
+I.box='<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>';
+I.down='<path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 20h16"/>';
+I.hst='<path d="M7 4h10v16l-2-1.5L13 20l-1-1.5L11 20l-2-1.5L7 20z"/><path d="M10 9h4M10 13h4"/>';
+I.cloud='<path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"/><path d="m4 4 16 16"/>';
+
+/* ---------------- placeholder clients (all fake; listed in the notes file) ---------------- */
+const C=[
+ {ini:'HS',name:'Harper Sample',email:'harper.sample@example.com',phone:'(403) 555-0210',units:2,active:true,portal:'live',chk:[1,1,1,1,1]},
+ {ini:'RE',name:'Rowan Example',email:'rowan.example@example.com',phone:'(403) 555-0221',units:1,active:true,portal:'opened',chk:[1,0,1,1,0]},
+ {ini:'LM',name:'Logan Mock',email:'logan.mock@example.com',phone:'(587) 555-0232',units:3,active:true,portal:'live',chk:[1,1,1,1,1]},
+ {ini:'EP',name:'Emery Placeholder',email:'emery.placeholder@example.com',phone:'(403) 555-0243',units:1,active:true,portal:'none',chk:[1,0,0,0,0]},
+ {ini:'PD',name:'Parker Demo',email:'parker.demo@example.com',phone:'(825) 555-0254',units:1,active:true,portal:'signed',chk:[1,1,1,1,0]},
+ {ini:'RF',name:'Reese Fake',email:'reese.fake@example.com',phone:'(403) 555-0265',units:0,active:false,portal:'none',chk:[1,0,0,0,0]}
+];
+const actChip=a=>a?chip('Active',155,.13):chip('Paused',270,.02);
+const units=n=>`${n} ${n===1?'unit':'units'}`;
+const PS={none:['Not invited',270,.02,'No portal invite has been sent.'],invited:['Invited',255,.14,'Invite sent just now. Not opened yet.'],opened:['Opened',65,.14,'Invite opened Nov 15. Contract awaiting the host’s signature.'],signed:['Signed',185,.11,'Contract signed Nov 12. Host has not signed in yet.'],live:['Portal live',155,.13,'Contract signed Oct 2. Host signed in Oct 3.']};
+const ORDER=['none','invited','opened','signed','live'];
+const CHK=[['Client record created','Created Sep 28'],['Management agreement signed','Signed in the portal'],['Portal invite sent','Sent to the host’s email'],['First property linked','Linked from Properties'],['Host signed in to the portal','First sign-in to the host portal']];
+const CHK_OPEN=['','Waiting on the host’s signature','No invite sent yet','No property linked yet','Not signed in yet'];
+const CONTRACTS={HS:[['Management agreement','Oct 2, 2026'],['Furniture addendum','Oct 9, 2026']],RE:[],LM:[['Management agreement','Aug 21, 2026']],EP:[],PD:[['Management agreement','Nov 12, 2026']],RF:[]};
+
+/* ---------------- shell ---------------- */
+function sidebar(){
+  return `<aside class="side"><div class="brand"><img src="${LOGO}" alt=""><b>Mandel Realty</b><span class="iconbtn">${ic('back','sm')}</span></div>
+    <div class="jump">${ic('search','sm')}<span>Jump to…</span><kbd>Ctrl K</kbd></div>
+    ${NAV.map(([t,items])=>`<div class="ng">${t?`<h4>${t}</h4>`:''}${items.map(([i,l])=>`<div class="nb ${l==='Clients'?'on':''}">${ic(i)}${l}</div>`).join('')}</div>`).join('')}
+    <div class="spc"></div><div class="nb">${ic('gear')}Settings</div>
+    <div class="me"><span class="av sm" style="background:oklch(0.38 0.02 270)">AD</span><div>Admin<small>Shared account</small></div></div></aside>`;
+}
+const listHeader=()=>`<div class="head"><div><div class="date">Monday, November 16, 2026</div><h1>Clients</h1></div>
+  <div class="headacts"><button class="btn primary">${ic('plus','sm')}Add client</button></div></div>`;
+const clientHeader=(c,tab,o={})=>`<div class="head"><div><div class="backlink">${ic('back','xs')}Clients</div><h1 style="display:flex;align-items:center;gap:10px">${c.name} ${actChip(c.active)}</h1></div>
+  <div class="headacts">${o.acts||''}</div></div>
+  <div class="subnav"><div class="seg"><span class="${tab==='d'?'on':''}">${ic('user','sm')}Details</span><span class="${tab==='m'?'on':''}">${ic('chart','sm')}Month earnings</span></div>${o.right||''}</div>`;
+const desk=(head,content,o={})=>`<div class="app">${sidebar()}<main class="main">${head}<div class="content" ${o.cs?`style="${o.cs}"`:''}>${content}</div></main></div>${o.overlay||''}`;
+function phone(content,o={}){
+  return `<div class="phn"><div class="status"></div>
+   ${o.bare?content:`<div class="ptop"><div class="brand"><img src="${LOGO}" alt=""><b>Mandel Realty</b></div><span class="iconbtn">${ic('search')}</span></div>
+   <div class="pbody">${content}</div>
+   ${o.fab?`<div class="fab">${ic('plus')}${o.fab}</div>`:''}
+   <div class="bnav">${[['home','Dashboard'],['users','CRM'],['clip','Onboarding'],['team','Team'],['gear','Settings']].map(([i,l])=>`<span>${ic(i)}${l}</span>`).join('')}</div>`}
+   ${o.overlay||''}</div>`;
+}
+const pList=()=>`<div class="ptitle"><h1>Clients</h1><span class="meta">${C.length} clients</span></div>`;
+const pClient=(c,tab)=>`<div class="backrow">${ic('back','sm')}Clients</div><div class="ptitle"><h1>${c.name}</h1>${actChip(c.active)}</div>
+  <div class="pseg two"><span class="${tab==='d'?'on':''}">Details</span><span class="${tab==='m'?'on':''}">Month earnings</span></div>`;
+
+/* ---------------- 1. client list ---------------- */
+const cTable=(rows,o={})=>`<div class="card" style="overflow:hidden"><table><thead><tr><th>Client</th><th>Units</th><th>Status</th><th class="r">Host portal</th><th style="width:44px"></th></tr></thead><tbody>
+ ${rows.map((c,i)=>`<tr class="${o.hov===i?'sel':''}"><td><div class="client">${av(c.ini,i)}<div><b>${c.name}</b><span class="e">${c.email}</span></div></div></td>
+  <td class="num">${units(c.units)}</td><td>${actChip(c.active)}</td>
+  <td class="r"><button class="btn sm">${ic('ext','xs')}Preview</button></td><td><span class="iconbtn">${ic('next','sm')}</span></td></tr>`).join('')}
+ </tbody></table></div>`;
+const listMeta=(n=C.length)=>`<div class="listhead"><span><b style="color:var(--ink)">${n} clients</b> <span class="meta">· ${C.filter(c=>c.active).length} active, ${C.filter(c=>!c.active).length} paused</span></span><span class="meta">Preview opens the host portal as that client sees it, in a new tab</span></div>`;
+const pCard=(c,i)=>`<div class="mcard"><div class="l1">${av(c.ini,i,'sm')}<b>${c.name}</b>${ic('next','sm')}</div>
+  <span class="sub" style="margin-left:35px">${c.email}</span>
+  <div class="ml" style="margin-top:2px"><span class="chips" style="display:flex;gap:6px;align-items:center"><span class="count">${units(c.units)}</span>${actChip(c.active)}</span><button class="btn sm">${ic('ext','xs')}Preview</button></div></div>`;
+const emptyList=(ph)=>`<div class="${ph?'':'card'}"><div class="empty" style="padding:${ph?'80px 12px':'110px 24px'}"><span class="eic">${ic('brief')}</span><b>No clients yet</b><span style="max-width:320px">Add a client to set up their host portal, contracts and month earnings.</span><button class="btn primary" style="margin-top:12px">${ic('plus','sm')}Add client</button></div></div>`;
+const errBanner=(t,ph)=>`<div class="errbanner">${ic('alert','sm')}<span><b>${t}</b>${ph?'':' Check your connection and try again.'}</span><button class="btn sm">Retry</button><span class="iconbtn" style="width:32px;height:32px">${ic('x','sm')}</span></div>`;
+
+/* ---------------- 2. add client ---------------- */
+const WON=[['JP','Jordan Placeholder','(403) 555-0161 · Won',3],['TT','Taylor Test','(587) 555-0118 · Won',4],['SD','Sky Dummy','(403) 555-0133 · Booked',7],['QF','Quinn Fake','(825) 555-0109 · Nurturing',6]];
+function addForm(o={}){
+  const f=o.filled;
+  const sv=o.saving;
+  const leadbox=`<div class="leadbox"><h5><span>Start from a CRM lead</span>${f?'<span class="clear" style="font-size:var(--t-xs)">Clear</span>':''}</h5>
+    <div class="input fakesel ${o.pick?'focus':''}">${f?`<span style="display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:500">${av('JP',3,'sm')}Jordan Placeholder</span>`:`<span style="color:oklch(0.55 0.008 285)">Choose a lead…</span>`}${ic('chev','sm')}</div>
+    ${o.pick?`<div class="picker frost"><div class="search" style="max-width:none;margin-bottom:6px">${ic('search','sm')}<input class="input ph" value="Search leads by name or phone"></div>
+      ${WON.slice(0,o.ph?3:4).map(([ini,n,s,k],j)=>`<div class="pi ${j===0?'hov':''}">${av(ini,k,'sm')}<div class="t"><b>${n}</b><span class="meta">${s}</span></div></div>`).join('')}</div>`:''}
+    ${f?`<div class="hint good">${ic('check','xs')}Filled from the lead. You can still edit every field.</div>`:''}</div>`;
+  const dis=sv?'disabled':'';
+  const fields=`<div class="fgrid">
+    <div class="field full"><label>Name <em>(required)</em></label><input class="input ${f?'':'ph'}" ${dis} value="${f?'Jordan Placeholder':'Full name'}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Email</label><input class="input ${f?'':'ph'}" ${dis} value="${f?'jordan.placeholder@example.com':'name@example.com'}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Phone</label><input class="input ${f?'':'ph'}" ${dis} value="${f?'(403) 555-0161':'(000) 000-0000'}"></div>
+    <div class="field full"><label>Status</label><div class="aiseg" style="max-width:${o.ph?'none':'260px'}"><span class="on">Active</span><span>Paused</span></div></div></div>`;
+  const foot=`<div class="mfoot" style="${o.ph?'position:sticky;bottom:-28px;margin:16px -18px -28px;padding:12px 18px 24px;background:oklch(98% 0 0 / .94);border-top:1px solid var(--line-2);flex-direction:column-reverse;gap:8px':'margin-top:auto;padding-top:16px;border-top:1px solid var(--line-2)'}">
+     <button class="btn" ${dis} ${o.ph?'style="height:44px"':''}>Cancel</button><button class="btn" ${dis} ${o.ph?'style="height:44px"':''}>Save client only</button>
+     <button class="btn primary" ${o.ph?'style="height:48px"':''}>${sv?'<i class="spin" style="border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Saving…':`Save &amp; send contract${ic('arrow','sm')}`}</button></div>`;
+  return `<h2 style="font-size:20px;font-weight:650">Add client</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 0">Save &amp; send contract saves the client, then opens the portal invite.</p>
+    ${o.ph?`<div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">${leadbox}${o.pick?'':fields}</div>`:`<div class="sbody" style="margin-top:16px">${leadbox}${fields}</div>`}${o.pick&&o.ph?'':foot}`;
+}
+const addSheetD=o=>`<div class="scrim" style="justify-content:flex-end"><div class="side-sheet frost">${addForm(o)}</div></div>`;
+const addSheetP=o=>`<div class="scrim bottom"><div class="sheet frost" style="max-height:790px;overflow:auto">${addForm({...o,ph:true})}</div></div>`;
+
+/* ---------------- 3. client details ---------------- */
+function detailsCard(c,o={}){
+  return `<div class="card"><div class="cardhead"><h3>${ic('user','sm')}Details</h3>${o.saving?'<span class="refreshing"><i class="spin"></i>Saving…</span>':''}</div><div class="cardbody">
+   <div class="fgrid">
+    <div class="field full"><label>Name <em>(required)</em></label><input class="input" value="${c.name}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Email</label><input class="input" value="${c.email}"></div>
+    <div class="field ${o.ph?'full':''}"><label>Phone</label><input class="input" value="${c.phone}"></div>
+    <div class="field full" style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px"><div style="flex:1"><label>Status</label><div class="aiseg" style="max-width:${o.ph?'none':'260px'}"><span class="${c.active?'on':''}">Active</span><span class="${c.active?'':'on'}">Paused</span></div></div>
+     ${o.ph?'':`<button class="btn primary" ${o.saving?'disabled':''}>${o.saving?'Saving…':'Save'}</button>`}</div>
+   </div>${o.ph?`<button class="btn primary" style="width:100%;height:44px;margin-top:14px">Save</button>`:''}</div></div>`;
+}
+const linksCard=(c)=>`<div class="card">
+  <div class="lrow2"><span class="kic">${ic('chart','sm')}</span><div class="t"><b>Month earnings</b><span class="meta">Totals, units and the owner statement</span></div><span class="lnk">Open ${ic('arrow','xs')}</span></div>
+  <div class="lrow2"><span class="kic">${ic('building','sm')}</span><div class="t"><b>Properties</b><span class="meta">${units(c.units)} · opens Properties filtered to ${c.name.split(' ')[0]}</span></div><span class="lnk">View ${ic('arrow','xs')}</span></div></div>`;
+const chkCard=(c)=>`<div class="card"><div class="cardhead"><h3>${ic('clip','sm')}Onboarding checklist</h3><span class="meta">${c.chk.filter(Boolean).length} of 5 done · read only</span></div>
+  <ul class="chk">${CHK.map(([t,n],i)=>`<li class="${c.chk[i]?'':'open'}"><span class="ck ${c.chk[i]?'on':'off'}">${c.chk[i]?ic('check','xs'):''}</span><div><b>${t}</b><span class="meta">${c.chk[i]?n:CHK_OPEN[i]||n}</span></div></li>`).join('')}</ul></div>`;
+function portalCard(c,o={}){
+  const s=o.status||c.portal; const [t,h,cc,desc]=PS[s]; const idx=ORDER.indexOf(s);
+  const awaiting=s==='invited'||s==='opened';
+  return `<div class="card"><div class="cardhead"><h3>${ic('key','sm')}Host portal and contract</h3>${chip(t,h,cc)}</div><div class="cardbody">
+   <div class="track">${ORDER.map((x,i)=>`<i class="${idx>0&&i<=idx?'on':''}"></i>`).join('')}</div>
+   <div class="tracklab">${['Not invited','Invited','Opened','Signed','Portal live'].map((x,i)=>`<span class="${i===idx?'on':''}">${x}</span>`).join('')}</div>
+   <p class="pdesc">${desc}</p>
+   ${s!=='none'?`<div class="linkrow">${ic('link','sm')}<span class="u">portal.example.com/host/placeholder-${c.ini.toLowerCase()}</span><span class="iconbtn" style="width:32px;height:32px">${ic('copy','sm')}</span></div>`:''}
+   <div class="pbtns">
+    ${s!=='none'?`<button class="btn">${ic('eye','sm')}Preview as host</button>`:''}
+    ${awaiting?`<button class="btn">${ic('file','sm')}Replace contract</button><button class="btn">${ic('edit','sm')}Edit boxes only</button>`:''}
+    <button class="btn ${s==='none'?'primary':''}">${ic('mail','sm')}${s==='none'?'Send portal invite':'Resend invite'}</button>
+   </div>
+   <div class="hint" style="margin-top:10px">${ic('mail','xs')}Sends a real email to the host. It only goes out from the invite form.</div>
+  </div></div>`;
+}
+const contractsCard=(c)=>{const L=CONTRACTS[c.ini];return `<div class="card"><div class="cardhead"><h3>${ic('file','sm')}Contracts</h3><button class="btn sm">${ic('upload','xs')}Upload</button></div>
+  ${L.length?L.map(([t,d])=>`<div class="lrow2"><span class="kic">${ic('file','sm')}</span><div class="t"><b>${t}.pdf</b><span class="meta">Signed ${d}</span></div><button class="btn sm">Open</button><span class="iconbtn">${ic('trash','sm')}</span></div>`).join('')
+   :`<div class="empty" style="padding:22px 16px"><b style="font-size:var(--t-sm)">No signed contracts yet</b><span class="meta">Upload a signed PDF, or send a contract from the portal invite.</span></div>`}</div>`;};
+const dangerCard=()=>`<div class="card"><div class="lrow2"><div class="t"><b>Delete client</b><span class="meta">Also removes their host portal, properties and contracts.</span></div><button class="btn dangerline">${ic('trash','sm')}Delete client</button></div></div>`;
+const deskClient=(c,o={})=>desk(clientHeader(c,'d'),`${o.banner||''}<div class="cgrid"><div class="col">${o.left?o.left(c):`${detailsCard(c,o)}${linksCard(c)}${chkCard(c)}`}</div><div class="col">${portalCard(c,o)}${contractsCard(c)}${dangerCard()}</div></div>`,{overlay:o.overlay});
+const phoneClient=(c,o={})=>phone(`${pClient(c,'d')}${o.banner||''}${(o.order||['details','links','portal','contracts','chk','danger']).map(k=>({details:detailsCard(c,{...o,ph:true}),links:linksCard(c),portal:portalCard(c,o),contracts:contractsCard(c),chk:chkCard(c),danger:dangerCard()})[k]).join('')}`,{overlay:o.overlay});
+
+/* confirm modals */
+const confirmD=(t,p,b)=>`<div class="scrim"><div class="modal frost" style="width:460px"><h2>${t}</h2><p class="lede">${p}</p><div class="mfoot"><button class="btn">Cancel</button><button class="btn danger">${ic('trash','sm')}${b}</button></div></div></div>`;
+const confirmP=(t,p,b)=>`<div class="scrim bottom"><div class="sheet frost"><h2 style="font-size:18px;font-weight:650">${t}</h2><p class="lede" style="font-size:var(--t-sm);margin:6px 0 16px">${p}</p><div style="display:flex;flex-direction:column;gap:8px"><button class="btn danger" style="height:48px">${b}</button><button class="btn" style="height:48px">Cancel</button></div></div></div>`;
+
+/* upload contract + date picker */
+const DAYS=(()=>{const a=[];const pre=[26,27,28,29,30,31];pre.forEach(d=>a.push([d,'out']));for(let d=1;d<=30;d++)a.push([d,d===12?'sel':d===16?'today':'']);for(let d=1;a.length<42;d++)a.push([d,'out']);return a;})();
+const datePicker=()=>`<div class="dp frost"><div class="dphead"><span class="iconbtn">${ic('back','sm')}</span><b>November 2026</b><span class="iconbtn">${ic('next','sm')}</span></div>
+  <div class="dpgrid dpwd"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+  <div class="dpgrid">${DAYS.map(([d,c])=>`<b class="${c}">${d}</b>`).join('')}</div>
+  <div class="dpfoot"><button class="btn sm">Today</button></div></div>`;
+const uploadForm=(ph)=>`<h2 style="font-size:${ph?18:20}px;font-weight:650">Upload signed contract</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 16px">Adds a signed PDF to this client. Nothing is sent.</p>
+  <div style="display:flex;flex-direction:column;gap:14px">
+   <div class="field"><label>Title</label><input class="input" value="Management agreement"></div>
+   <div class="field" style="position:relative"><label>Signed on</label><div class="input focus fakesel"><span>Nov 12, 2026</span>${ic('cal','sm')}</div>${ph?'':`<div style="position:absolute;left:0;top:72px;z-index:5">${datePicker()}</div>`}</div>
+   <div class="field"><label>File</label><div class="drop">${ic('file')}<div><b>signed-agreement-placeholder.pdf</b><div class="meta">PDF · 412 KB</div></div><span class="lnk" style="margin-left:auto">Change</span></div></div>
+  </div>
+  <div class="mfoot" ${ph?'style="flex-direction:column-reverse;gap:8px"':''}><button class="btn" ${ph?'style="height:44px"':''}>Cancel</button><button class="btn primary" ${ph?'style="height:48px"':''}>${ic('upload','sm')}Upload</button></div>`;
+
+/* ---------------- 4. portal invite ---------------- */
+function inviteForm(c,mode,o={}){
+  const ph=o.ph;
+  const opt=`<div class="opt" ${ph?'style="grid-template-columns:1fr"':''}>
+    <div class="${mode==='a'?'on':''}"><span class="radio ${mode==='a'?'on':''}"></span><span><b>Existing host</b>Already signed. Gives them portal access.</span></div>
+    <div class="${mode==='b'?'on':''}"><span class="radio ${mode==='b'?'on':''}"></span><span><b>New, sign contract</b>Place fields on a contract, then invite them to sign.</span></div></div>`;
+  const who=`<div class="fgrid" ${ph?'style="grid-template-columns:1fr"':''}><div class="field full"><label>Name</label><input class="input" value="${c.name}"></div>
+    <div class="field"><label>Email</label><input class="input" value="${c.email}"></div><div class="field"><label>Phone</label><input class="input" value="${c.phone}"></div></div>`;
+  const a=`<div class="field" style="margin-top:14px"><label>Signed contract PDF <em>(optional)</em></label><div class="drop">${ic('upload')}<div><b>Choose a PDF</b><div class="meta">Saved to this client’s contracts</div></div></div></div>`;
+  const b=`<div class="field" style="margin-top:14px"><label>Agreement template</label><select class="input"><option>Management agreement, Standard</option></select></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:8px"><span class="meta">or</span><button class="btn sm">${ic('upload','xs')}Or upload PDF…</button></div>
+    <label class="cbrow"><span class="cbx"></span>Also save to Contract templates</label>`;
+  return `<h2 style="font-size:${ph?18:20}px;font-weight:650">${c.portal==='none'?'Send portal invite':'Resend invite'}</h2>
+   <p class="lede" style="font-size:var(--t-sm);margin:4px 0 16px">This sends a real email to the host.</p>${opt}${who}${mode==='a'?a:b}
+   <div class="mfoot" ${ph?'style="flex-direction:column-reverse;gap:8px"':''}><button class="btn" ${ph?'style="height:44px"':''}>Cancel</button><button class="btn primary" ${ph?'style="height:48px"':''}>${mode==='a'?`${ic('mail','sm')}Send portal access`:`Next: place fields &amp; sign${ic('arrow','sm')}`}</button></div>`;
+}
+
+/* field placement */
+const SCRIB='<svg viewBox="0 0 160 40" style="width:150px;height:34px" fill="none" stroke="oklch(0.3 0.08 270)" stroke-width="2" stroke-linecap="round"><path d="M6 28c8-14 14-22 18-20s-8 22-2 22 10-18 16-18-2 14 4 14 8-10 14-10 2 8 8 8 10-6 16-12 6 10 12 8 12-8 20-10"/></svg>';
+function pageInner(o={}){
+  const lines=w=>`<div class="ln" style="width:${w}%"></div>`;
+  return `<h6>Section 9. Signatures</h6>${[100,96,100,88,100,72].map(lines).join('')}<div style="height:14px"></div>${[100,92,100,64].map(lines).join('')}
+   <span class="sl" style="left:56px;width:200px;top:520px"></span><span class="slab" style="left:56px;top:526px">Host signature</span>
+   <span class="sl" style="left:304px;width:200px;top:520px"></span><span class="slab" style="left:304px;top:526px">Date</span>
+   <span class="sl" style="left:56px;width:200px;top:624px"></span><span class="slab" style="left:56px;top:630px">For Mandel Realty Group</span>
+   <span class="sl" style="left:304px;width:200px;top:624px"></span><span class="slab" style="left:304px;top:630px">Date</span>
+   <div class="fld h" style="left:56px;top:478px;width:200px;height:40px">${ic('sign','xs')}Host signature</div>
+   <div class="fld h" style="left:304px;top:478px;width:120px;height:40px">${ic('cal','xs')}Date</div>
+   <div class="fld h" style="left:56px;top:430px;width:200px;height:32px">${ic('font','xs')}Name</div>
+   ${o.mrg?`<div class="fld m ${o.sel?'sel':''}" style="left:56px;top:574px;width:200px;height:48px;padding:0 6px">${o.signed?SCRIB:`${ic('sign','xs')}MRG signature · double-click to sign`}
+      ${o.sel?'<span class="hd" style="left:-5px;top:-5px"></span><span class="hd" style="right:-5px;top:-5px"></span><span class="hd" style="left:-5px;bottom:-5px"></span><span class="hd" style="right:-5px;bottom:-5px"></span><span class="del">'+ic('x','xs')+'</span>':''}</div>
+      <div class="fld m" style="left:304px;top:582px;width:120px;height:40px">${ic('cal','xs')}Nov 16, 2026</div>`:`<div class="fld m ghost" style="left:56px;top:574px;width:200px;height:48px">${ic('sign','xs')}Click to place</div>`}`;
+}
+function placeD(o={}){
+  const on=o.mrg;
+  return `<div class="pl"><div class="pltop"><button class="btn">${ic('back','sm')}Back</button><div class="t"><b>Place fields and sign</b><span class="meta">Management agreement, Standard · ${o.replace?'Rowan Example':'Emery Placeholder'} · page 6 of 6</span></div>
+   <div class="sendwrap"><span class="need ok">${ic('check','xs')}Host signature</span><span class="need ${on?'ok':'no'}">${ic(on?'check':'alert','xs')}MRG signature</span>
+   <button class="btn primary" ${on?'':'disabled'}>${ic('mail','sm')}${o.replace?'Replace &amp; resend':'Send invite'}</button></div></div>
+   ${on?'':`<div style="background:oklch(0.6 0.14 65 / .1);border-bottom:1px solid oklch(0.6 0.14 65 / .25);padding:8px 20px;font-size:var(--t-sm);color:var(--ink);display:flex;gap:8px;align-items:center">${ic('alert','sm')}<span><b style="color:var(--amberink)">Send is off until both signature boxes are placed.</b> Add an MRG signature: pick MRG fills now, then Signature, then click the page.</span></div>`}
+   <div class="pltools"><span class="tool ${o.tool==='move'?'on':''}">${ic('move','sm')}Move</span><span class="vsep"></span>
+    <span class="meta" style="margin-right:2px;white-space:nowrap">Who fills it</span><div class="who"><span class="${on?'':'on'}"><i style="background:oklch(0.6 0.15 255)"></i>Host fills later</span><span class="${on?'on':''}"><i style="background:oklch(0.55 0.15 300)"></i>MRG fills now</span></div><span class="vsep"></span>
+    ${[['sign','Signature'],['font','Name'],['cal','Date'],['text','Text'],['box','Checkbox']].map(([i,l])=>`<span class="tool ${o.tool===l?'on':''}">${ic(i,'sm')}${l}</span>`).join('')}
+    <span style="flex:1"></span></div><div class="plhint" style="padding:8px 20px 0;justify-content:center">${ic('alert','xs')}Click the page to place. Drag to move, pull a corner to resize, × to delete. Double-click an MRG signature to sign it.</div>
+   <div class="plcanvas"><div class="page">${pageInner(o)}</div></div></div>${o.overlay||''}`;
+}
+function placeP(o={}){
+  const on=o.mrg;
+  return `<div class="pl" style="height:calc(100% - 44px)"><div class="pltop" style="padding:8px 10px;gap:6px"><span class="iconbtn">${ic('back')}</span><div class="t"><b style="font-size:var(--t-base)">Place fields</b><span class="meta">Page 6 of 6</span></div>
+    <button class="btn primary" ${on?'':'disabled'} style="height:40px">${o.replace?'Resend':'Send invite'}</button></div>
+   <div style="background:${on?'oklch(0.6 0.13 155 / .1)':'oklch(0.6 0.14 65 / .1)'};padding:8px 14px;font-size:var(--t-xs);font-weight:500;color:var(--ink);display:flex;gap:8px;align-items:center">${on?`<span class="need ok">${ic('check','xs')}Host signature</span><span class="need ok">${ic('check','xs')}MRG signature</span><span>Ready to send</span>`:`${ic('alert','sm')}<span><b style="color:var(--amberink)">Send is off.</b> Place an MRG signature box too.</span>`}</div>
+   <div class="plcanvas" style="padding:14px 0;align-items:center"><div style="width:350px;height:452px;overflow:hidden;flex:none"><div class="page" style="transform:scale(.625);transform-origin:0 0">${pageInner(o)}</div></div></div>
+   <div style="background:#fff;border-top:1px solid var(--line);padding:10px 12px 26px;flex:none">
+    <div class="who" style="display:flex;margin-bottom:8px"><span class="${on?'':'on'}" style="flex:1;justify-content:center;height:36px"><i style="background:oklch(0.6 0.15 255)"></i>Host fills later</span><span class="${on?'on':''}" style="flex:1;justify-content:center;height:36px"><i style="background:oklch(0.55 0.15 300)"></i>MRG fills now</span></div>
+    <div style="display:flex;gap:6px;overflow:hidden">${[['move','Move'],['sign','Signature'],['font','Name'],['cal','Date'],['text','Text'],['box','Checkbox']].map(([i,l])=>`<span class="tool ${o.tool===l||(o.tool==='move'&&i==='move')?'on':''}" style="height:44px;flex-direction:column;gap:2px;padding:0 9px;font-size:11px;justify-content:center">${ic(i,'sm')}${l}</span>`).join('')}</div></div></div>${o.overlay||''}`;
+}
+const sigPad=(ph)=>`<div class="scrim ${ph?'bottom':''}"><div class="${ph?'sheet':'modal'} frost" ${ph?'':'style="width:520px"'}><h2 style="font-size:${ph?18:20}px;font-weight:650">Sign for Mandel Realty Group</h2><p class="lede" style="font-size:var(--t-sm);margin:4px 0 14px">Draw with your mouse or finger. This fills the MRG signature box.</p>
+  <div class="pad"><span class="x">×</span><span class="base"></span><div style="position:absolute;left:40px;top:40px"><svg viewBox="0 0 160 40" style="width:${ph?280:380}px;height:${ph?70:96}px" fill="none" stroke="oklch(0.3 0.08 270)" stroke-width="1.6" stroke-linecap="round"><path d="M6 28c8-14 14-22 18-20s-8 22-2 22 10-18 16-18-2 14 4 14 8-10 14-10 2 8 8 8 10-6 16-12 6 10 12 8 12-8 20-10"/></svg></div></div>
+  <div class="mfoot" style="justify-content:space-between"><button class="btn ghost">Clear</button><span style="display:flex;gap:8px"><button class="btn">Cancel</button><button class="btn primary">Use signature</button></span></div></div></div>`;
+
+/* ---------------- 5. month earnings ---------------- */
+const UNITS={
+ HS:[['Sample Loft','10 Sample St SW, Calgary',4,'4,000.00','1,000.00','50.00','150.00'],['Example Suite','20 Example Ave NE, Calgary',2,'2,000.00','500.00',null,'50.00']],
+ LM:[['Mock Studio','30 Mock Rd SW, Calgary',2,'1,000.00','250.00',null,'0.00'],['Mock Townhome','32 Mock Rd SW, Calgary',3,'2,000.00','500.00',null,'50.00'],['Mock Basement Suite','34 Mock Rd SW, Calgary',4,'3,000.00','750.00',null,'0.00']],
+ PD:[['Demo Condo','40 Demo Way SE, Calgary',0,'0.00','0.00',null,'0.00']]
+};
+const TOT={HS:['6,000.00','1,500.00','50.00','200.00'],LM:['6,000.00','1,500.00','0.00','50.00'],PD:['0.00','0.00','0.00','0.00']};
+const money=v=>`$${v}`;
+const monthPicker=(m='October 2026')=>`<div class="mp"><span class="iconbtn bd">${ic('back','sm')}</span><button class="btn">${ic('cal','sm')}${m}${ic('chev','sm')}</button><span class="iconbtn bd">${ic('next','sm')}</span></div>`;
+const totals=(k,o={})=>{const t=TOT[k];const L=[['Net to host','user'],['MRG fees','brief'],['HST on the invoice','hst'],['Host charges','file']];
+  return `<div class="card stats four">${L.map(([l,i],j)=>`<div class="stat"><span class="ic">${ic(i,'sm')}</span><div>${o.loading?`<span class="skel" style="width:90px;height:18px;margin:3px 0 6px"></span>`:`<b class="num">${money(t[j])}</b>`}<span class="l">${l}</span></div></div>`).join('')}</div>`;};
+const unitTable=(k,o={})=>`<div class="card" style="overflow:hidden"><table><thead><tr><th>Unit</th><th class="r">Stays</th><th class="r">Net to host</th><th class="r">MRG fees</th><th class="r">HST on invoice</th><th class="r">Host charges</th><th style="width:44px"></th></tr></thead><tbody>
+  ${o.loading?[1,2,3].map(()=>`<tr><td><span class="skel" style="width:180px;margin-bottom:6px"></span><span class="skel" style="width:120px;height:10px"></span></td>${[30,70,60,50,60].map(w=>`<td class="r"><span class="skel" style="width:${w}px;margin-left:auto"></span></td>`).join('')}<td></td></tr>`).join('')
+  :UNITS[k].map(u=>`<tr><td><div class="client"><span class="kic">${ic('building','sm')}</span><div><b style="font-size:var(--t-sm)">${u[0]}</b><span class="meta">${u[1]}</span></div></div></td><td class="r num">${u[2]}</td><td class="r num" style="color:var(--ink);font-weight:600">${money(u[3])}</td><td class="r num">${money(u[4])}</td><td class="r num">${u[5]?money(u[5]):'<span class="meta">Not on invoice</span>'}</td><td class="r num">${money(u[6])}</td><td><span class="iconbtn">${ic('next','sm')}</span></td></tr>`).join('')}</tbody></table></div>
+  ${o.loading?'':`<div class="meta" style="margin-top:8px">Each row opens that property.</div>`}`;
+const monthActs=(o={})=>`<div class="acts"><button class="btn">${ic('eye','sm')}Preview statement</button><button class="btn">${ic('hst','sm')}HST worklist${ic('ext','xs')}</button><button class="btn" ${o.nohst||o.loading?'disabled':''}>${ic('copy','sm')}Copy HST text</button></div>`;
+const noStays=(ph)=>`<div class="card"><div class="empty" style="padding:${ph?'36px 16px':'64px 24px'}"><span class="eic">${ic('cal')}</span><b>No stays in October 2026</b><span>Demo Condo had no checkouts this month, so there is nothing to total. Try another month.</span></div></div>`;
+const hstCard=(k,o={})=>`<div class="card"><div class="cardhead"><h3>${ic('hst','sm')}HST for QuickBooks</h3><button class="btn sm" ${o.nohst?'disabled':''}>${ic('copy','xs')}Copy</button></div><div class="cardbody">
+  ${o.nohst?`<span style="font-size:var(--t-sm)">No units invoice HST this month, so there is nothing to copy.</span>`:`<div class="pastebox" style="background:var(--panel);border-radius:10px;padding:10px 12px">Harper Sample, October 2026\nSample Loft: MRG fees $1,000.00, HST $50.00\nTotal HST on the invoice: $50.00</div>`}
+  <div class="lnk" style="margin-top:10px;display:flex;align-items:center;gap:6px">HST worklist${ic('ext','xs')}</div></div></div>`;
+const deskMonth=(c,k,o={})=>desk(clientHeader(c,'m',{acts:''}),`<div class="toolbar"><div style="display:flex;align-items:center;gap:12px">${monthPicker(o.month)}${o.loading?'<span class="refreshing"><i class="spin"></i>Loading…</span>':''}</div>${monthActs(o)}</div>
+  ${totals(k,o)}${o.nostays?noStays():unitTable(k,o)}${o.nohst?`<div class="warnbox" style="background:var(--panel);margin-top:12px">${ic('alert','sm')}<span>No units invoice HST this month. <span class="meta">Copy HST text is off. The HST worklist still opens.</span></span></div>`:''}`,{overlay:o.overlay});
+const phoneMonth=(c,k,o={})=>phone(`${pClient(c,'m')}<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">${monthPicker(o.month||'Oct 2026').replace('min-width:170px','')}${o.loading?'<i class="spin"></i>':''}</div>
+  ${totals(k,o)}
+  ${o.nostays?noStays(true):o.loading?`<div class="card">${[1,2].map(()=>`<div class="urow"><div class="t"><span class="skel" style="width:140px;margin-bottom:6px"></span><span class="skel" style="width:90px;height:10px"></span></div><span class="skel" style="width:60px"></span></div>`).join('')}</div>`
+   :`<div class="card">${UNITS[k].map(u=>`<div class="urow"><span class="kic">${ic('building','sm')}</span><div class="t"><b>${u[0]}</b><span class="meta">${u[2]} stays · fees ${money(u[4])}${u[5]?` · HST ${money(u[5])}`:''}</span></div><div class="v num">${money(u[3])}<div class="meta">net</div></div>${ic('next','sm')}</div>`).join('')}</div>`}
+  ${o.loading||o.nostays?'':hstCard(k,o)}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><button class="btn" style="height:44px">${ic('eye','sm')}Preview statement</button><button class="btn" style="height:44px">${ic('hst','sm')}HST worklist</button></div>`,{overlay:o.overlay});
+const yearGrid=(st)=>`<div class="yg frost" style="${st}"><div class="yh"><span class="iconbtn">${ic('back','sm')}</span><b>2026</b><span class="iconbtn">${ic('next','sm')}</span></div>
+  <div class="grid">${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m,i)=>`<span class="${i===9?'sel':i===10?'cur':i===11?'dis':''}">${m}</span>`).join('')}</div></div>`;
+
+/* ---------------- 6. statement ---------------- */
+const STAYS=[['Sample Loft','Oct 2 to Oct 5',3,'Guest A','1,200.00'],['Sample Loft','Oct 7 to Oct 10',3,'Guest B','1,300.00'],['Sample Loft','Oct 13 to Oct 17',4,'Guest C','1,500.00'],['Sample Loft','Oct 20 to Oct 23',3,'Guest D','1,200.00'],['Example Suite','Oct 4 to Oct 8',4,'Guest E','1,350.00'],['Example Suite','Oct 14 to Oct 17',3,'Guest F','1,200.00']];
+function paper(ph){
+  const row=(cells,cls='')=>`<tr class="${cls}">${cells.map((c,i)=>`<td class="${i===cells.length-1?'r num':''}">${c}</td>`).join('')}</tr>`;
+  return `<div class="paper"><div class="ph1"><div style="display:flex;gap:10px;align-items:center"><img src="${LOGO}" style="width:${ph?28:34}px;height:${ph?28:34}px"><div><b style="font-size:${ph?14:16}px">Owner statement</b><div class="meta">Mandel Realty Group</div></div></div>
+    <div style="text-align:right"><b>Harper Sample</b><div class="meta">October 2026</div></div></div>
+   <h4>Stays</h4><table><thead><tr><th>${ph?'Unit, dates':'Unit'}</th>${ph?'':'<th>Dates</th><th>Nights</th><th>Guest</th>'}<th class="r">Payout</th></tr></thead><tbody>
+    ${STAYS.map(s=>ph?row([`${s[0]}<div class="meta">${s[1]} · ${s[2]} nights</div>`,'$'+s[4]]):row([s[0],s[1],s[2],s[3],'$'+s[4]])).join('')}
+    ${row(ph?['Total payout','$7,750.00']:['Total payout','','','','$7,750.00'],'tot')}</tbody></table>
+   <h4>Fees</h4><table><tbody>${row(['MRG fee, Sample Loft','$1,000.00'])}${row(['MRG fee, Example Suite','$500.00'])}${row(['Total fees','$1,500.00'],'tot')}</tbody></table>
+   <h4>HST</h4><table><tbody>${row(['HST on MRG fee, Sample Loft','$50.00'])}${row(['Example Suite: HST not on invoice','$0.00'])}</tbody></table>
+   <h4>Expenses</h4><table><tbody>${row(['Cleaning supplies, Sample Loft','$100.00'])}${row(['Linen replacement, Sample Loft','$50.00'])}${row(['Cleaning supplies, Example Suite','$50.00'])}${row(['Total expenses','$200.00'],'tot')}</tbody></table>
+   <div class="net"><span>Net to host</span><span class="num">$6,000.00</span></div></div>`;
+}
+const stmtD=()=>`<div class="stmt"><div class="stmtbar"><button class="btn">${ic('back','sm')}Back</button><b style="color:var(--ink);font-size:var(--t-md)">Owner statement · Harper Sample</b><span style="flex:1"></span>${monthPicker()}<button class="btn primary">${ic('down','sm')}Download PDF</button></div>
+  <div style="flex:1;min-height:0;overflow:hidden">${paper()}</div></div>`;
+const stmtP=()=>`<div class="stmt" style="height:calc(100% - 44px)"><div class="stmtbar" style="padding:8px 10px;gap:6px"><span class="iconbtn">${ic('back')}</span><b style="color:var(--ink);flex:1">Owner statement</b><button class="btn primary" style="height:40px">${ic("down","sm")}Download PDF</button></div>
+  <div style="padding:10px 12px 0;display:flex;justify-content:center">${monthPicker('Oct 2026').replace('min-width:170px','')}</div><div style="padding:10px 12px;flex:1;min-height:0;overflow:hidden">${paper(true)}</div></div>`;
+
+/* ================= BOARD ================= */
+const fr=(label,cls,html)=>`<div class="fwrap"><span>${label}</span><div class="frame ${cls}">${html}</div></div>`;
+const state=(id,title,desc,frames)=>`<div class="state" id="${id}"><h3>${title}</h3><p>${desc}</p><div class="row">${frames.join('')}</div></div>`;
+const sect=(id,title,desc,states)=>`<section class="sect" id="${id}"><h2>${title}</h2><p>${desc}</p>${states.join('')}</section>`;
+const out=[];
+const H=C[0],R=C[1],LG=C[2],E=C[3],P=C[4];
+const listD=(o={})=>desk(listHeader(),`${o.banner||''}${o.empty?emptyList():`${listMeta()}${cTable(C,o)}`}`,{overlay:o.overlay});
+const listP=(o={})=>phone(`${pList()}${o.banner||''}${o.empty?emptyList(true):C.slice(0,5).map(pCard).join('')}`,{fab:'Add client',overlay:o.overlay});
+
+out.push(sect('s-list','1. Client list','Rows on desktop, cards on phone. Clicking a row opens the client. Preview opens the host portal as that client sees it, in a new tab.',[
+ state('st-list','Client list','Name, email, units, Active or Paused, and Preview on every row.',[fr('Desktop 1440','d',listD({hov:0})),fr('Phone 390','p',listP())]),
+ state('st-empty','Empty list','No clients yet. Add client is the only action.',[fr('Desktop 1440','d',listD({empty:true})),fr('Phone 390','p',listP({empty:true}))]),
+ state('st-err-list','Error banner: list failed to load','The banner sits above the content and keeps the last list visible. Retry reloads; the cross hides it.',[fr('Desktop 1440','d',listD({banner:errBanner('Couldn’t load clients.')})),fr('Phone 390','p',listP({banner:errBanner('Couldn’t load clients.',true)}))])
+]));
+
+out.push(sect('s-add','2. Add client','A side sheet on desktop, a bottom sheet on phone. Starting from a CRM lead fills the form; every field stays editable.',[
+ state('st-add-pick','Choose a lead','Search narrows the CRM list. Picking a lead fills name, email and phone.',[fr('Desktop 1440','d',listD({overlay:addSheetD({pick:true})})),fr('Phone 390','p',listP({overlay:addSheetP({pick:true})}))]),
+ state('st-add-filled','Filled from a lead','Clear removes the lead link and empties the form. Save & send contract saves, then opens the portal invite.',[fr('Desktop 1440','d',listD({overlay:addSheetD({filled:true})})),fr('Phone 390','p',listP({overlay:addSheetP({filled:true})}))]),
+ state('st-saving','Saving','Fields and the other buttons lock while saving. The pressed button shows Saving….',[fr('Desktop 1440','d',listD({overlay:addSheetD({filled:true,saving:true})})),fr('Phone 390','p',listP({overlay:addSheetP({filled:true,saving:true})}))])
+]));
+
+out.push(sect('s-det','3. Client details','Two sub-views: Details and Month earnings. Details holds the edit form, links, onboarding checklist, host portal, contracts and delete.',[
+ state('st-noinv','Client with no portal invite','Emery Placeholder. Status is Not invited; Send portal invite is the one way to email the host.',[fr('Desktop 1440','d',deskClient(E)),fr('Phone 390 · top','p',phoneClient(E)),fr('Phone 390 · further down','p',phoneClient(E,{order:['portal','contracts','chk']}))]),
+ state('st-err-save','Error banner: save failed','Shown at the top of the client when Save fails. The form keeps what was typed.',[fr('Desktop 1440','d',deskClient(E,{banner:errBanner('Couldn’t save Emery Placeholder.')})),fr('Phone 390','p',phoneClient(E,{banner:errBanner('Couldn’t save changes.',true)}))]),
+ state('st-del','Delete client confirm','Warns that the portal, properties and contracts go too.',[fr('Desktop 1440','d',deskClient(H,{overlay:confirmD('Delete Harper Sample?','This also removes their host portal, 2 properties and 2 contracts. It can’t be undone.','Delete client')})),fr('Phone 390','p',phoneClient(H,{order:['portal','contracts','danger'],overlay:confirmP('Delete Harper Sample?','This also removes their host portal, 2 properties and 2 contracts. It can’t be undone.','Delete client')}))]),
+ state('st-upload','Upload a signed contract','Title, Signed on (the hub’s date picker) and File. Nothing is sent.',[fr('Desktop 1440','d',deskClient(H,{overlay:`<div class="scrim"><div class="modal frost" style="width:480px">${uploadForm()}</div></div>`})),fr('Phone 390','p',phoneClient(H,{order:['contracts','portal'],overlay:`<div class="scrim bottom"><div class="sheet frost">${uploadForm(true)}</div></div>`}))]),
+ state('st-cdel','Delete contract confirm (new)','Today Delete removes the PDF with no confirm. This adds one.',[fr('Desktop 1440','d',deskClient(H,{overlay:confirmD('Delete Furniture addendum.pdf?','The signed PDF is removed from Harper Sample. It can’t be undone.','Delete contract')})),fr('Phone 390','p',phoneClient(H,{order:['contracts','portal'],overlay:confirmP('Delete Furniture addendum.pdf?','The signed PDF is removed from Harper Sample. It can’t be undone.','Delete contract')}))])
+]));
+
+out.push(sect('s-portal','4. Host portal and contract','Inside Client details. Every email to the host goes out from its own button and form, never on save.',[
+ state('st-inv-a','Send portal invite: Existing host','For a host who already signed. Optional signed PDF; Send portal access sends the email.',[fr('Desktop 1440','d',deskClient(E,{overlay:`<div class="scrim"><div class="modal frost" style="width:600px">${inviteForm(E,'a')}</div></div>`})),fr('Phone 390','p',phoneClient(E,{order:['portal'],overlay:`<div class="scrim bottom"><div class="sheet frost" style="max-height:790px;overflow:hidden">${inviteForm(E,'a',{ph:true})}</div></div>`}))]),
+ state('st-inv-b','Send portal invite: New, sign contract','Pick an agreement template or upload a PDF (optionally saved to Contract templates). Next opens field placement. Nothing is sent yet.',[fr('Desktop 1440','d',deskClient(E,{overlay:`<div class="scrim"><div class="modal frost" style="width:600px">${inviteForm(E,'b')}</div></div>`})),fr('Phone 390','p',phoneClient(E,{order:['portal'],overlay:`<div class="scrim bottom"><div class="sheet frost" style="max-height:790px;overflow:hidden">${inviteForm(E,'b',{ph:true})}</div></div>`}))]),
+ state('st-place-off','Field placement: Send disabled','Full screen on desktop and phone. Host fields are placed; the MRG signature is not, so Send stays off and says why.',[fr('Desktop 1440','d',placeD({tool:'Signature'})),fr('Phone 390','p',phone(placeP({tool:'Signature'}),{bare:true}))]),
+ state('st-sign','Signing the MRG signature','Double-click an MRG signature box to open the pad.',[fr('Desktop 1440','d',placeD({mrg:true,tool:'move',overlay:sigPad()})),fr('Phone 390','p',phone(placeP({mrg:true,tool:'move',overlay:sigPad(true)}),{bare:true}))]),
+ state('st-place-on','Field placement: Send enabled','Both signature boxes placed and MRG signed. The selected box shows resize handles and delete.',[fr('Desktop 1440','d',placeD({mrg:true,signed:true,sel:true,tool:'move'})),fr('Phone 390','p',phone(placeP({mrg:true,signed:true,sel:true,tool:'move'}),{bare:true})),fr('Desktop 1440 · Replace & resend','d',placeD({mrg:true,signed:true,tool:'move',replace:true}))]),
+ state('st-sent','Invite sent: success toast','Back on the client after sending. Status moves to Invited. (Today this toast never shows.)',[fr('Desktop 1440','d',deskClient({...E,portal:'invited',chk:[1,0,1,0,0]},{overlay:`<div class="toast">${ic('check','sm')}Invite sent to emery.placeholder@example.com</div>`})),fr('Phone 390','p',phoneClient({...E,portal:'invited',chk:[1,0,1,0,0]},{order:['portal','contracts'],overlay:`<div class="toast" style="bottom:96px">${ic('check','sm')}Invite sent to Emery</div>`}))]),
+ state('st-await','Invite sent, awaiting signature','Rowan Example opened the invite but hasn’t signed. Replace contract and Edit boxes only appear here.',[fr('Desktop 1440','d',deskClient(R)),fr('Phone 390','p',phoneClient(R,{order:['portal','chk','contracts']}))]),
+ state('st-live','Portal live','Signed and signed in. Owner portal link, Preview as host and Resend invite.',[fr('Desktop 1440','d',deskClient(H)),fr('Phone 390','p',phoneClient(H,{order:['portal','contracts','chk']}))])
+]));
+
+out.push(sect('s-month','5. Month earnings','The second sub-view of a client. Month picker, four totals, one row per unit, and the statement and HST actions.',[
+ state('st-month','Month earnings','Harper Sample, October 2026. On phone, Copy sits on the HST card.',[fr('Desktop 1440','d',deskMonth(H,'HS')),fr('Phone 390','p',phoneMonth(H,'HS'))]),
+ state('st-year','Month picker: year grid','Tapping the month opens a year grid. Future months are off.',[fr('Desktop 1440','d',deskMonth(H,'HS',{overlay:yearGrid('left:298px;top:200px')})),fr('Phone 390','p',phoneMonth(H,'HS',{overlay:`<div class="scrim bottom">${yearGrid('position:relative;width:100%;border-radius:20px 20px 0 0;padding:16px 16px 28px')}</div>`}))]),
+ state('st-loading','Loading','Skeletons hold the layout while the month loads.',[fr('Desktop 1440','d',deskMonth(H,'HS',{loading:true})),fr('Phone 390','p',phoneMonth(H,'HS',{loading:true}))]),
+ state('st-nostays','No stays this month','Parker Demo, October 2026. Totals show zero and the list explains why.',[fr('Desktop 1440','d',deskMonth(P,'PD',{nostays:true,nohst:false})),fr('Phone 390','p',phoneMonth(P,'PD',{nostays:true}))]),
+ state('st-nohst','No invoice-HST units','Logan Mock. Every unit shows Not on invoice; Copy is off and says why.',[fr('Desktop 1440','d',deskMonth(LG,'LM',{nohst:true})),fr('Phone 390','p',phoneMonth(LG,'LM',{nohst:true}))])
+]));
+
+out.push(sect('s-stmt','6. Owner statement','A full page overlay from Preview statement. Download PDF saves a file to this device; nothing is sent.',[
+ state('st-stmt','Statement','Stays, fees, HST, expenses and net to host for the month.',[fr('Desktop 1440','d',stmtD()),fr('Phone 390','p',phone(stmtP(),{bare:true}))])
+]));
+
+out.push(`<section class="sect" id="s-bp"><h2>Breakpoints</h2><div class="card bpcard" style="max-width:1500px;overflow:hidden"><table><thead><tr><th>Width</th><th>Client list</th><th>Client details</th><th>Month earnings and statement</th><th>Sheets, forms, field placement</th></tr></thead><tbody>
+ <tr><td><b>1240 and up</b></td><td>Full table (as drawn).</td><td>Two columns: edit, links, checklist left; portal, contracts, delete right.</td><td>Toolbar on one line. Four totals in a row. Full unit table.</td><td>Add client is a side sheet. Invite and confirms are centred modals. Placement shows the full toolbar.</td></tr>
+ <tr><td><b>900 to 1239</b></td><td>Email moves under the name only (already there); Units column narrows.</td><td>One column in the phone order: details, links, portal, contracts, checklist, delete.</td><td>Actions wrap under the month picker. Unit table drops Stays.</td><td>Placement hint text hides; tool labels stay.</td></tr>
+ <tr><td><b>768 to 899</b></td><td>Sidebar collapses to the icon rail.</td><td>Same as above.</td><td>Totals become two by two.</td><td>Placement tools show icons only, with labels as tooltips.</td></tr>
+ <tr><td><b>Below 768</b></td><td>Cards, bottom nav, Add client floating button.</td><td>Details and Month earnings as tabs. Stacked cards. 44px targets.</td><td>Unit cards. Copy on the HST card. Statement as a full screen page.</td><td>Everything opens as a bottom sheet. Placement is full screen with the toolbar at the bottom.</td></tr>
+</tbody></table></div></section>`);
+
+document.getElementById('board').innerHTML = out.join('');
+document.getElementById('zoom').addEventListener('click',e=>{const b=e.target.closest('[data-z]');if(!b)return;document.getElementById('board').style.setProperty('--z',b.dataset.z);document.querySelectorAll('#zoom button').forEach(x=>x.classList.toggle('on',x===b));});
+})();
+</script>
+</body>
+</html>

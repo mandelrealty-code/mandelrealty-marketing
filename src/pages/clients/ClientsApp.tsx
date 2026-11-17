@@ -51,6 +51,13 @@ import {
   TextArea,
   TextInput,
 } from "./ui";
+import { ClientsHubApp } from "../ops-hub/clients";
+import { PropertiesHubApp } from "../ops-hub/properties";
+
+/** Flip to false to roll back to the dark OPS Clients chrome. */
+const CLIENTS_HUB = true;
+/** Flip to false to roll back to the dark OPS Properties chrome. */
+const PROPERTIES_HUB = true;
 
 /** An old OPS route for something that lives in Copilot now: open it there. */
 function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
@@ -64,7 +71,7 @@ function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
 type Props = {
-  onModeChange: (mode: AdminProductMode) => void;
+  onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
 };
@@ -80,6 +87,16 @@ function useIsDesktop() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
   return desktop;
+}
+
+function readPropertiesFilterFromHub(): string {
+  try {
+    const id = sessionStorage.getItem("mrg_properties_filter_client") || "";
+    if (id) sessionStorage.removeItem("mrg_properties_filter_client");
+    return id;
+  } catch {
+    return "";
+  }
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -265,6 +282,12 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
       setLoadError(err instanceof Error ? err.message : "Could not load."),
     );
   }, [loadLists]);
+
+  useEffect(() => {
+    if (route.opsTab !== "properties") return;
+    const id = readPropertiesFilterFromHub();
+    if (id) setPropertyFilterClientId(id);
+  }, [route.opsTab]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2342,6 +2365,42 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
     );
   } else if (tab === "properties") {
     main = selectedPropertyId && propertyDetail ? propertyDetailView : propertiesList;
+  }
+
+  const hubModeChange = (mode: AdminProductMode, patch?: Partial<AdminRoute>) => {
+    if (mode === "ops") {
+      navOps({
+        opsTab: patch?.opsTab ?? "sops",
+        propertyId: patch?.propertyId ?? null,
+        clientId: patch?.clientId ?? null,
+        clientEdit: Boolean(patch?.clientEdit),
+        createClient: Boolean(patch?.createClient),
+        hstClientId: patch?.hstClientId ?? null,
+        employeeId: patch?.employeeId ?? null,
+      });
+      return;
+    }
+    onModeChange(mode, patch);
+  };
+
+  if (CLIENTS_HUB && tab === "clients") {
+    return (
+      <ClientsHubApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={hubModeChange}
+      />
+    );
+  }
+
+  if (PROPERTIES_HUB && tab === "properties") {
+    return (
+      <PropertiesHubApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={hubModeChange}
+      />
+    );
   }
 
   return (

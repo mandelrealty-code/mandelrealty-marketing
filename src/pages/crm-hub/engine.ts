@@ -933,7 +933,13 @@ function setNav(id) {
   if (id === 'settings') { setTab('settings'); return; }
   if (id === 'crm' || id === 'dashboard') { S.leadId = null; setTab('contacts'); return; }
   const m = modeMap[id];
-  if (m && m !== 'crm' && host.go) host.go(m);
+  if (m && m !== 'crm' && host.go) {
+    if (id === 'clients') { host.go('ops', { opsTab: 'clients' }); return; }
+    if (id === 'properties') { host.go('ops', { opsTab: 'properties' }); return; }
+    if (id === 'team') { host.go('ops', { opsTab: 'employees' }); return; }
+    if (id === 'revenue') { host.go('ops', { opsTab: 'month' }); return; }
+    host.go(m);
+  }
 }
 function setTab(t, opts = {}) {
   S.tab = t;
