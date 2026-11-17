@@ -548,6 +548,14 @@
 .mrgc .prop-table-wrap table{width:100%}
 .mrgc .prop-detail-content{padding-top:20px}
 
+/* ===================== Team / Settings additions ===================== */
+.mrgc .team-portal-cell{white-space:nowrap}
+@media (max-width:1239px){
+  .mrgc table th.team-portal, .mrgc table td.team-portal{display:none}
+}
+.mrgc .iconbtn.bd{border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.mrgc .set-gap{height:12px}
+
 /* ===================== Revenue additions ===================== */
 .mrgc .cstrip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;align-items:center;padding:6px;gap:6px;margin-bottom:14px}
 .mrgc .cstrip .stat{cursor:pointer;border:0;background:none;text-align:left;width:100%}
@@ -669,4 +677,37 @@
   .mrgc .phone-only{display:none !important}
   .mrgc .list-cards{display:none}
   .mrgc .bnav, .mrgc .fab, .mrgc .ptop, .mrgc .pbody > .backrow, .mrgc .phn-chrome{display:none !important}
+}
+
+/* ===================== Team + Settings additions (docs/mrg-team-settings-design.html) ===================== */
+.mrgc table tr.tm-click{cursor:pointer}
+.mrgc table tr.tm-click:hover td{background:var(--hover)}
+.mrgc .tm-fold{display:none;margin-top:2px}
+.mrgc .tm-roster-row .t{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mrgc .tm-roster-row .t b{display:inline}
+.mrgc .tm-typesel{position:relative;display:inline-flex;align-items:center;gap:8px}
+.mrgc .tm-typesel .input{height:36px;width:150px}
+.mrgc .tm-roster-acts{display:flex;gap:6px;align-items:center;justify-content:flex-end;min-width:210px}
+.mrgc .tm-remove{color:var(--redink);padding:0 6px}
+.mrgc .tm-weekrow{background:var(--panel)}
+.mrgc .tm-tpl-acts{display:flex;gap:6px;align-items:center}
+.mrgc .tm-pactions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.mrgc .tm-pactions .btn{height:44px}
+.mrgc .set-adorn{position:absolute;right:12px;top:50%;transform:translateY(-50%)}
+.mrgc.tm-hub .toast{max-width:calc(100vw - 32px);white-space:normal;height:auto;min-height:44px;padding-top:10px;padding-bottom:10px}
+@media (max-width:1239px){
+  .mrgc .tm-portal-col{display:none}
+  .mrgc .tm-fold{display:block}
+}
+@media (max-width:899px){
+  .mrgc .tm-roster-row{flex-wrap:wrap;row-gap:8px}
+  .mrgc .tm-roster-acts{min-width:0;margin-left:auto}
+  .mrgc .tm-detail-head{flex-wrap:wrap}
+  .mrgc .tm-detail-head .headacts{flex-wrap:wrap}
+}
+@media (max-width:767px){
+  .mrgc .tm-roster-row .t{flex:1 1 calc(100% - 40px)}
+  .mrgc .tm-typesel .input{width:116px}
+  .mrgc .tm-tpl-row{flex-wrap:wrap;row-gap:6px}
+  .mrgc .tm-tpl-acts{flex-basis:100%;justify-content:flex-end}
 }

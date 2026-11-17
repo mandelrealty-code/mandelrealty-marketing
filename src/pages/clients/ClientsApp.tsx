@@ -54,6 +54,8 @@ import {
 import { ClientsHubApp } from "../ops-hub/clients";
 import { PropertiesHubApp } from "../ops-hub/properties";
 import { RevenueHubApp, HubSubscriptionsSheet } from "../ops-hub/revenue";
+import { TeamHubApp } from "../ops-hub/team";
+import { SettingsHubApp } from "../ops-hub/settings";
 
 /** Flip to false to roll back to the dark OPS Clients chrome. */
 const CLIENTS_HUB = true;
@@ -61,6 +63,10 @@ const CLIENTS_HUB = true;
 const PROPERTIES_HUB = true;
 /** Flip to false to roll back to the dark OPS Revenue chrome. */
 const REVENUE_HUB = true;
+/** Flip to false to roll back to the dark OPS Team chrome. */
+const TEAM_HUB = true;
+/** Flip to false to roll back to the dark OPS Settings chrome. */
+const SETTINGS_HUB = true;
 
 /** An old OPS route for something that lives in Copilot now: open it there. */
 function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
@@ -77,6 +83,7 @@ type Props = {
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
+  onLogout?: () => void;
 };
 
 function useIsDesktop() {
@@ -115,7 +122,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
+export default function ClientsApp({ onModeChange, route, setRoute, onLogout }: Props) {
   const desktop = useIsDesktop();
   const [tab, setTab] = useState<Tab>(() => route.opsTab);
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -2412,6 +2419,27 @@ export default function ClientsApp({ onModeChange, route, setRoute }: Props) {
         route={route}
         setRoute={setRoute}
         onModeChange={hubModeChange}
+      />
+    );
+  }
+
+  if (TEAM_HUB && tab === "employees") {
+    return (
+      <TeamHubApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={hubModeChange}
+      />
+    );
+  }
+
+  if (SETTINGS_HUB && tab === "settings") {
+    return (
+      <SettingsHubApp
+        route={route}
+        setRoute={setRoute}
+        onModeChange={hubModeChange}
+        onLogout={onLogout}
       />
     );
   }

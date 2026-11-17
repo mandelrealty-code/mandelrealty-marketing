@@ -233,7 +233,8 @@ const NAV_GROUPS = [
   { title: 'Business', items: [{ id: 'crm', label: 'CRM', icon: 'users' }, { id: 'clients', label: 'Clients', icon: 'brief' }, { id: 'revenue', label: 'Revenue', icon: 'chart' }] },
   { title: 'Assistant', items: [{ id: 'copilot', label: 'Copilot', icon: 'spark' }] },
 ];
-const NAV_FOOT = [{ id: 'settings', label: 'Settings', icon: 'gear' }];
+/* OPS hubs use "Settings" for /ops/settings. CRM keeps its own AI/callback settings tab. */
+const NAV_FOOT = [{ id: 'settings', label: 'CRM Settings', icon: 'gear' }];
 const ALL_NAV = [...NAV_GROUPS.flatMap((g) => g.items), ...NAV_FOOT];
 const MOBILE_NAV = ['dashboard', 'crm', 'onboarding', 'team', 'settings'];
 
@@ -303,7 +304,7 @@ function renderHead() {
   $('#today').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   const on = S.settings ? Boolean(S.settings.ai_responses_enabled) && !envKill() : null;
   $('#aiPill').innerHTML = on == null ? '<i class="dot" style="background:var(--grey)"></i>Auto-reply' : `<i class="dot" style="background:${on ? 'var(--green)' : 'var(--amber)'}"></i>${on ? 'Auto-reply on' : 'Auto-reply off'}`;
-  const tabs = [['contacts', 'inbox', 'Contacts'], ['knowledge', 'book', 'Knowledge'], ['settings', 'gear', 'Settings']];
+  const tabs = [['contacts', 'inbox', 'Contacts'], ['knowledge', 'book', 'Knowledge'], ['settings', 'gear', 'CRM Settings']];
   $('#tabs').innerHTML = tabs.map(([id, i, l]) => `<button role="tab" data-tab="${id}" aria-selected="${S.tab === id}" class="${S.tab === id ? 'on' : ''}">${ic(i, 'sm')}${l}</button>`).join('');
   root.classList.toggle('lead-open', S.tab === 'contacts' && Boolean(S.leadId));
   root.classList.toggle('no-fab', S.tab !== 'contacts');

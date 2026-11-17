@@ -1783,6 +1783,7 @@ export function AdminPage() {
           route={route}
           setRoute={setRoute}
           onModeChange={switchProduct}
+          onLogout={logout}
         />
       </Suspense>
     );

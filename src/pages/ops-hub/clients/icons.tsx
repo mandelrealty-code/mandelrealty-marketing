@@ -1,5 +1,5 @@
 /** SVG path sets from docs/mrg-clients-design.html */
-export type IconName = "home" | "users" | "clip" | "building" | "team" | "brief" | "chart" | "spark" | "gear" | "search" | "plus" | "chev" | "back" | "x" | "check" | "phone" | "mail" | "pin" | "link" | "refresh" | "more" | "up" | "copy" | "trash" | "upload" | "file" | "text" | "bell" | "key" | "out" | "edit" | "pause" | "play" | "alert" | "clock" | "cal" | "inbox" | "book" | "sms" | "rec" | "arrow" | "eye" | "ext" | "next" | "user" | "move" | "sign" | "font" | "box" | "down" | "hst" | "cloud" | "hosp" | "img" | "lock" | "star" | "receipt" | "permit" | "tax" | "import";
+export type IconName = "home" | "users" | "clip" | "building" | "team" | "brief" | "chart" | "spark" | "gear" | "search" | "plus" | "chev" | "back" | "x" | "check" | "phone" | "mail" | "pin" | "link" | "refresh" | "more" | "up" | "copy" | "trash" | "upload" | "file" | "text" | "bell" | "key" | "out" | "edit" | "pause" | "play" | "alert" | "clock" | "cal" | "inbox" | "book" | "sms" | "rec" | "arrow" | "eye" | "ext" | "next" | "user" | "move" | "sign" | "font" | "box" | "down" | "hst" | "cloud" | "hosp" | "img" | "lock" | "star" | "receipt" | "permit" | "tax" | "import" | "portal" | "task" | "sub";
 
 const PATHS: Record<IconName, string> = {
   home: "<path d=\"M3 10.5 12 3l9 7.5\"/><path d=\"M5 9.5V21h14V9.5\"/><path d=\"M10 21v-6h4v6\"/>",
@@ -62,6 +62,9 @@ const PATHS: Record<IconName, string> = {
   permit: "<rect x=\"4\" y=\"3\" width=\"16\" height=\"18\" rx=\"2\"/><path d=\"M8 8h8M8 12h8M8 16h5\"/>",
   tax: "<path d=\"M5 19 19 5\"/><circle cx=\"7\" cy=\"7\" r=\"2.2\"/><circle cx=\"17\" cy=\"17\" r=\"2.2\"/>",
   import: "<path d=\"M12 3v12M7 10l5 5 5-5\"/><path d=\"M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2\"/>",
+  portal: "<rect x=\"4\" y=\"4\" width=\"16\" height=\"16\" rx=\"2\"/><path d=\"M9 12h6M12 9v6\"/><path d=\"M8 20v-4h8v4\"/>",
+  task: "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/>",
+  sub: "<path d=\"M4 7h16M4 12h16M4 17h10\"/><circle cx=\"18\" cy=\"17\" r=\"2\"/>",
 };
 
 export function Icon({ name, className = 'i' }: { name: IconName | string; className?: string }) {
