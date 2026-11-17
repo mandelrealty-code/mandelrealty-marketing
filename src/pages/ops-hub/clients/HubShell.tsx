@@ -135,11 +135,18 @@ export function HubShell({
             <SideToggleIcon className="i sm" />
           </button>
         </div>
-        <div className="jump" aria-hidden>
+        <button
+          type="button"
+          className="jump"
+          title={`Jump to… (${isMac ? "⌘K" : "Ctrl K"})`}
+          onClick={() =>
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: isMac, ctrlKey: !isMac, bubbles: true }))
+          }
+        >
           <Icon name="search" className="i sm" />
           <span>Jump to…</span>
           <kbd>{isMac ? "⌘K" : "Ctrl K"}</kbd>
-        </div>
+        </button>
         {NAV.map((group) => (
           <div key={group.title || "top"} className="ng">
             {group.title ? <h4>{group.title}</h4> : null}

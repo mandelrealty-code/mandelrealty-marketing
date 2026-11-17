@@ -1544,7 +1544,7 @@ function onKey(e) {
 function onSubmit(e) { if (e.target.id === 'nlForm') { e.preventDefault(); createLead(); } }
 function onScrimDown(e) { if (e.target.id === 'scrim') closeModal(); }
 function onDocKey(e) {
-  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (S.modal && S.modal.kind === 'cmdk') closeModal(); else openCmdk(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { if (!root.isConnected || !root.getClientRects().length) return; e.preventDefault(); if (S.modal && S.modal.kind === 'cmdk') closeModal(); else openCmdk(); }
 }
 function onResize() { if (S.menu) { S.menu = null; renderMenu(); } }
 

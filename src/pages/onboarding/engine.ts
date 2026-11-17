@@ -2228,6 +2228,8 @@ function onCmdK(e){
   if(!((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==='k')) return;
   // Only when this onboarding root is still mounted
   if(!root.isConnected) return;
+  // In the hub every page stays loaded; only the page on screen answers.
+  if(!root.getClientRects().length) return;
   e.preventDefault();
   cmdkOpen()?closeCmdk():openCmdk();
 }

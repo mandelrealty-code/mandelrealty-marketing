@@ -181,6 +181,9 @@
    icons sit on the same x in both states (centred in the 68px rail), labels fade out and are clipped by the shrinking
    column, and the toggle slides with the sidebar's edge. When collapsed, hover the logo to show the expand button. */
 .mrgc .side{overflow-x:hidden}
+/* Clipping the labels (overflow:hidden) lets flex shrink these rows on a short window, which squashed Jump to,
+   Settings and the account row. They keep their height; the sidebar scrolls instead. */
+.mrgc .side > :not(.spc){flex-shrink:0}
 .mrgc .brand{position:relative;padding:0 5px;min-height:36px}
 .mrgc .brand b{padding-right:30px}
 .mrgc .brand img{transition:opacity var(--fast,110ms) var(--ease,ease)}
