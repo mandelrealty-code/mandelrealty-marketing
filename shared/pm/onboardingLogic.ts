@@ -35,8 +35,10 @@ export function flowFor(plan: string, planTier: string, furniture: string): stri
   if (plan === "Essentials") {
     return ["Audit", "App Setup", "Software", "Live"];
   }
-  // No plan set — full flow (without Benchmark)
-  return ["Audit", "Furniture", "Client Approval", "Procurement", "Photography", "Install", "App Setup", "Software", "Live"];
+  // No plan: same furniture gating as Standard — never invent furniture stages without a furniture program
+  return hasFurniture
+    ? ["Audit", "Furniture", "Client Approval", "Procurement", "Photography", "Install", "App Setup", "Software", "Live"]
+    : ["Audit", "Photography", "App Setup", "Software", "Live"];
 }
 
 /** The stage a unit is in: the first one not done, or Live when every stage is done. */
@@ -89,9 +91,32 @@ export const dueFor = (start: string, stage: Stage | string, position: number, a
   return addDays(start, stagePos * 4 + Math.ceil((position + 1) / 2));
 };
 
+const firstNamed = (roster: { name: string }[], first: string) =>
+  roster.find((r) => r.name.trim().toLowerCase().split(/\s+/)[0] === first.toLowerCase())?.name;
+
 /** The roster name a template task goes to: someone of the staff type that usually does it, else the unit's own assignee. */
-export function assigneeFor(defaultType: string, roster: { name: string; staff_type: string }[], unitAssignee: string): string {
+export function assigneeFor(
+  defaultType: string,
+  roster: { name: string; staff_type: string }[],
+  unitAssignee: string,
+  label = "",
+): string {
   if (defaultType === "owner") return "Owner";
+  const lab = label.trim();
+  // Photography + Ryan line-approval always go to Ryan when he is on the roster
+  if (
+    /^Ryan\b/i.test(lab) ||
+    /photo\s*shoot|Shoot on site|Edit\s*&\s*upload photos|Schedule shoot|Schedule photo/i.test(lab)
+  ) {
+    const ryan = firstNamed(roster, "Ryan");
+    if (ryan) return ryan;
+  }
+  // Client-approval follow-ups are Admin's, not the first partner on the roster
+  if (/Mark as sent to client|Client approves budget|Client approves furniture|FIP contract|Contest agreement/i.test(lab)) {
+    const admin = roster.find((r) => /^admin$/i.test(r.name.trim()));
+    if (admin) return admin.name;
+    return "Admin";
+  }
   if (defaultType) {
     const same = roster.filter((r) => r.staff_type === defaultType);
     if (same.some((r) => r.name === unitAssignee)) return unitAssignee;
@@ -108,15 +133,19 @@ export function scheduleFromTasks(
   statusesByUnit: Record<string, StageStatus[]>,
   today: string,
   activeStagesByUnit?: Record<string, string[]>,
+  skippedStagesByUnit?: Record<string, Set<string>>,
 ): SchedItem[] {
-  return tasks.filter((t) => t.due_on).map((t) => {
-    const active = activeStagesByUnit?.[t.unit_id] ?? [...STAGES];
-    const stages = statusesByUnit[t.unit_id] ?? [];
-    const idx = active.indexOf(t.stage);
-    const blocked = !t.done && !t.skipped && stages[idx] === "blocked";
-    const status: SchedItem["status"] = t.done || t.skipped ? "Done" : blocked ? "Blocked" : t.due_on === today ? "In progress" : "Scheduled";
-    return { id: "t:" + t.id, unit: t.unit_id, who: t.assignee, stage: t.stage, task: t.label, start: t.due_on!, span: 1, time: "", status };
-  });
+  return tasks
+    .filter((t) => t.due_on)
+    .filter((t) => !skippedStagesByUnit?.[t.unit_id]?.has(t.stage))
+    .map((t) => {
+      const active = activeStagesByUnit?.[t.unit_id] ?? [...STAGES];
+      const stages = statusesByUnit[t.unit_id] ?? [];
+      const idx = active.indexOf(t.stage);
+      const blocked = !t.done && !t.skipped && stages[idx] === "blocked";
+      const status: SchedItem["status"] = t.done || t.skipped ? "Done" : blocked ? "Blocked" : t.due_on === today ? "In progress" : "Scheduled";
+      return { id: "t:" + t.id, unit: t.unit_id, who: t.assignee, stage: t.stage, task: t.label, start: t.due_on!, span: 1, time: "", status };
+    });
 }
 
 const PALETTE = [

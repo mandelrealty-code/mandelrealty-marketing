@@ -57,15 +57,6 @@ export default function OnboardingApp({ onModeChange }: { onModeChange: (mode: A
             }
             return r.predictions ?? [];
           },
-          onNote: (res: { notified?: { emailed: string[]; failed: { name: string; why: string }[]; noLogin: string[] } } | null) => {
-            const n = res?.notified;
-            if (!n) return;
-            const parts: string[] = [];
-            if (n.emailed.length) parts.push(`Emailed ${n.emailed.join(", ")} about their tasks.`);
-            if (n.noLogin.length) parts.push(`No employee login for ${n.noLogin.join(", ")}, so no email was sent. Add a login under OPS, Team.`);
-            for (const f of n.failed) parts.push(`The email to ${f.name} did not send: ${f.why}`);
-            if (parts.length) setNote(parts.join(" "));
-          },
         };
         mounted = mountOnboarding(root, host);
         setReady(true);

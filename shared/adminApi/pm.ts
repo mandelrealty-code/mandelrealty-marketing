@@ -3,18 +3,22 @@ import { handlePlacesOp } from "../googlePlaces.js";
 import {
   addCustomTask as addOnboardingCustomTask,
   addDoc as addOnboardingDoc,
+  addLineItem as addOnboardingLineItem,
   addScheduleItem as addOnboardingScheduleItem,
   addUnit as addOnboardingUnit,
   advanceUnit as advanceOnboardingUnit,
+  archiveUnit as archiveOnboardingUnit,
   flagUnit as flagOnboardingUnit,
   markTaskNa as markOnboardingTaskNa,
   onboardingSnapshot,
   removeDoc as removeOnboardingDoc,
+  removeLineItem as removeOnboardingLineItem,
   requestChangesOnUnit,
   skipStage as skipOnboardingStage,
   submitStage as submitOnboardingStage,
   toggleTask as toggleOnboardingTask,
   logHistory as logOnboardingHistory,
+  updateLineItem as updateOnboardingLineItem,
   updateScheduleItem,
   updateUnitFields as updateOnboardingUnitFields,
   upsertHandoff as upsertOnboardingHandoff,
@@ -1589,7 +1593,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await toggleOnboardingTask(str(body.id), body.done === true, str(body.done_by) || undefined);
           return res.status(200).json({ ok: true });
         }
-        if (op === "advance") { await advanceOnboardingUnit(unit, torontoToday()); return res.status(200).json({ ok: true }); }
+        if (op === "advance") {
+          await advanceOnboardingUnit(unit, torontoToday(), {
+            nextAssignee: str(body.next_assignee) || undefined,
+            nextDue: str(body.next_due) || undefined,
+            advancedBy: str(body.advanced_by) || "Admin",
+          });
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "archive_unit" || op === "delete_unit") {
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          await archiveOnboardingUnit(unit, str(body.by) || "Admin");
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "add_line") {
+          const made = await addOnboardingLineItem(unit, {
+            item: str(body.item),
+            room: str(body.room) || undefined,
+            qty: typeof body.qty === "number" ? body.qty : undefined,
+            price: typeof body.price === "number" ? body.price : undefined,
+            ryan: body.ryan === true,
+            client: str(body.client) || undefined,
+            deliver: str(body.deliver) || undefined,
+          });
+          return res.status(200).json({ id: made.id });
+        }
+        if (op === "update_line") {
+          await updateOnboardingLineItem(str(body.id), {
+            ryan: body.ryan === undefined ? undefined : body.ryan === true,
+            client: body.client !== undefined ? str(body.client) : undefined,
+            deliver: body.deliver !== undefined ? str(body.deliver) : undefined,
+            item: body.item !== undefined ? str(body.item) : undefined,
+            room: body.room !== undefined ? str(body.room) : undefined,
+            qty: typeof body.qty === "number" ? body.qty : undefined,
+            price: typeof body.price === "number" ? body.price : undefined,
+          });
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "remove_line") {
+          await removeOnboardingLineItem(str(body.id));
+          return res.status(200).json({ ok: true });
+        }
         if (op === "flag") { await flagOnboardingUnit(unit); return res.status(200).json({ ok: true }); }
         if (op === "request_changes") {
           await requestChangesOnUnit(unit, str(body.note) || undefined);
@@ -1642,6 +1686,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "coi_required",
             "building_notes",
             "assignee",
+            "stage_due_on",
           ];
           const patch: Record<string, unknown> = {};
           for (const k of allowed) {

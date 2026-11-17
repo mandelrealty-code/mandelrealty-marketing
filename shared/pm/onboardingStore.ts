@@ -123,6 +123,18 @@ export type StageMeta = {
   approvedBy: string;
 };
 
+export type LineItem = {
+  id: string;
+  item: string;
+  room: string;
+  qty: number;
+  price: number;
+  ryan: boolean;
+  client: "pending" | "approved" | "declined";
+  deliver: "unit" | "ryan" | "shane";
+  sort: number;
+};
+
 export type OnboardingUnitView = {
   id: string;
   address: string;
@@ -140,6 +152,7 @@ export type OnboardingUnitView = {
   planTier: string;
   furniture: string;
   furnitureBudget: number | null;
+  stageDueOn: string | null;
   strLicence: string;
   strPermitStatus: string;
   contractStatus: string;
@@ -161,6 +174,7 @@ export type OnboardingUnitView = {
   handoff: HandoffRow | null;
   docs: UnitDoc[];
   history: HistoryEntry[];
+  lines: LineItem[];
 };
 
 export type OnboardingSnapshot = {
@@ -179,7 +193,7 @@ function activeFlowForRow(u: Record<string, unknown>): string[] {
 
 export async function onboardingSnapshot(today: string): Promise<OnboardingSnapshot> {
   const sb = db();
-  const [units, stages, tasks, sched, roster, docs, handoffs, history] = await Promise.all([
+  const [units, stages, tasks, sched, roster, docs, handoffs, history, lines] = await Promise.all([
     sb.from("onboarding_units").select("*").eq("archived", false).order("started_on", { ascending: true }),
     sb.from("onboarding_unit_stages").select("*"),
     sb.from("onboarding_tasks").select("*").order("sort", { ascending: true }),
@@ -188,8 +202,11 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
     sb.from("onboarding_unit_docs").select("*").order("uploaded_at", { ascending: false }),
     sb.from("onboarding_unit_handoff").select("*"),
     sb.from("onboarding_history").select("*").order("ts", { ascending: false }).limit(500),
+    sb.from("onboarding_line_items").select("*").order("sort", { ascending: true }),
   ]);
   for (const r of [units, stages, tasks, sched, docs, handoffs, history]) if (r.error) throw missing(r.error);
+  // Line-items table is added in onboarding_v3.sql — tolerate until that migration runs
+  if (lines.error && !/onboarding_line_items|does not exist/i.test(lines.error.message || "")) throw missing(lines.error);
 
   const stageRows = (stages.data ?? []) as {
     unit_id: string;
@@ -242,7 +259,7 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
   for (const h of (history.data ?? []) as Record<string, unknown>[]) {
     const uid = String(h.unit_id);
     const list = (historyByUnit[uid] ??= []);
-    if (list.length >= 20) continue;
+    if (list.length >= 40) continue;
     list.push({
       id: String(h.id),
       actor: str(h.actor) || "Admin",
@@ -252,9 +269,26 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
     });
   }
 
+  const linesByUnit: Record<string, LineItem[]> = {};
+  for (const row of (lines.error ? [] : (lines.data ?? [])) as Record<string, unknown>[]) {
+    const uid = String(row.unit_id);
+    (linesByUnit[uid] ??= []).push({
+      id: String(row.id),
+      item: str(row.item),
+      room: str(row.room),
+      qty: Math.max(1, Number(row.qty) || 1),
+      price: Number(row.price) || 0,
+      ryan: row.ryan_ok === true,
+      client: (str(row.client_status) as LineItem["client"]) || "pending",
+      deliver: (str(row.deliver_to) as LineItem["deliver"]) || "unit",
+      sort: Number(row.sort) || 0,
+    });
+  }
+
   const statusByUnit: Record<string, StageStatus[]> = {};
   const metaByUnit: Record<string, StageMeta[]> = {};
   const activeByUnit: Record<string, string[]> = {};
+  const skippedByUnit: Record<string, Set<string>> = {};
 
   for (const u of (units.data ?? []) as Record<string, unknown>[]) {
     const id = String(u.id);
@@ -262,6 +296,7 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
     activeByUnit[id] = active;
     const byName = new Map(stageRows.filter((r) => r.unit_id === id).map((r) => [r.stage, r]));
     statusByUnit[id] = active.map((name) => byName.get(name)?.status ?? ("todo" as StageStatus));
+    skippedByUnit[id] = new Set(active.filter((name) => byName.get(name)?.skipped === true));
     metaByUnit[id] = active.map((name) => {
       const row = byName.get(name);
       return {
@@ -322,6 +357,7 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
       planTier: str(u.plan_tier),
       furniture: str(u.furniture) || "none",
       furnitureBudget: num(u.furniture_budget),
+      stageDueOn: u.stage_due_on ? String(u.stage_due_on) : null,
       strLicence: str(u.str_licence),
       strPermitStatus: str(u.str_permit_status) || "Not required",
       contractStatus: str(u.contract_status) || "signed",
@@ -343,20 +379,23 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
       handoff: handoffByUnit[id] ?? null,
       docs: docsByUnit[id] ?? [],
       history: historyByUnit[id] ?? [],
+      lines: linesByUnit[id] ?? [],
     };
   });
 
-  const handScheduled: SchedItem[] = ((sched.data ?? []) as Record<string, unknown>[]).map((r) => ({
-    id: String(r.id),
-    unit: String(r.unit_id),
-    who: str(r.assignee),
-    stage: str(r.stage),
-    task: str(r.task),
-    start: String(r.start_on),
-    span: Number(r.span_days) || 1,
-    time: str(r.start_time),
-    status: str(r.status) as SchedItem["status"],
-  }));
+  const handScheduled: SchedItem[] = ((sched.data ?? []) as Record<string, unknown>[])
+    .filter((r) => !skippedByUnit[String(r.unit_id)]?.has(str(r.stage)))
+    .map((r) => ({
+      id: String(r.id),
+      unit: String(r.unit_id),
+      who: str(r.assignee),
+      stage: str(r.stage),
+      task: str(r.task),
+      start: String(r.start_on),
+      span: Number(r.span_days) || 1,
+      time: str(r.start_time),
+      status: str(r.status) as SchedItem["status"],
+    }));
   const logins = new Set(
     (await listStaffUsers().catch(() => [])).filter((u) => u.active).map((u) => u.display_name.trim().toLowerCase()),
   );
@@ -365,7 +404,7 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
   return {
     units: outUnits,
     tasks: byUnit,
-    sched: [...handScheduled, ...scheduleFromTasks(taskRows, statusByUnit, today, activeByUnit)],
+    sched: [...handScheduled, ...scheduleFromTasks(taskRows, statusByUnit, today, activeByUnit, skippedByUnit)],
     team: assignable.map((r) => r.name),
     people: peopleFrom(rosterRows),
     today,
@@ -493,7 +532,7 @@ export async function addUnit(
         unit_id: id,
         stage: t.stage,
         label: t.label,
-        assignee: assigneeFor(t.default_type, roster, assignee),
+        assignee: assigneeFor(t.default_type, roster, assignee, t.label),
         due_on: dueFor(startedOn, t.stage, n, active),
         sort: t.sort,
       };
@@ -503,13 +542,14 @@ export async function addUnit(
     if (ie) throw missing(ie);
   }
   await logHistory(id, "Unit added", `${address} · ${plan || "no plan"}`);
-  const byPerson: Record<string, AssignedTask[]> = {};
-  for (const r of rows) (byPerson[r.assignee] ??= []).push({ label: r.label, due: r.due_on });
-  return { id, notified: await notifyAssignees(address, byPerson) };
+  // Creating a unit does not email assignees — assignment emails are only for later schedule reassigns.
+  return { id, notified: { emailed: [], failed: [], noLogin: [] } };
 }
 
 export async function toggleTask(id: string, done: boolean, doneBy?: string) {
   const { data: before } = await db().from("onboarding_tasks").select("unit_id, label, done").eq("id", id).maybeSingle();
+  const row = before as { unit_id?: string; label?: string; done?: boolean } | null;
+  if (row && row.done === done) return; // already in that state — avoid duplicate history
   const { error } = await db()
     .from("onboarding_tasks")
     .update({
@@ -519,32 +559,132 @@ export async function toggleTask(id: string, done: boolean, doneBy?: string) {
     })
     .eq("id", id);
   if (error) throw missing(error);
-  const row = before as { unit_id?: string; label?: string } | null;
   if (row?.unit_id) {
     await logHistory(row.unit_id, done ? "Task done" : "Task reopened", str(row.label), doneBy || "Admin");
   }
 }
 
-export async function advanceUnit(unitId: string, today: string) {
+export async function advanceUnit(
+  unitId: string,
+  today: string,
+  opts?: { nextAssignee?: string; nextDue?: string; advancedBy?: string },
+) {
   const active = await activeStagesOf(unitId);
   const before = await stagesOf(unitId, active);
   const i = before.findIndex((s) => s !== "done");
   const stageName = i >= 0 ? active[i] : active[active.length - 1];
+  const nextStage = i >= 0 && i + 1 < active.length ? active[i + 1] : null;
   const { stages, live } = advance(before);
   await saveStages(unitId, stages, active);
-  const { error } = await db()
-    .from("onboarding_units")
-    .update({ block_reason: "", live_on: live ? today : null, updated_at: new Date().toISOString() })
-    .eq("id", unitId);
+  const by = str(opts?.advancedBy) || "Admin";
+  const nextAssignee = str(opts?.nextAssignee);
+  const nextDue = str(opts?.nextDue);
+  const unitPatch: Record<string, unknown> = {
+    block_reason: "",
+    live_on: live ? today : null,
+    stage_due_on: live ? null : nextDue || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (nextAssignee) unitPatch.assignee = nextAssignee;
+  const { error } = await db().from("onboarding_units").update(unitPatch).eq("id", unitId);
   if (error) throw missing(error);
   if (i >= 0) {
     await db()
       .from("onboarding_unit_stages")
-      .update({ approved_at: new Date().toISOString(), approved_by: "Admin" })
+      .update({ approved_at: new Date().toISOString(), approved_by: by })
       .eq("unit_id", unitId)
       .eq("stage", stageName);
   }
-  await logHistory(unitId, live ? "Marked live" : "Stage approved", stageName);
+  // Apply next-stage due to open tasks so schedule / Team Today stay in sync with the chosen date
+  if (nextStage && nextDue) {
+    await db()
+      .from("onboarding_tasks")
+      .update({ due_on: nextDue })
+      .eq("unit_id", unitId)
+      .eq("stage", nextStage)
+      .eq("done", false);
+  }
+  const detail = live
+    ? stageName
+    : [stageName, nextStage ? `→ ${nextStage}` : null, nextAssignee ? `assignee ${nextAssignee}` : null, nextDue ? `due ${nextDue}` : null]
+        .filter(Boolean)
+        .join(" · ");
+  await logHistory(unitId, live ? "Marked live" : "Advanced", detail, by);
+}
+
+export async function archiveUnit(unitId: string, by?: string) {
+  const row = await unitRow(unitId);
+  const now = new Date().toISOString();
+  const { error } = await db()
+    .from("onboarding_units")
+    .update({ archived: true, updated_at: now })
+    .eq("id", unitId);
+  if (error) throw missing(error);
+  await db().from("onboarding_schedule").delete().eq("unit_id", unitId);
+  await logHistory(unitId, "Unit archived", str(row.address), by || "Admin");
+}
+
+export async function addLineItem(
+  unitId: string,
+  input: { item: string; room?: string; qty?: number; price?: number; ryan?: boolean; client?: string; deliver?: string },
+) {
+  const item = str(input.item);
+  if (!item) throw new Error("Item name required.");
+  const { data: existing } = await db()
+    .from("onboarding_line_items")
+    .select("sort")
+    .eq("unit_id", unitId)
+    .order("sort", { ascending: false })
+    .limit(1);
+  const sort = Number((existing as { sort?: number }[] | null)?.[0]?.sort ?? 0) + 1;
+  const { data, error } = await db()
+    .from("onboarding_line_items")
+    .insert({
+      unit_id: unitId,
+      item,
+      room: str(input.room),
+      qty: Math.max(1, Math.floor(input.qty ?? 1)),
+      price: Number(input.price) || 0,
+      ryan_ok: input.ryan === true,
+      client_status: str(input.client) || "pending",
+      deliver_to: str(input.deliver) || "unit",
+      sort,
+    })
+    .select("id")
+    .single();
+  if (error) throw missing(error);
+  await logHistory(unitId, "Line item added", item);
+  return { id: String((data as { id: string }).id) };
+}
+
+export async function updateLineItem(
+  id: string,
+  patch: { ryan?: boolean; client?: string; deliver?: string; item?: string; room?: string; qty?: number; price?: number },
+) {
+  const { data: before } = await db().from("onboarding_line_items").select("unit_id, item, ryan_ok").eq("id", id).maybeSingle();
+  const change: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.ryan !== undefined) {
+    change.ryan_ok = patch.ryan;
+    if (!patch.ryan) change.client_status = "pending";
+  }
+  if (patch.client !== undefined) change.client_status = str(patch.client) || "pending";
+  if (patch.deliver !== undefined) change.deliver_to = str(patch.deliver) || "unit";
+  if (patch.item !== undefined) change.item = str(patch.item);
+  if (patch.room !== undefined) change.room = str(patch.room);
+  if (patch.qty !== undefined) change.qty = Math.max(1, Math.floor(patch.qty));
+  if (patch.price !== undefined) change.price = Number(patch.price) || 0;
+  const { error } = await db().from("onboarding_line_items").update(change).eq("id", id);
+  if (error) throw missing(error);
+  const row = before as { unit_id?: string; item?: string } | null;
+  if (row?.unit_id) await logHistory(row.unit_id, "Line item updated", str(row.item));
+}
+
+export async function removeLineItem(id: string) {
+  const { data } = await db().from("onboarding_line_items").select("unit_id, item").eq("id", id).maybeSingle();
+  const { error } = await db().from("onboarding_line_items").delete().eq("id", id);
+  if (error) throw missing(error);
+  const row = data as { unit_id?: string; item?: string } | null;
+  if (row?.unit_id) await logHistory(row.unit_id, "Line item removed", str(row.item));
 }
 
 export async function flagUnit(unitId: string) {

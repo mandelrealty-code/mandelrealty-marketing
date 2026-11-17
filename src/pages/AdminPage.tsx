@@ -879,9 +879,12 @@ export function AdminPage() {
     if (route.mode !== "crm") return;
     setTab(route.crmTab);
     setSelectedId(route.leadId);
-  }, [route]);
+  }, [route.mode, route.crmTab, route.leadId]);
 
   const goCrmTab = (id: Tab) => {
+    // Set tab immediately so Inbox↔Settings never paints a stale panel while the route updates
+    setTab(id);
+    if (id !== "contacts") setSelectedId(null);
     setRoute(
       {
         ...emptyAdminRoute("crm"),
@@ -891,6 +894,7 @@ export function AdminPage() {
       { push: true },
     );
   };
+  const crmTab = tab;
 
   const switchProduct = (mode: AdminProductMode) => {
     writeStoredAdminMode(mode);
@@ -3160,7 +3164,7 @@ export function AdminPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            {tab === "contacts" && draftLeads.length > 0 ? (
+            {crmTab === "contacts" && draftLeads.length > 0 ? (
               <button
                 type="button"
                 onClick={() => {
@@ -3172,7 +3176,7 @@ export function AdminPage() {
                 {draftLeads.length} drafts to review
               </button>
             ) : null}
-            {tab === "contacts" && (
+            {crmTab === "contacts" && (
               <div
                 className={`flex h-[26px] items-center gap-1.5 rounded-lg border px-2.5 ${
                   aiEffective
@@ -3215,7 +3219,7 @@ export function AdminPage() {
               ["settings", "Settings"],
             ] as const
           ).map(([id, label]) => {
-            const active = tab === id;
+            const active = crmTab === id;
             return (
               <button
                 key={id}
@@ -3250,7 +3254,7 @@ export function AdminPage() {
         {loadError && <p className="px-4 pt-3 text-sm text-[#cf7f7b]">{loadError}</p>}
 
         <AnimatePresence mode="wait">
-          {tab === "contacts" && (
+          {crmTab === "contacts" && (
             <motion.div
               key="contacts"
               initial={{ opacity: 0 }}
@@ -3326,7 +3330,7 @@ export function AdminPage() {
             </motion.div>
           )}
 
-          {tab === "knowledge" && (
+          {crmTab === "knowledge" && (
             <motion.div
               key="knowledge"
               initial={{ opacity: 0, y: 8 }}
@@ -3486,7 +3490,7 @@ export function AdminPage() {
             </motion.div>
           )}
 
-          {tab === "settings" && (
+          {crmTab === "settings" && (
             <motion.div
               key="settings"
               initial={{ opacity: 0, y: 8 }}
@@ -4166,7 +4170,7 @@ export function AdminPage() {
               ["settings", "Settings"],
             ] as const
           ).map(([id, label]) => {
-            const active = tab === id;
+            const active = crmTab === id;
             return (
               <button
                 key={id}
