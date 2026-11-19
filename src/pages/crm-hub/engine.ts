@@ -784,7 +784,7 @@ function notesBlock(l) {
     : `<div class="sumbox"><button class="edl" data-act="editCallNotes">Edit</button><p>${summary ? esc(summary) : '<span class="meta">No call notes yet.</span>'}</p></div>`;
   const trUi = transcript
     ? `<button class="disc" data-act="toggleTranscript" aria-expanded="${S.transcriptOpen ? 'true' : 'false'}" aria-controls="trWrap">Full transcript ${ic('chev', 'xs')}</button>
-  <div class="trwrap ${S.transcriptOpen ? 'open' : ''}" id="trWrap"><div><div class="trbox" tabindex="0" aria-label="Call transcript">${esc(transcript)}</div></div></div>`
+  <div class="trwrap ${S.transcriptOpen ? 'open' : ''}" id="trWrap"><div><div class="trbox" data-scroll="callTranscript" tabindex="0" aria-label="Call transcript">${esc(transcript)}</div></div></div>`
     : '';
   const recUi = playUrl
     ? `<div class="reclab">Recording</div>
@@ -1152,12 +1152,15 @@ let destroyed = false;
 let callTick = null;
 /** Snapshot so CRM re-renders (12s poll) don't kill an in-progress recording. */
 let playerSnap = { src: '', t: 0, playing: false };
+let transcriptScrollTop = 0;
 function snapshotCallPlayer() {
   const a = root.querySelector('#callAudio');
-  if (!a) return;
-  const src = a.getAttribute('src') || '';
-  if (!src) return;
-  playerSnap = { src, t: a.currentTime || 0, playing: !a.paused && !a.ended };
+  if (a) {
+    const src = a.getAttribute('src') || '';
+    if (src) playerSnap = { src, t: a.currentTime || 0, playing: !a.paused && !a.ended };
+  }
+  const tr = root.querySelector('[data-scroll="callTranscript"]');
+  if (tr) transcriptScrollTop = tr.scrollTop || 0;
 }
 function ensureCallTimer() {
   const ac = callHostData().activeCall;
@@ -1224,10 +1227,16 @@ function bindCallPlayer() {
     paint();
   }
 }
+function restoreTranscriptScroll() {
+  if (transcriptScrollTop <= 0) return;
+  const tr = root.querySelector('[data-scroll="callTranscript"]');
+  if (tr) tr.scrollTop = transcriptScrollTop;
+}
 function renderMain() {
   if (destroyed) return;
   snapshotCallPlayer();
   keepFocus(() => { renderNav(); renderHead(); renderContent(); });
+  restoreTranscriptScroll();
   ensureCallTimer();
   bindCallPlayer();
 }
