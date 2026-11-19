@@ -12,6 +12,7 @@ import {
   CostsCard,
   DefaultsCard,
   HospitableCard,
+  HospitablePropertyPicker,
   LogoutCard,
   hospitableState,
   type DefaultField,
@@ -43,7 +44,7 @@ type SettingsPayload = {
   hospitable_mcp?: boolean;
 };
 
-type Sheet = null | "connect" | "disconnect" | "costs";
+type Sheet = null | "connect" | "disconnect" | "costs" | "picker";
 
 function errMsg(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
@@ -70,6 +71,8 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [tab, setTab] = useState<SettingsTab>("general");
+  const [pickerFresh, setPickerFresh] = useState(false);
+  const [hospPropertyCount, setHospPropertyCount] = useState<number | undefined>();
   /** Last values the server confirmed, so blur only saves a real change. */
   const lastSaved = useRef({ comm: "", hst: "" });
 
@@ -223,14 +226,21 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
 
   /* ---------------- Hospitable (same ops as ClientsApp) ---------------- */
 
+  const openPropertyPicker = (fresh: boolean) => {
+    setPickerFresh(fresh);
+    setSheet("picker");
+  };
+
   const savePat = async (pat: string, mcp: string) => {
     setBusy(true);
     setError("");
     try {
+      let openedWithPat = false;
       if (pat.trim()) {
         const data = await pmPost<SettingsPayload>("settings", { op: "save_hospitable_pat", hospitable_pat: pat });
         setHospitableConnected(Boolean(data.hospitable_connected));
         if (data.hospitable_mcp != null) setHospitableMcp(Boolean(data.hospitable_mcp));
+        openedWithPat = true;
       }
       if (mcp.trim()) {
         const data = await pmPost<SettingsPayload>("settings", {
@@ -241,8 +251,13 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
         setHospitableMcp(Boolean(data.hospitable_mcp));
       }
       setServerKey(false);
-      setSheet(null);
-      setToast(mcp.trim() ? "Hospitable agent connected." : "Hospitable connected.");
+      if (openedWithPat || hospitableConnected) {
+        setToast(mcp.trim() ? "Hospitable agent connected." : "Hospitable connected.");
+        openPropertyPicker(openedWithPat);
+      } else {
+        setSheet(null);
+        setToast(mcp.trim() ? "Hospitable agent connected." : "Hospitable connected.");
+      }
     } catch (e) {
       setError(errMsg(e, "Could not save Hospitable."));
     } finally {
@@ -260,6 +275,7 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
       setHospitableMcp(Boolean(mcp.hospitable_mcp));
       const stillActive = Boolean(mcp.hospitable_connected || mcp.hospitable_mcp);
       setServerKey(stillActive);
+      if (!stillActive) setHospPropertyCount(undefined);
       setSheet(null);
       setToast(stillActive ? "Cleared the saved keys. A server key is still active." : "Hospitable disconnected.");
     } catch (e) {
@@ -355,8 +371,10 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
       hospitableConnected={hospitableConnected}
       hospitableMcp={hospitableMcp}
       hospitableLoading={loading}
+      propertyCount={hospPropertyCount}
       onConnectHospitable={() => setSheet("connect")}
       onDisconnectHospitable={() => setSheet("disconnect")}
+      onManageHospitable={() => openPropertyPicker(false)}
       onToast={setToast}
       onError={setError}
     />
@@ -439,6 +457,23 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
     );
   } else if (sheet === "costs") {
     sheetEl = <HubSubscriptionsSheet phone={phone} onClose={() => setSheet(null)} onToast={setToast} />;
+  } else if (sheet === "picker") {
+    sheetEl = (
+      <HospitablePropertyPicker
+        phone={phone}
+        fresh={pickerFresh}
+        busy={busy}
+        onClose={() => setSheet(null)}
+        onSaved={(count) => {
+          setHospPropertyCount(count);
+          setSheet(null);
+          setToast(
+            count === 1 ? "1 property selected" : `${count} properties selected`,
+          );
+        }}
+        onError={setError}
+      />
+    );
   }
 
   return (

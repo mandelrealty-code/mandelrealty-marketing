@@ -320,7 +320,7 @@ function ConnArticle({
   note?: string;
   noteMono?: boolean;
   keyRow?: ReactNode;
-  footMeta?: string;
+  footMeta?: ReactNode;
   footAction?: ReactNode;
 }) {
   return (
@@ -362,20 +362,226 @@ function ConnArticle({
   );
 }
 
+export type HospitablePickProperty = {
+  id: string;
+  name: string;
+  address: string;
+  selected: boolean;
+};
+
+/** Property checklist after Hospitable connect / Manage. ConnectHospitableSheet only handles tokens. */
+export function HospitablePropertyPicker({
+  phone,
+  fresh,
+  busy,
+  onClose,
+  onSaved,
+  onError,
+}: {
+  phone?: boolean;
+  fresh?: boolean;
+  busy?: boolean;
+  onClose: () => void;
+  onSaved: (count: number) => void;
+  onError: (msg: string) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [rows, setRows] = useState<HospitablePickProperty[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy && !saving) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, busy, saving]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/admin/settings?op=hospitable_properties", { credentials: "include" })
+      .then(async (res) => {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          properties?: HospitablePickProperty[];
+          choice_saved?: boolean;
+        };
+        if (!res.ok) throw new Error(body.error || "Could not load properties.");
+        return body;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        const list = Array.isArray(body.properties) ? body.properties : [];
+        setRows(list);
+        const initial = new Set<string>();
+        if (body.choice_saved) {
+          for (const p of list) if (p.selected) initial.add(p.id);
+        } else if (fresh) {
+          for (const p of list) initial.add(p.id);
+        }
+        setPicked(initial);
+      })
+      .catch((e) => {
+        if (!cancelled) onError(e instanceof Error ? e.message : "Could not load properties.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fresh, onError]);
+
+  const n = picked.size;
+  const allOn = rows.length > 0 && rows.every((r) => picked.has(r.id));
+
+  const toggle = (id: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setPicked(allOn ? new Set() : new Set(rows.map((r) => r.id)));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/settings?op=save_hospitable_selection", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_ids: [...picked] }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        count?: number;
+      };
+      if (!res.ok) throw new Error(body.error || "Could not save selection.");
+      onSaved(typeof body.count === "number" ? body.count : picked.size);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Could not save selection.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const locked = Boolean(busy || saving || loading);
+
+  return (
+    <div
+      className={`scrim${phone ? " bottom" : ""}`}
+      style={{ position: "fixed", zIndex: 80 }}
+      onClick={() => {
+        if (!locked) onClose();
+      }}
+    >
+      <div
+        className={`modal frost hpick${phone ? " phone" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hpick-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="hpick-ph">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 id="hpick-title">
+              {loading
+                ? "Loading properties…"
+                : `Found ${rows.length} ${rows.length === 1 ? "property" : "properties"}`}
+            </h2>
+            <p>
+              {n} {n === 1 ? "property is" : "properties are"} selected.
+            </p>
+            {fresh ? (
+              <div className="okbox2">
+                <Icon name="check" className="i sm" />
+                Hospitable connected. Pick the properties to track.
+              </div>
+            ) : null}
+          </div>
+          <button type="button" className="iconbtn" aria-label="Close" disabled={locked} onClick={onClose}>
+            <Icon name="x" />
+          </button>
+        </div>
+        <div className="hpick-pb">
+          {loading ? (
+            <div className="empty" style={{ padding: "28px 12px" }}>
+              <span className="refreshing">
+                <i className="spin" />
+                Loading from Hospitable…
+              </span>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="empty" style={{ padding: "28px 12px" }}>
+              <b>No properties found</b>
+              <span>Add a listing in Hospitable, then try again.</span>
+            </div>
+          ) : (
+            <div className="hpick-list">
+              {rows.map((p) => {
+                const on = picked.has(p.id);
+                return (
+                  <label key={p.id} className={`hpick-row${on ? " on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={locked}
+                      onChange={() => toggle(p.id)}
+                    />
+                    <span className="t">
+                      <b>{p.name || "Untitled"}</b>
+                      <span className="meta">{p.address || "No address"}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className="hpick-pf">
+          <button type="button" className="btn ghost" disabled={locked || rows.length === 0} onClick={selectAll}>
+            {allOn ? "Clear all" : "Select all"}
+          </button>
+          <span style={{ flex: 1 }} />
+          <button type="button" className="btn" disabled={locked} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn primary" disabled={locked || loading} onClick={() => void save()}>
+            {saving ? <i className="spin" style={{ borderColor: "rgb(255 255 255 / .3)", borderTopColor: "#fff" }} /> : null}
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectorsCard({
   hospitableConnected,
   hospitableMcp,
   hospitableLoading,
+  propertyCount,
   onConnectHospitable,
   onDisconnectHospitable,
+  onManageHospitable,
   onToast,
   onError,
 }: {
   hospitableConnected: boolean;
   hospitableMcp: boolean;
   hospitableLoading: boolean;
+  /** Overrides the loaded count after the property picker saves. */
+  propertyCount?: number;
   onConnectHospitable: () => void;
   onDisconnectHospitable: () => void;
+  onManageHospitable: () => void;
   onToast: (msg: string) => void;
   onError: (msg: string) => void;
 }) {
@@ -419,6 +625,10 @@ export function ConnectorsCard({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (typeof propertyCount === "number") setHospCount(propertyCount);
+  }, [propertyCount]);
 
   const hospOn = hospitableConnected || hospitableMcp;
   const connectedCount =
@@ -556,7 +766,21 @@ export function ConnectorsCard({
           }
           acctIcon="building"
           pill={<ConnPill connected={hospOn} />}
-          footMeta={hospOn ? "Connected" : "Not set up"}
+          footMeta={
+            hospOn ? (
+              <>
+                {hospCount != null
+                  ? `${hospCount} ${hospCount === 1 ? "property" : "properties"} selected`
+                  : "Connected"}
+                {" · "}
+                <button type="button" className="lnk" style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }} onClick={onManageHospitable}>
+                  Manage
+                </button>
+              </>
+            ) : (
+              "Not set up"
+            )
+          }
           footAction={
             hospOn ? (
               <button type="button" className="btn sm redtxt" onClick={onDisconnectHospitable}>

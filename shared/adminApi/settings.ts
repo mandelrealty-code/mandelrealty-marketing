@@ -15,7 +15,11 @@ import {
   type WelcomeTemplate,
 } from "../crmSettings.js";
 import { gmailStatus } from "./gmail.js";
-import { isHospitableConfigured } from "../pm/clientStore.js";
+import {
+  getHospitablePat,
+  isHospitableConfigured,
+} from "../pm/clientStore.js";
+import { listAllHospitableProperties } from "../pm/hospitableClient.js";
 import {
   removeLeadNotifyRecipient,
   saveLeadNotifyRecipient,
@@ -93,10 +97,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const { hospitableCard } = await import("../copilot/hospitableConnection.js");
       const card = await hospitableCard();
-      if (card.connected && Array.isArray(card.properties)) {
-        hospitableCount = card.properties.length;
-      } else if (card.connected && card.chosenCount > 0) {
+      if (card.connected && card.choiceSaved) {
         hospitableCount = card.chosenCount;
+      } else if (card.connected && Array.isArray(card.properties) && card.properties.length) {
+        hospitableCount = card.properties.length;
       }
     } catch {
       /* count is optional */
@@ -115,6 +119,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       pricelabs: { connected: Boolean(pricelabsKey) },
       twilio: { connected: twilioSid, number: twilioNumber },
     });
+  }
+
+  if (req.method === "GET" && op === "hospitable_properties") {
+    const pat = await getHospitablePat();
+    if (!pat) {
+      return res.status(400).json({
+        error: "Hospitable is not connected. Paste your API key first.",
+      });
+    }
+    try {
+      const all = await listAllHospitableProperties(pat);
+      let selected = new Set<string>();
+      let choiceSaved = false;
+      try {
+        const { hospitableCard } = await import("../copilot/hospitableConnection.js");
+        const card = await hospitableCard();
+        if (card.connected && card.choiceSaved) {
+          choiceSaved = true;
+          selected = new Set(
+            card.properties.filter((p) => p.selected).map((p) => p.id),
+          );
+        }
+      } catch {
+        /* selection is optional until saved */
+      }
+      return res.status(200).json({
+        properties: all.map((p) => ({
+          id: p.id,
+          name: p.name,
+          address: p.address || "",
+          selected: choiceSaved ? selected.has(p.id) : false,
+        })),
+        total: all.length,
+        choice_saved: choiceSaved,
+        selected_count: choiceSaved ? selected.size : 0,
+      });
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not load Hospitable properties.";
+      return res.status(400).json({ error: msg });
+    }
+  }
+
+  if (req.method === "POST" && op === "save_hospitable_selection") {
+    const body = readBody(req);
+    const ids = Array.isArray(body.property_ids)
+      ? body.property_ids.map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    const pat = await getHospitablePat();
+    if (!pat) {
+      return res.status(400).json({
+        error: "Hospitable is not connected. Paste your API key first.",
+      });
+    }
+    try {
+      const {
+        saveHospitableToken,
+        saveHospitableSelection,
+      } = await import("../copilot/hospitableConnection.js");
+      const synced = await saveHospitableToken(pat);
+      if (synced.error && !synced.card.connected) {
+        return res.status(400).json({ error: synced.error });
+      }
+      const card = await saveHospitableSelection(ids);
+      return res.status(200).json({
+        ok: true,
+        count: card.chosenCount,
+        hospitable: { connected: true, count: card.chosenCount },
+      });
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not save property selection.";
+      return res.status(400).json({ error: msg });
+    }
   }
 
   if (req.method === "POST" && op === "save_pricelabs_key") {

@@ -725,10 +725,10 @@ export async function handleDevApi(
       try {
         const { hospitableCard } = await import("./copilot/hospitableConnection.js");
         const card = await hospitableCard();
-        if (card.connected && Array.isArray(card.properties)) {
-          hospitableCount = card.properties.length;
-        } else if (card.connected && card.chosenCount > 0) {
+        if (card.connected && card.choiceSaved) {
           hospitableCount = card.chosenCount;
+        } else if (card.connected && Array.isArray(card.properties) && card.properties.length) {
+          hospitableCount = card.properties.length;
         }
       } catch {
         /* optional */
@@ -747,6 +747,80 @@ export async function handleDevApi(
         pricelabs: { connected: Boolean(pricelabsKey) },
         twilio: { connected: twilioSid, number: twilioNumber },
       });
+      return true;
+    }
+    if (method === "GET" && settingsOp === "hospitable_properties") {
+      const { getHospitablePat } = await import("./pm/clientStore.js");
+      const { listAllHospitableProperties } = await import("./pm/hospitableClient.js");
+      const pat = await getHospitablePat();
+      if (!pat) {
+        json(res, 400, { error: "Hospitable is not connected. Paste your API key first." });
+        return true;
+      }
+      try {
+        const all = await listAllHospitableProperties(pat);
+        let selected = new Set<string>();
+        let choiceSaved = false;
+        try {
+          const { hospitableCard } = await import("./copilot/hospitableConnection.js");
+          const card = await hospitableCard();
+          if (card.connected && card.choiceSaved) {
+            choiceSaved = true;
+            selected = new Set(card.properties.filter((p) => p.selected).map((p) => p.id));
+          }
+        } catch {
+          /* optional */
+        }
+        json(res, 200, {
+          properties: all.map((p) => ({
+            id: p.id,
+            name: p.name,
+            address: p.address || "",
+            selected: choiceSaved ? selected.has(p.id) : false,
+          })),
+          total: all.length,
+          choice_saved: choiceSaved,
+          selected_count: choiceSaved ? selected.size : 0,
+        });
+      } catch (e) {
+        json(res, 400, {
+          error: e instanceof Error ? e.message : "Could not load Hospitable properties.",
+        });
+      }
+      return true;
+    }
+    if (method === "POST" && settingsOp === "save_hospitable_selection") {
+      const body = await readJsonBody(req);
+      const ids = Array.isArray(body.property_ids)
+        ? body.property_ids.map((id: unknown) => String(id).trim()).filter(Boolean)
+        : [];
+      const { getHospitablePat } = await import("./pm/clientStore.js");
+      const pat = await getHospitablePat();
+      if (!pat) {
+        json(res, 400, { error: "Hospitable is not connected. Paste your API key first." });
+        return true;
+      }
+      try {
+        const {
+          saveHospitableToken,
+          saveHospitableSelection,
+        } = await import("./copilot/hospitableConnection.js");
+        const synced = await saveHospitableToken(pat);
+        if (synced.error && !synced.card.connected) {
+          json(res, 400, { error: synced.error });
+          return true;
+        }
+        const card = await saveHospitableSelection(ids);
+        json(res, 200, {
+          ok: true,
+          count: card.chosenCount,
+          hospitable: { connected: true, count: card.chosenCount },
+        });
+      } catch (e) {
+        json(res, 400, {
+          error: e instanceof Error ? e.message : "Could not save property selection.",
+        });
+      }
       return true;
     }
     if (method === "POST" && settingsOp === "save_pricelabs_key") {
