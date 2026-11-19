@@ -338,11 +338,17 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     />
   ) : null;
 
+  const selectedRoster = selected
+    ? roster.find((r) => sameName(r.name, selected.display_name)) ?? null
+    : null;
+
   const body = selected ? (
     <StaffDetail
       phone={phone}
       staff={selected}
-      staffType={roster.find((r) => sameName(r.name, selected.display_name))?.staff_type}
+      staffType={selectedRoster?.staff_type}
+      rosterMember={selectedRoster}
+      savingPhone={Boolean(selectedRoster && savingName === selectedRoster.id)}
       tasks={detailTasks}
       entries={detailEntries}
       total={detailTotal}
@@ -353,6 +359,7 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       onRefresh={() => void loadDetail(selected).catch((e) => setError(errMsg(e, "Refresh failed.")))}
       onResend={() => void resendInvite(selected)}
       onDelete={() => setConfirm({ kind: "delete", user: selected })}
+      onSetPhone={(row, phoneValue) => void setPhone(row, phoneValue)}
     />
   ) : (
     <TeamList
@@ -368,7 +375,6 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       onInvite={() => setInvite({ name: "", prefilled: false })}
       onOpen={(u) => onSelect(u.id)}
       onSetType={(name, type) => void setType(name, type)}
-      onSetPhone={(row, phoneValue) => void setPhone(row, phoneValue)}
       onSendLogin={(name) => setInvite({ name, prefilled: true })}
       onRemove={(row) => setConfirm({ kind: "remove", row })}
       onAddPartner={(name) => void setType(name, "partner", `${name} added as a partner`)}

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../clients/api";
 import { Icon } from "../clients/icons";
 import { Chip } from "../clients/uiBits";
@@ -13,6 +13,7 @@ import {
   typeTone,
   weekLabel,
   weekStartIso,
+  type RosterRow,
   type StaffRow,
   type TimeRow,
 } from "./teamBits";
@@ -150,10 +151,94 @@ function HoursCard({ entries, total, loading }: { entries: TimeRow[]; total: num
   );
 }
 
+function ContactCard({
+  staff,
+  rosterMember,
+  savingPhone,
+  onSetPhone,
+}: {
+  staff: StaffRow;
+  rosterMember: RosterRow | null;
+  savingPhone: boolean;
+  onSetPhone: (row: RosterRow, phone: string) => void;
+}) {
+  const [draft, setDraft] = useState(rosterMember?.phone || "");
+  useEffect(() => {
+    setDraft(rosterMember?.phone || "");
+  }, [rosterMember?.id, rosterMember?.phone]);
+
+  return (
+    <div className="card" style={{ overflow: "hidden", marginBottom: 16 }}>
+      <div className="cardhead">
+        <h3>
+          <Icon name="users" className="i sm" />
+          Contact info
+        </h3>
+      </div>
+      <div className="cardbody" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="field">
+          <label className="flabel" htmlFor="tmContactName">
+            Display name
+          </label>
+          <input
+            id="tmContactName"
+            className="input"
+            type="text"
+            value={staff.display_name}
+            readOnly
+            aria-readonly="true"
+          />
+        </div>
+        <div className="field">
+          <label className="flabel" htmlFor="tmContactEmail">
+            Email
+          </label>
+          <input
+            id="tmContactEmail"
+            className="input"
+            type="email"
+            value={staff.email}
+            readOnly
+            aria-readonly="true"
+          />
+        </div>
+        <div className="field">
+          <label className="flabel" htmlFor="tmContactPhone">
+            Phone number
+          </label>
+          <input
+            id="tmContactPhone"
+            className="input"
+            type="tel"
+            inputMode="tel"
+            placeholder="+1 647 123 4567"
+            value={draft}
+            disabled={!rosterMember || savingPhone}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              if (!rosterMember) return;
+              const next = draft.trim();
+              if (next === (rosterMember.phone || "").trim()) return;
+              onSetPhone(rosterMember, next);
+            }}
+          />
+          {!rosterMember ? (
+            <div className="hint" style={{ marginTop: 6 }}>
+              Add them on Staff types first to save a phone number.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function StaffDetail({
   phone,
   staff,
   staffType,
+  rosterMember,
+  savingPhone,
   tasks,
   entries,
   total,
@@ -164,11 +249,14 @@ export function StaffDetail({
   onRefresh,
   onResend,
   onDelete,
+  onSetPhone,
 }: {
   phone?: boolean;
   staff: StaffRow;
   /** Roster type matched by name; undefined when they are not on the roster. */
   staffType: string | undefined;
+  rosterMember: RosterRow | null;
+  savingPhone: boolean;
   tasks: TaskRow[];
   entries: TimeRow[];
   total: number;
@@ -179,6 +267,7 @@ export function StaffDetail({
   onRefresh: () => void;
   onResend: () => void;
   onDelete: () => void;
+  onSetPhone: (row: RosterRow, phone: string) => void;
 }) {
   const typeChip =
     staffType !== undefined ? (
@@ -187,6 +276,14 @@ export function StaffDetail({
       </Chip>
     ) : null;
 
+  const contactCard = (
+    <ContactCard
+      staff={staff}
+      rosterMember={rosterMember}
+      savingPhone={savingPhone}
+      onSetPhone={onSetPhone}
+    />
+  );
   const tasksCard = <TasksCard staff={staff} tasks={tasks} loading={loading} />;
   const hoursCard = <HoursCard entries={entries} total={total} loading={loading} />;
 
@@ -234,6 +331,7 @@ export function StaffDetail({
           Delete
         </button>
         {banner}
+        {contactCard}
         {tasksCard}
         {hoursCard}
       </>
@@ -276,6 +374,7 @@ export function StaffDetail({
       </div>
       <div className="content" style={{ paddingTop: 16, overflow: "auto" }}>
         {banner}
+        {contactCard}
         <div className="pgrid2">
           <div className="col">{tasksCard}</div>
           <div className="col">{hoursCard}</div>

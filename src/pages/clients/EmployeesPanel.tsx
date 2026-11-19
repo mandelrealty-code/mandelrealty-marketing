@@ -615,20 +615,17 @@ const STAFF_TYPE_LABEL: Record<string, string> = {
   partner: "Partner",
 };
 
-type RosterRow = { id: string; name: string; staff_type: string; phone?: string };
+type RosterRow = { id: string; name: string; staff_type: string };
 
 /** What kind of team member each person is. Onboarding hands out tasks by this, so it lists everyone on the roster. */
 function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: string) => void; logins: { id: string; name: string }[]; onInvite: (name: string) => void; onChanged: () => void }) {
   const [rows, setRows] = useState<RosterRow[]>([]);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState("");
-  const [phoneDraft, setPhoneDraft] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const data = await pmGet<{ members: RosterRow[] }>("team_members");
-    const members = data.members ?? [];
-    setRows(members);
-    setPhoneDraft(Object.fromEntries(members.map((m) => [m.id, m.phone || ""])));
+    setRows(data.members ?? []);
   }, []);
   useEffect(() => {
     load().catch((e) => onError(e instanceof Error ? e.message : "Could not load the team list."));
@@ -641,19 +638,6 @@ function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: s
       await load();
     } catch (e) {
       onError(e instanceof Error ? e.message : "Could not save the type.");
-    }
-    setSaving("");
-  };
-
-  const savePhone = async (r: RosterRow) => {
-    const next = (phoneDraft[r.id] ?? r.phone ?? "").trim();
-    if (next === (r.phone || "").trim()) return;
-    setSaving(r.id);
-    try {
-      await pmPost("team_members", { op: "set_phone", id: r.id, phone: next });
-      await load();
-    } catch (e) {
-      onError(e instanceof Error ? e.message : "Could not save the phone.");
     }
     setSaving("");
   };
@@ -686,24 +670,13 @@ function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: s
       </p>
       <ul className="mt-3 divide-y divide-white/8 border-t border-white/8">
         {rows.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <li key={r.id} className="flex items-center justify-between gap-3 py-3">
             <span className="text-[14px] text-[#f5f5f5]">{r.name}<span className="ml-2 text-[12px] text-[#6f6a65]">{hasLogin(r.name) ? "Has a login" : r.staff_type === "partner" ? "Partner, no login needed" : "Needs a login"}</span></span>
-            <span className="flex flex-wrap items-center gap-2">
-            <input
-              type="tel"
-              inputMode="tel"
-              aria-label={`Phone for ${r.name}`}
-              placeholder="+1 647 123 4567"
-              value={phoneDraft[r.id] ?? r.phone ?? ""}
-              disabled={saving === r.name || saving === r.id}
-              onChange={(e) => setPhoneDraft((prev) => ({ ...prev, [r.id]: e.target.value }))}
-              onBlur={() => void savePhone(r)}
-              className="w-[160px] rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-[14px] text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
-            />
+            <span className="flex items-center gap-2">
             <select
               aria-label={`Type for ${r.name}`}
               value={r.staff_type}
-              disabled={saving === r.name || saving === r.id}
+              disabled={saving === r.name}
               onChange={(e) => void setType(r.name, e.target.value)}
               className="rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2 text-[14px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
             >
@@ -714,7 +687,7 @@ function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: s
             {!hasLogin(r.name) && r.staff_type !== "partner" ? (
               <button type="button" onClick={() => onInvite(r.name)} className="rounded-lg border border-[#c4a35a]/40 px-3 py-2 text-[13px] font-semibold text-[#c4a35a]">Send login</button>
             ) : null}
-            <button type="button" disabled={saving === r.name || saving === r.id} onClick={() => void remove(r)} className="rounded-lg border border-white/10 px-3 py-2 text-[13px] text-[#9a9590] hover:text-[#f5f5f5]">Remove</button>
+            <button type="button" disabled={saving === r.name} onClick={() => void remove(r)} className="rounded-lg border border-white/10 px-3 py-2 text-[13px] text-[#9a9590] hover:text-[#f5f5f5]">Remove</button>
             </span>
           </li>
         ))}
