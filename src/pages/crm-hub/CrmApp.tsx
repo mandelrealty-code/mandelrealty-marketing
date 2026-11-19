@@ -122,6 +122,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       data: {
         callTranscript: null as string | null,
         callRecordingUrl: null as string | null,
+        callRecordingId: null as string | null,
         activeCall: null as null | {
           callId: string;
           leadId: string;
@@ -168,6 +169,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         const data = await call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`);
         host.data.callTranscript = typeof data.callTranscript === "string" ? data.callTranscript : null;
         host.data.callRecordingUrl = typeof data.callRecordingUrl === "string" ? data.callRecordingUrl : null;
+        host.data.callRecordingId = typeof data.callRecordingId === "string" ? data.callRecordingId : null;
         const ac = data.activeCall;
         host.data.activeCall =
           ac && typeof ac === "object"

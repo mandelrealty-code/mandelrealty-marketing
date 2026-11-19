@@ -100,6 +100,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const callTranscript = latestCall?.transcript || null;
         const callRecordingUrl = latestCall?.recording_url || null;
+        const callRecordingId =
+          latestCall && latestCall.recording_url ? latestCall.id : null;
         const activeCall =
           latestCall && isActiveCallStatus(latestCall.status)
             ? {
@@ -118,12 +120,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ai_send_mode: lead?.ai_send_mode || "autopilot",
           callTranscript,
           callRecordingUrl,
+          callRecordingId,
           activeCall,
           lead: lead
             ? {
                 ...lead,
                 callTranscript,
                 callRecordingUrl,
+                callRecordingId,
               }
             : null,
         });
@@ -402,12 +406,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { normalizePlaybook } = await import("../playbook.js");
       patch.playbookSteps = normalizePlaybook(body.playbookSteps ?? body.playbook_steps);
     }
-
-    const twilioEnv = {
-      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-    };
 
     if (body.draftAction === "approve" || body.draft_action === "approve") {
       const draftId = String(body.draftId || body.draft_id || "").trim();

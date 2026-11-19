@@ -738,7 +738,7 @@ function contactBlock(l) {
     ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
 }
 function callHostData() {
-  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, activeCall: null };
+  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, callRecordingId: null, activeCall: null };
   return host.data;
 }
 const fmtCallClock = (secs) => {
@@ -776,7 +776,8 @@ function notesBlock(l) {
       : `<li><span class="cbx"></span><span>${esc(s.title)}</span><span class="meta">Up next</span></li>`;
   const hd = callHostData();
   const transcript = (hd.callTranscript || '').trim();
-  const recUrl = (hd.callRecordingUrl || '').trim();
+  const recId = (hd.callRecordingId || '').trim();
+  const playUrl = recId ? `/api/twilio/recording?callId=${encodeURIComponent(recId)}` : '';
   const summary = (d.callNotes || '').trim();
   const summaryUi = S.callNotesEdit
     ? `<div class="sumedit"><textarea class="input" id="sumTa" data-k="ld.callNotes" aria-label="Edit summary">${esc(d.callNotes)}</textarea><div class="r"><button class="btn sm" data-act="cancelCallNotesEdit">Cancel</button><button class="btn sm primary" data-act="saveCallNotes" ${dis}>Save</button></div></div>`
@@ -785,10 +786,10 @@ function notesBlock(l) {
     ? `<button class="disc" data-act="toggleTranscript" aria-expanded="${S.transcriptOpen ? 'true' : 'false'}" aria-controls="trWrap">Full transcript ${ic('chev', 'xs')}</button>
   <div class="trwrap ${S.transcriptOpen ? 'open' : ''}" id="trWrap"><div><div class="trbox" tabindex="0" aria-label="Call transcript">${esc(transcript)}</div></div></div>`
     : '';
-  const recUi = recUrl
+  const recUi = playUrl
     ? `<div class="reclab">Recording</div>
-  <audio id="callAudio" src="${esc(recUrl)}" preload="metadata" hidden></audio>
-  <div class="player"><button type="button" class="pbtn" data-act="togglePlay" aria-label="Play recording">${ic('play', 'xs')}</button><div class="prog" data-act="seekAudio" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><i id="progFill"></i></div><span class="pdur" id="pDur">0:00</span><a class="iconbtn" href="${esc(recUrl)}" target="_blank" rel="noopener" download aria-label="Download recording" title="Download">${ic('dl', 'sm')}</a></div>`
+  <audio id="callAudio" src="${esc(playUrl)}" preload="metadata" hidden></audio>
+  <div class="player"><button type="button" class="pbtn" data-act="togglePlay" aria-label="Play recording">${ic('play', 'xs')}</button><div class="prog" data-act="seekAudio" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><i id="progFill"></i></div><span class="pdur" id="pDur">0:00</span><a class="iconbtn" href="${esc(playUrl)}" target="_blank" rel="noopener" download aria-label="Download recording" title="Download">${ic('dl', 'sm')}</a></div>`
     : '';
   return `<div class="dsec"><h5>Tell the AI <button class="btn sm" data-act="saveNotes" ${dis}>Save</button></h5><textarea class="input" style="min-height:62px" data-k="ld.notes" data-save="notes" placeholder="What the AI should know about this lead before the next text…">${esc(d.notes)}</textarea><div class="hint">The AI uses this on the next SMS. Saves when you click away.</div></div>
    <div class="dsec"><h5>Team next</h5>${steps.length ? `<ul class="steps">${steps.map(stepRow).join('')}</ul>` : '<div class="meta">No next steps yet.</div>'}</div>
@@ -1256,6 +1257,7 @@ async function loadThread(id) {
     const hd = callHostData();
     if (data.callTranscript !== undefined) hd.callTranscript = data.callTranscript || null;
     if (data.callRecordingUrl !== undefined) hd.callRecordingUrl = data.callRecordingUrl || null;
+    if (data.callRecordingId !== undefined) hd.callRecordingId = data.callRecordingId || null;
     if (data.activeCall) {
       hd.activeCall = data.activeCall;
       if (data.activeCall.transferState != null) S.transferState = data.activeCall.transferState;
@@ -1344,6 +1346,7 @@ function openLead(id, opts = {}) {
       const hd = callHostData();
       hd.callTranscript = null;
       hd.callRecordingUrl = null;
+      hd.callRecordingId = null;
       if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
     }
     loadThread(id);
@@ -1364,6 +1367,7 @@ function closeLead(opts = {}) {
   const hd = callHostData();
   hd.callTranscript = null;
   hd.callRecordingUrl = null;
+  hd.callRecordingId = null;
   hd.activeCall = null;
   if (!opts.noRoute && host.setRoute) host.setRoute({ tab: 'contacts', leadId: null });
   render();

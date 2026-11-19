@@ -1114,6 +1114,48 @@ export async function handleDevApi(
     return true;
   }
 
+  if (url.startsWith("/api/twilio/recording") && (method === "GET" || method === "HEAD")) {
+    const { default: handleRecording } = await import("../api/twilio/recording.js");
+    const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const fakeReq = {
+      method,
+      query: { callId: qs.get("callId") || "" },
+      headers: { cookie: req.headers.cookie || "" },
+    } as any;
+    const fakeRes = {
+      statusCode: 200,
+      headers: {} as Record<string, string>,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(k: string, v: string) {
+        this.headers[k.toLowerCase()] = v;
+        res.setHeader(k, v);
+        return this;
+      },
+      json(body: unknown) {
+        res.statusCode = this.statusCode;
+        res.setHeader("Content-Type", "application/json");
+        res.end(JSON.stringify(body));
+        return this;
+      },
+      send(body: unknown) {
+        res.statusCode = this.statusCode;
+        if (Buffer.isBuffer(body) || typeof body === "string") res.end(body);
+        else res.end(JSON.stringify(body));
+        return this;
+      },
+      end() {
+        res.statusCode = this.statusCode;
+        res.end();
+        return this;
+      },
+    } as any;
+    await handleRecording(fakeReq, fakeRes);
+    return true;
+  }
+
   if (url.startsWith("/api/twilio/voice") && (method === "POST" || method === "GET")) {
     const qs = new URL(req.url ?? "", "http://localhost").searchParams;
     const body = method === "POST" ? await readFormBody(req) : new URLSearchParams();
