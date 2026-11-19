@@ -41,6 +41,11 @@ export const CRM_EXTRA_CSS = `
 .bkdone .w3{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-top:6px}
 .bkdone a{display:inline-block;margin-top:8px;color:var(--tealink);font-weight:600;font-size:var(--t-sm);text-decoration:none}
 .bkdone a:hover{text-decoration:underline}
+.slots{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.slot{display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff;font:500 var(--t-sm)/1 Inter,sans-serif;color:var(--ink);text-align:left;width:100%}
+.slot:hover{background:var(--hover)}
+.slot.on{border-color:rgb(0 0 0 / .45);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .45);background:rgb(0 0 0 / .035);font-weight:600}
+.slot .ck{opacity:0;color:var(--ink)} .slot.on .ck{opacity:1}
 @media (max-width:767px){
   .subnav .seg{grid-template-columns:repeat(4,minmax(0,1fr))}
   .wmhead{flex-direction:column;align-items:stretch}
@@ -376,6 +381,7 @@ const S = {
   set: { op: '', opDirty: false, opMsg: '', callerSel: null, nName: '', nPhone: '', nMsg: '', uCode: '', uLabel: '', uMsg: '', paste: '', preview: null, pMsg: '', pErr: '' },
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
+  book: { slots: [], pick: null, loading: false, err: '', leadId: null },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -746,6 +752,37 @@ function aiBlock(l) {
     <div style="margin-top:10px"><span class="flabel">How AI sends</span><div class="aiseg" role="radiogroup" aria-label="How AI sends"><button role="radio" aria-checked="${mode === 'autopilot'}" class="${mode === 'autopilot' ? 'on' : ''}" data-act="sendMode" data-v="autopilot" ${dis}>Autopilot</button><button role="radio" aria-checked="${mode === 'draft'}" class="${mode === 'draft' ? 'on' : ''}" data-act="sendMode" data-v="draft" ${dis}>Draft for review</button></div>
     <div class="aiexp">${mode === 'autopilot' ? 'Autopilot sends AI replies immediately, no review.' : 'AI writes a draft. Nothing sends until you approve it.'}</div></div></div>`;
 }
+function bookBlock(l) {
+  const already = l.status === 'booked' || l.status === 'call_done' || l.status === 'won' || Boolean(l.call_start_iso);
+  const b = S.book;
+  const dis = isBusy('book') || b.loading ? 'disabled' : '';
+  if (already) {
+    const when = l.call_booking || (l.call_start_iso ? formatBookingWhen(l.call_start_iso) : '');
+    return `<div class="dsec"><h5>Book a call</h5>
+      <div class="okbox">${ic('check', 'sm')}<span><b>Call booked.</b>${when ? ` ${esc(when)}` : ''}${l.booked_by ? ` · ${esc(l.booked_by)}` : ''}</span></div>
+    </div>`;
+  }
+  let slotsHtml;
+  if (b.loading && b.leadId === String(l.id)) {
+    slotsHtml = `<div class="meta" style="margin-top:8px"><span class="refreshing"><i class="spin"></i>Loading open times…</span></div>`;
+  } else if (b.err && b.leadId === String(l.id)) {
+    slotsHtml = `<div class="warnbox">${ic('alert', 'sm')}<span>${esc(b.err)}</span></div>
+      <button class="btn sm" style="margin-top:8px" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}Retry</button>`;
+  } else if (!(b.slots || []).length) {
+    slotsHtml = `<div class="meta" style="margin-top:8px">No open times in the next week. Connect Google in Settings → Connectors, or try again later.</div>
+      <button class="btn sm" style="margin-top:8px" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}Refresh</button>`;
+  } else {
+    slotsHtml = `<div class="slots">${(b.slots || []).map((s) => {
+      const on = b.pick === s.start;
+      return `<button type="button" class="slot ${on ? 'on' : ''}" data-act="pickBookSlot" data-start="${esc(s.start)}" data-end="${esc(s.end)}" aria-pressed="${on ? 'true' : 'false'}">${esc(s.label)}<span class="ck">${ic('check', 'xs')}</span></button>`;
+    }).join('')}</div>
+    <button class="btn primary" style="width:100%;margin-top:10px" data-act="confirmBookSlot" ${(dis || !b.pick) ? 'disabled' : ''}>${ic('cal', 'sm')}${isBusy('book') ? 'Booking…' : 'Confirm booking'}</button>`;
+  }
+  return `<div class="dsec"><h5>Book a call <button class="btn sm ghost" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}</button></h5>
+    <div class="meta">Pick an open hour on Ryan’s calendar. Confirms the lead, stops AI texts, and sends a calendar invite.</div>
+    ${slotsHtml}
+  </div>`;
+}
 function saleBlock(l, hl) {
   const d = D(l), dis = isBusy('save') ? 'disabled' : '';
   const gaps = [l.plan, l.contract_status, l.booked_by, l.closed_by].filter((x) => !x).length;
@@ -947,11 +984,11 @@ function actionsBlock() {
    <button class="btn" data-act="convertClient">${ic('file', 'sm')}Create client and send contract</button><button class="btn" data-act="markBooked" ${dis}>${ic('cal', 'sm')}Mark booked</button><button class="btn dangerline" data-act="askDelete" ${dis}>${ic('trash', 'sm')}Delete contact</button></div></div>`;
 }
 function leadPanel(l) {
-  let order = ['ai', 'sale', 'stage', 'contact', 'notes', 'actions'];
+  let order = ['ai', 'book', 'sale', 'stage', 'contact', 'notes', 'actions'];
   const hl = l.status === 'won' || Boolean(l.onboarding);
-  if (hl) order = ['sale', 'ai', 'stage', 'contact', 'notes', 'actions'];
-  else if (!phoneUsable(l.phone)) order = ['contact', 'ai', 'stage', 'sale', 'notes', 'actions'];
-  const map = { ai: () => aiBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
+  if (hl) order = ['sale', 'book', 'ai', 'stage', 'contact', 'notes', 'actions'];
+  else if (!phoneUsable(l.phone)) order = ['contact', 'ai', 'book', 'stage', 'sale', 'notes', 'actions'];
+  const map = { ai: () => aiBlock(l), book: () => bookBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
   const active = activeCallBlock();
   const nCalls = leadCallCount(l.id);
   const callsLabel = nCalls > 0 ? `Calls (${nCalls})` : 'Calls';
@@ -1582,12 +1619,75 @@ function openLead(id, opts = {}) {
       if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
     }
     loadThread(id);
+    loadBookSlots(id);
     if (host.markRead) host.markRead(id).catch(() => undefined);
     const l = leadById(id);
     if (l) mergeLead(id, { unread: false, sms_last_read_at: new Date().toISOString(), needs_you: l.needs_you.filter((r) => r !== 'unanswered_inbound' && r !== 'review_ai') });
     delete S.ld[id];
   }
   render();
+}
+
+async function loadBookSlots(leadId = S.leadId) {
+  if (!leadId || !host.loadCalendarSlots) return;
+  const id = String(leadId);
+  S.book = { ...S.book, leadId: id, loading: true, err: '', pick: null };
+  renderMain();
+  try {
+    const data = await host.loadCalendarSlots();
+    if (S.book.leadId !== id) return;
+    S.book = {
+      leadId: id,
+      loading: false,
+      err: '',
+      pick: null,
+      slots: Array.isArray(data.slots) ? data.slots : [],
+    };
+  } catch (e) {
+    if (S.book.leadId !== id) return;
+    S.book = {
+      leadId: id,
+      loading: false,
+      err: errMsg(e, 'Could not load calendar times.'),
+      pick: null,
+      slots: [],
+    };
+  }
+  renderMain();
+}
+
+async function confirmBookSlot() {
+  const l = leadById(S.leadId);
+  if (!l || !S.book.pick || !host.bookSlot) return;
+  const slot = (S.book.slots || []).find((s) => s.start === S.book.pick);
+  if (!slot) return;
+  setBusy('book', true);
+  try {
+    const data = await host.bookSlot({
+      leadId: l.id,
+      slot: { start: slot.start, end: slot.end },
+      leadName: l.name || '',
+      leadEmail: l.email || '',
+      leadPhone: l.phone || '',
+      booked_by: 'booker',
+    });
+    mergeLead(l.id, {
+      status: 'booked',
+      call_start_iso: slot.start,
+      call_booking: data.label || slot.label,
+      booked_by: 'Booker',
+      ai_paused: true,
+    });
+    D(l).booked = 'Booker';
+    toast(data.label ? `Booked ${data.label}` : 'Call booked');
+    await loadThread(l.id);
+    loadLeads();
+    S.book = { ...S.book, pick: null, slots: [] };
+  } catch (e) {
+    toast(errMsg(e, 'Could not book that time.'), 'bad');
+  } finally {
+    setBusy('book', false);
+  }
 }
 function closeLead(opts = {}) {
   S.leadId = null;
@@ -2289,6 +2389,12 @@ const ACT = {
   openUnit: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.onboarding) host.openOnboardingUnit && host.openOnboardingUnit(l.onboarding.unitId); },
   convertClient: (b) => { const l = leadById(b.dataset.id || S.leadId); S.menu = null; renderMenu(); if (l && host.convertLeadToOpsClient) host.convertLeadToOpsClient({ id: l.id, name: l.name, email: l.email, phone: l.phone }); },
   markBooked: (b) => { const id = b.dataset.id || S.leadId; S.menu = null; renderMenu(); if (id) markBooked(id); },
+  reloadBookSlots: () => { void loadBookSlots(S.leadId); },
+  pickBookSlot: (b) => {
+    S.book = { ...S.book, pick: b.dataset.start || null };
+    renderMain();
+  },
+  confirmBookSlot: () => { void confirmBookSlot(); },
   askDelete: (b) => askDelete(b.dataset.id || S.leadId),
   kEdit: (b) => kOpen(b.dataset.id),
   kAddPaste: () => kAddPaste(),

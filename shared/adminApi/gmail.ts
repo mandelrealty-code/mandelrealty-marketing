@@ -12,7 +12,9 @@ import { parityGmailOffer, parityReadMailThread, paritySearchGmail } from "../co
 const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 // Calendar: calendar.app.created lets Copilot make the "Mandel Tasks" calendar and manage only the
 // calendars it created; it can't read or change any other calendar in the account.
-const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.app.created";
+// calendar.events: CRM booking reads/writes primary calendar. calendar.app.created: Copilot task calendar.
+const SCOPE =
+  "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.app.created https://www.googleapis.com/auth/calendar.events";
 const BACK = "https://admin.mandelrealtygroup.com/settings";
 
 type GmailLogLine = Record<string, string | number | boolean | null>;
@@ -223,7 +225,12 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
           grant_type: "authorization_code",
         }),
       });
-      const token = (await tokenRes.json()) as { refresh_token?: string; access_token?: string; scope?: string };
+      const token = (await tokenRes.json()) as {
+        refresh_token?: string;
+        access_token?: string;
+        expires_in?: number;
+        scope?: string;
+      };
       const previous = await readGmailLogin();
       const refresh = token.refresh_token?.trim() || previous?.refreshToken || "";
       if (!tokenRes.ok || !refresh) return go(res, `${BACK}?gmail=failed`);
@@ -237,11 +244,25 @@ export default async function handleGmail(req: VercelRequest, res: VercelRespons
       }
       await saveGmailLogin(refresh, email);
       forgetLoginState("gmail");
+      // CRM booking calendar (primary) — same Google account as Gmail.
+      try {
+        const { upsertCrmCalendarTokens } = await import("../crmCalendar.js");
+        await upsertCrmCalendarTokens({
+          refreshToken: refresh,
+          accessToken: token.access_token,
+          expiresIn: token.expires_in,
+        });
+      } catch (err) {
+        console.warn(
+          "[gmail] crm_calendar_tokens sync failed",
+          err instanceof Error ? err.message : err,
+        );
+      }
       // A fresh connect retries the team calendar now; if Google left Calendar out, say exactly that.
       try {
         const { readCalendarState, writeCalendarState } = await import("../copilot/taskCalendar.js");
         const state = await readCalendarState();
-        const granted = /calendar\.app\.created|auth\/calendar(\s|$)/.test(token.scope ?? "");
+        const granted = /calendar\.app\.created|calendar\.events|auth\/calendar(\s|$)/.test(token.scope ?? "");
         await writeCalendarState({ ...state, mode: granted ? "ok" : "off", reason: granted ? "" : `Google signed in ${email || "the account"} without the Calendar permission. On Google's consent screen, tick the box to let Mandel Copilot make and manage its own calendars.` });
       } catch {
         /* The next board open retries either way. */

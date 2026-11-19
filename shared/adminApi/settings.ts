@@ -195,6 +195,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  if (req.method === "GET" && op === "calendar_slots") {
+    const { listCalendarSlots } = await import("../crmCalendar.js");
+    const result = await listCalendarSlots();
+    if (result.error && result.slots.length === 0) {
+      return res.status(400).json({ error: result.error, slots: [] });
+    }
+    return res.status(200).json({ slots: result.slots });
+  }
+
+  if (req.method === "POST" && op === "book_slot") {
+    const body = readBody(req);
+    const slotRaw = body.slot && typeof body.slot === "object" ? (body.slot as Record<string, unknown>) : {};
+    const bookedBy =
+      body.booked_by === "ai" || body.bookedBy === "ai" ? "ai" : "booker";
+    const { bookCalendarSlot } = await import("../crmCalendar.js");
+    const result = await bookCalendarSlot({
+      leadId: String(body.leadId ?? body.lead_id ?? ""),
+      slot: {
+        start: String(slotRaw.start ?? ""),
+        end: String(slotRaw.end ?? ""),
+      },
+      leadName: String(body.leadName ?? body.lead_name ?? ""),
+      leadEmail: String(body.leadEmail ?? body.lead_email ?? ""),
+      leadPhone: String(body.leadPhone ?? body.lead_phone ?? ""),
+      bookedBy,
+    });
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.status(200).json({
+      ok: true,
+      eventId: result.eventId,
+      label: result.label,
+    });
+  }
+
   if (req.method === "POST" && op === "save_pricelabs_key") {
     const body = readBody(req);
     const apiKey = String(body.api_key ?? "");

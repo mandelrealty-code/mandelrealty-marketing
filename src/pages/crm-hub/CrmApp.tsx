@@ -289,6 +289,12 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         return data;
       },
       markBooked: (id: string) => patchLead({ id, markBooked: true }),
+      loadCalendarSlots: () =>
+        call<{ slots?: Array<{ start: string; end: string; label: string }> }>(
+          "/api/admin/settings?op=calendar_slots",
+        ),
+      bookSlot: (body: Data) =>
+        call("/api/admin/settings?op=book_slot", json("POST", body)),
       markRead: (id: string) => patchLead({ id, markRead: true }),
       aiNudge: (id: string, playbookSteps?: unknown[]) => patchLead({ id, aiNudge: true, ...(playbookSteps ? { playbookSteps } : {}) }),
       aiSendFirst: (id: string) => patchLead({ id, aiSendFirst: true }),

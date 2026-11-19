@@ -62,6 +62,8 @@ type ClaudeDecision = {
   bedrooms?: string | null;
   ready_for_contract?: boolean;
   kb_miss?: boolean;
+  /** ISO start of the slot the lead just confirmed (from AVAILABLE SLOTS). */
+  confirmed_slot_start?: string | null;
 };
 
 const SAFE_AUTO_STAGES = new Set<LeadStatus>([
@@ -167,6 +169,11 @@ FORM + AD ANGLE
 CALL NOTES
 - If Call notes are present, that call already happened. Treat those notes as ground truth. Do not re-ask facts already in the notes. The next SMS should pick up from objections / next steps in the notes (e.g. they need to check the board, wait for tenants, compare fees). Follow up until the file is closed or they opt out.
 
+BOOKING SLOTS (real calendar)
+- When AVAILABLE SLOTS are listed in the user prompt, those are the ONLY times you may offer. Number them 1, 2, 3…
+- Prefer offering 2–3 slots in SMS (not a calendar URL) when they ask to talk / call, or when include_book_link is true.
+- Do not invent times that are not in AVAILABLE SLOTS.
+
 BOOKING SLOT REPLIES
 When a lead replies to a slot offer, accept any natural language reply that indicates a time preference. Examples that should all work:
 - '1' or '2' or '3' (the numbered option)
@@ -176,10 +183,13 @@ When a lead replies to a slot offer, accept any natural language reply that indi
 - 'second one' or 'last option'
 - 'any of them' or 'whatever works' (pick the first slot)
 
-When the lead's reply clearly indicates a preference, confirm the specific date and time back to them, e.g.:
-'Perfect — locked in for Wednesday Nov 20 at 4:00 PM. Ryan will call you then. Talk soon!'
+When the lead's reply clearly indicates a preference:
+- Set confirmed_slot_start to that slot's ISO start from AVAILABLE SLOTS.
+- Confirm the specific date and time in reply_text, e.g.:
+  'Perfect — locked in for Wednesday Nov 20 at 4:00 PM. Ryan will call you then. Talk soon!'
 
 Do not ask them to reply with a number. Do not re-send the slot list unless they explicitly ask.
+If they have not confirmed a slot, confirmed_slot_start must be null.
 
 THREAD BEATS THE FORM
 - If they correct the city/property (form Ajax, they say Oshawa), drop the form city. Do not merge two properties unless they said BOTH are in play for us.
@@ -227,10 +237,11 @@ STYLE
 - Never mention docs, KB, .md files, or "according to our guide."
 - Every outbound must make sense given what we already know — no redundant questions, no contradictory offers.
 
-LINKS
-- The ONLY URL you may send is the book-a-call URL, and only when include_book_link is true: ${BOOK_A_CALL_URL}
-- include_book_link default FALSE. True only if they asked to talk/call, or messy legal needs a human.
-- When true, frame the free intro call in words, then the URL. Never a naked calendar link.
+LINKS / BOOKING CTA
+- Prefer real AVAILABLE SLOTS (numbered) over any calendar URL when offering a call.
+- include_book_link true only if they asked to talk/call, or messy legal needs a human. Default FALSE.
+- When include_book_link is true AND AVAILABLE SLOTS exist: offer 2–3 numbered times from that list. Do not send ${BOOK_A_CALL_URL}.
+- Only if AVAILABLE SLOTS is empty may you use the book-a-call URL: ${BOOK_A_CALL_URL}
 - Never send guide / intro-to-airbnb landing URLs.
 
 Return STRICT JSON only:
@@ -238,6 +249,7 @@ Return STRICT JSON only:
   "reply_text": "SMS body (empty ONLY if stop_ai and no farewell)",
   "suggested_stage": "engaging" | "nurturing" | "interested" | "low_fit" | "skip" | null,
   "include_book_link": boolean,
+  "confirmed_slot_start": "ISO start from AVAILABLE SLOTS when they picked a time, else null",
   "whats_next": "internal CRM note",
   "stop_ai": boolean,
   "stop_reason": "internal when stop_ai",
@@ -562,6 +574,9 @@ async function callClaude(input: {
         bedrooms: parsed.bedrooms ? String(parsed.bedrooms).trim().slice(0, 40) : null,
         ready_for_contract: Boolean(parsed.ready_for_contract),
         kb_miss: Boolean(parsed.kb_miss),
+        confirmed_slot_start: parsed.confirmed_slot_start
+          ? String(parsed.confirmed_slot_start).trim()
+          : null,
       },
     };
   } catch {
@@ -569,10 +584,40 @@ async function callClaude(input: {
   }
 }
 
+function formatAvailableSlotsBlock(
+  slots: { start: string; end: string; label: string }[],
+): string {
+  if (!slots.length) {
+    return "AVAILABLE SLOTS: (none right now — do not invent times; include_book_link may use the calendar URL only if they insist on a call)";
+  }
+  const lines = slots
+    .slice(0, 8)
+    .map((s, i) => `${i + 1}. ${s.label} | start=${s.start} | end=${s.end}`)
+    .join("\n");
+  return `AVAILABLE SLOTS (offer only these; use start= as confirmed_slot_start when they pick one):\n${lines}`;
+}
+
+async function loadBookingSlots(): Promise<
+  { start: string; end: string; label: string }[]
+> {
+  try {
+    const { listCalendarSlots } = await import("./crmCalendar.js");
+    const result = await listCalendarSlots();
+    return result.slots;
+  } catch (err) {
+    console.warn(
+      "[aiSms] calendar slots load failed",
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
 async function buildUserPrompt(
   lead: LeadRow,
   mode: "first" | "reply" | "nudge",
   inbound?: string,
+  slots: { start: string; end: string; label: string }[] = [],
 ) {
   const thread = await listSmsForLead(lead.id);
   const workingCity =
@@ -700,12 +745,16 @@ ${inbound || ""}
 KNOWLEDGE BASE (required for fees, plans, badges, makeover terms, permits, fit):
 ${kb}
 
+${formatAvailableSlotsBlock(slots)}
+
 Reply for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LABEL[angle]}).
 - Stay consistent with the ad angle and known form facts — never re-ask known items.
 - Answer product questions ONLY from KB. If KB is missing it: honest gap + keep selling high-level; set kb_miss true. Never invent numbers.
 - Thread corrections beat the form. If they named a different city/property, lock that.
 - Answer first, then at most ONE question from unknowns.
 - No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
+- If they ask to talk/call (or include_book_link true): offer 2–3 numbered AVAILABLE SLOTS. Do not invent times.
+- If this inbound confirms a slot from AVAILABLE SLOTS, set confirmed_slot_start to that slot's start ISO and confirm it in reply_text.
 - If they are not ready to sign, stay in-thread. Handle the objection from KB, then one question. include_book_link false. ready_for_contract false. stop_ai false.
 - If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
 - If Call notes exist, pick up from the call. Do not restart the intake.
@@ -714,6 +763,49 @@ ${
     ? "NOTE: Lead is in nurturing — they re-engaged. Answer; keep selling in-thread (stop_ai=false)."
     : ""
 }`;
+}
+
+async function completeAiBooking(input: {
+  lead: LeadRow;
+  slot: { start: string; end: string; label: string };
+  env: TwilioEnv;
+}): Promise<void> {
+  const { bookCalendarSlot } = await import("./crmCalendar.js");
+  const booked = await bookCalendarSlot({
+    leadId: input.lead.id,
+    slot: { start: input.slot.start, end: input.slot.end },
+    leadName: input.lead.name || "",
+    leadEmail: input.lead.email || "",
+    leadPhone: input.lead.phone || "",
+    bookedBy: "ai",
+  });
+  if (!booked.ok) {
+    console.warn("[aiSms] book_slot failed", booked.error);
+    return;
+  }
+
+  const to = toE164(input.lead.phone || "");
+  if (!to || !isTwilioConfigured(input.env)) return;
+
+  const email = (input.lead.email || "").trim() || "your email";
+  const confirm = `You're booked for a call with Ryan on ${booked.label}. You'll get a calendar invite at ${email}. Reply STOP to opt out.`;
+  const send = await sendTwilioSms({
+    accountSid: input.env.TWILIO_ACCOUNT_SID!,
+    authToken: input.env.TWILIO_AUTH_TOKEN!,
+    from: input.env.TWILIO_PHONE_NUMBER!,
+    to,
+    body: confirm,
+  });
+  // Calendar book already logged booking_confirmed; this is the SMS confirmation copy.
+  await logSmsMessage({
+    leadId: input.lead.id,
+    direction: "outbound",
+    fromPhone: input.env.TWILIO_PHONE_NUMBER!,
+    toPhone: to,
+    body: confirm,
+    providerSid: send.sid ?? null,
+    meta: { ai_generated: true, booking_confirm_sms: true },
+  }).catch(() => undefined);
 }
 
 /**
@@ -1132,9 +1224,11 @@ export async function sendAiReplyToInbound(input: {
   const gate = await canAiTextLead(lead);
   if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason };
 
+  const slots = await loadBookingSlots();
+
   const claude = await callClaude({
     system: systemPrompt(),
-    user: await buildUserPrompt(lead, "reply", input.inboundText),
+    user: await buildUserPrompt(lead, "reply", input.inboundText, slots),
   });
 
   if (claude.ok === false) {
@@ -1145,12 +1239,17 @@ export async function sendAiReplyToInbound(input: {
 
   const decision = claude.decision;
   let body = sanitizeCustomerSms(decision.reply_text);
-  if (body && decision.include_book_link && !body.includes("http")) {
-    body = `${body}\n${BOOK_LINK_CTA_LINE}`;
+  // Prefer real slots over calendar URL when we have them.
+  if (slots.length > 0 && decision.include_book_link) {
+    body = stripBookLinkIfNotRequested(body, false);
+  } else {
+    if (body && decision.include_book_link && !body.includes("http")) {
+      body = `${body}\n${BOOK_LINK_CTA_LINE}`;
+    }
+    body = stripBookLinkIfNotRequested(body, decision.include_book_link);
+    body = ensureBookAppointmentFraming(body);
+    body = ensureBookLinkInvite(body);
   }
-  body = stripBookLinkIfNotRequested(body, decision.include_book_link);
-  body = ensureBookAppointmentFraming(body);
-  body = ensureBookLinkInvite(body);
 
   if (decision.stop_ai && !body.trim()) {
     await applyDecision(lead, decision);
@@ -1182,6 +1281,18 @@ export async function sendAiReplyToInbound(input: {
   await applyDecision(lead, decision);
   if (lead.status === "new") {
     await updateLeadCrm(lead.id, { status: "engaging" });
+  }
+
+  // Book real calendar slot when the lead confirmed a time.
+  const { matchSlotFromReply } = await import("./crmCalendar.js");
+  const matched =
+    (decision.confirmed_slot_start &&
+      slots.find((s) => s.start === decision.confirmed_slot_start)) ||
+    matchSlotFromReply(input.inboundText, slots);
+  if (matched) {
+    await completeAiBooking({ lead, slot: matched, env: input.env }).catch((err) =>
+      console.warn("[aiSms] booking completion failed", err),
+    );
   }
 
   // Fire-and-forget — never delays the reply
