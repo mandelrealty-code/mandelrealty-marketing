@@ -18,7 +18,7 @@ import {
   writeStoredAdminMode,
   type AdminProductMode,
 } from "./clients/mode";
-import { emptyAdminRoute, useAdminRoute, type AdminRoute } from "../lib/adminRoute";
+import { emptyAdminRoute, useAdminRoute, type AdminRoute, type CrmTab } from "../lib/adminRoute";
 import { ModeSwitcher, MrgMark } from "./clients/ui";
 import { DraftCard, type PendingDraft } from "./crm/DraftCard";
 import { LeadSaleBlock, type LeadOnboarding } from "./crm/LeadSale";
@@ -90,7 +90,7 @@ type KnowledgeDoc = {
   created_at: string;
 };
 
-type Tab = "contacts" | "knowledge" | "settings";
+type Tab = CrmTab;
 
 const STAGE_LABEL: Record<string, string> = {
   own_ready: "Owns property — ready",
