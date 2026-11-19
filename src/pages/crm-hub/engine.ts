@@ -374,6 +374,18 @@ function aiState(l) {
   return 'off';
 }
 const callbackPhone = () => String((S.settings && S.settings.operator_callback_phone) || '').trim();
+const activeCallerPhone = () => String((S.settings && S.settings.active_caller_phone) || '').trim();
+/** Number that rings first: active_caller_phone, else operator_callback_phone. */
+const ringingPhone = () => activeCallerPhone() || callbackPhone();
+function samePhone(a, b) {
+  const x = digitsOf(a).replace(/^1(?=\d{10}$)/, '');
+  const y = digitsOf(b).replace(/^1(?=\d{10}$)/, '');
+  return Boolean(x && y && x === y);
+}
+function teamCallers() {
+  const list = (host.data && Array.isArray(host.data.teamCallers)) ? host.data.teamCallers : [];
+  return list.filter((c) => c && String(c.phone || '').trim());
+}
 function D(l) {
   if (!S.ld[l.id]) S.ld[l.id] = { notes: formatNotesForDisplay(l.notes || ''), callNotes: l.call_notes || '', whatsNext: l.whats_next || '', booked: l.booked_by || '', closed: l.closed_by || '', referred: l.referred_by || '' };
   return S.ld[l.id];
@@ -709,7 +721,7 @@ function stageBlock(l) {
 const notSet = (v, w = 'Not set') => v ? esc(v) : `<span class="meta">${w}</span>`;
 function contactBlock(l) {
   const phoneOk = phoneUsable(l.phone);
-  const op = callbackPhone();
+  const op = ringingPhone();
   let phone;
   if (S.phoneEdit != null) phone = `<div class="phedit"><input class="input focus" type="tel" inputmode="tel" data-k="phoneEdit" value="${esc(S.phoneEdit)}" placeholder="Phone number" aria-label="Phone number"><button class="btn sm primary" data-act="savePhone" ${isBusy('save') ? 'disabled' : ''}>Save</button><button class="btn sm ghost" data-act="cancelPhone">Cancel</button></div>`;
   else if (phoneOk) phone = `<span class="phv">${esc(fmtPhone(l.phone))}<button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button><button class="iconbtn" data-act="editPhone" title="Edit" aria-label="Edit phone">${ic('edit', 'xs')}</button></span>`;
@@ -731,14 +743,15 @@ function contactBlock(l) {
     <div class="two" style="margin-top:10px">
       <a class="btn ${tel ? '' : 'dis'}" ${tel ? `href="${tel}"` : 'aria-disabled="true" tabindex="-1"'}>${ic('phone', 'sm')}Dial from this phone</a>
       <button class="btn ${canCall ? 'primary' : ''}" data-act="crmCall" ${canCall ? '' : 'disabled'}>${ic('rec', 'sm')}${isBusy('call') ? 'Starting…' : preDone ? 'CRM call again' : 'CRM call'}</button></div>
-    ${phoneOk && op ? `<div class="meta" style="margin-top:6px">${preDone ? 'Rings your callback phone first, then connects the lead. No new text.' : 'CRM call texts the lead once, rings your callback phone first, then the lead. Calls are recorded.'}</div>` : ''}
+    ${phoneOk && op ? `<div class="meta" style="margin-top:6px">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'CRM call texts the lead once, rings the selected phone first, then the lead. Calls are recorded.'}</div>` : ''}
     ${S.callMsg ? `<div class="okbox">${ic('phone', 'sm')}<span>${esc(S.callMsg)}</span></div>` : ''}
-    ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Set your callback phone in Settings first.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
-    ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Callback is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
+    ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Choose whose phone rings first in Settings.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
+    ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Caller is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
     ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
 }
 function callHostData() {
-  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, callRecordingId: null, activeCall: null };
+  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, callRecordingId: null, teamCallers: [], activeCall: null };
+  if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
   return host.data;
 }
 const fmtCallClock = (secs) => {
@@ -961,13 +974,22 @@ function settingsView() {
     ${set.pErr ? `<div class="hint bad">${ic('alert', 'xs')}${esc(set.pErr)}</div>` : ''}
     ${set.pMsg ? `<div class="okbox">${ic('check', 'sm')}<span>${esc(set.pMsg)}</span></div>` : ''}
     <div class="paste-actions"><button class="btn sm${pasteDisabled ? ' dis' : ''}" data-act="pastePreview" ${pasteDisabled ? 'disabled' : ''}>${ic('eye', 'xs')}Preview</button><button class="btn primary sm${pasteDisabled ? ' dis' : ''}" data-act="pasteImport" ${pasteDisabled ? 'disabled' : ''}>${ic('plus', 'sm')}${pBusy ? 'Working…' : 'Import lead'}</button></div></div></div>`;
-  const op = callbackPhone();
-  const saveOpDisabled = isBusy('op') || set.op.trim() === op;
+  const active = activeCallerPhone();
+  const callers = teamCallers();
+  const matched = callers.find((c) => samePhone(c.phone, active));
+  const customMode = !matched;
+  const selectVal = matched ? String(matched.phone) : '__custom__';
+  const callerOpts = [
+    ...callers.map((c) => `<option value="${esc(c.phone)}" ${samePhone(c.phone, selectVal) ? 'selected' : ''}>${esc(c.name)} · ${esc(fmtPhone(c.phone))}</option>`),
+    `<option value="__custom__" ${customMode ? 'selected' : ''}>Custom number</option>`,
+  ].join('');
+  const displayOp = customMode ? (set.opDirty ? set.op : (active || callbackPhone())) : (matched ? matched.phone : set.op);
+  const saveOpDisabled = isBusy('op') || !customMode || set.op.trim() === active;
   const sCalls = `<div class="card"><div class="cardhead"><h3>${ic('phone', 'sm')}CRM calls</h3></div><div class="cardbody" style="display:flex;flex-direction:column;gap:12px">
-    <div class="field"><label for="ringFirst">Whose phone rings first</label><select id="ringFirst" class="input" aria-describedby="ringFirstHint"><option>The callback phone below</option></select><div class="hint" id="ringFirstHint">Whoever answers the callback phone is connected to the lead.</div></div>
-    <div class="field"><label for="opPhone">Callback phone</label><input id="opPhone" class="input" type="tel" inputmode="tel" autocomplete="tel" data-k="set.op" value="${esc(set.op)}" placeholder="Business line or your cell"><div class="hint">Rings first, then connects to the lead. Calls are recorded. Don’t use the Twilio SMS number.</div></div>
-    ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>This is the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
-    <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px">${set.opMsg ? `<span class="meta">${esc(set.opMsg)}</span>` : ''}<button class="btn primary sm${saveOpDisabled ? ' dis' : ''}" data-act="saveOp" ${saveOpDisabled ? 'disabled' : ''}>${isBusy('op') ? 'Saving…' : 'Save'}</button></div></div></div>`;
+    <div class="field"><label for="ringFirst">Whose phone rings first</label><select id="ringFirst" class="input" data-sel="ringFirst" aria-describedby="ringFirstHint">${callerOpts}</select><div class="hint" id="ringFirstHint">Twilio rings this phone first, then connects the lead. Add numbers on the OPS Employees roster.</div></div>
+    ${customMode ? `<div class="field"><label for="opPhone">Custom number</label><input id="opPhone" class="input" type="tel" inputmode="tel" autocomplete="tel" data-k="set.op" value="${esc(displayOp)}" placeholder="Business line or your cell"><div class="hint">Rings first, then connects to the lead. Calls are recorded. Don’t use the Twilio SMS number.</div></div>` : ''}
+    ${isTwilioSender(customMode ? displayOp : active) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>This is the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
+    ${customMode ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px">${set.opMsg ? `<span class="meta">${esc(set.opMsg)}</span>` : ''}<button class="btn primary sm${saveOpDisabled ? ' dis' : ''}" data-act="saveOp" ${saveOpDisabled ? 'disabled' : ''}>${isBusy('op') ? 'Saving…' : 'Save'}</button></div>` : (set.opMsg ? `<div class="meta">${esc(set.opMsg)}</div>` : '')}</div></div>`;
   const recips = Array.isArray(st.lead_notify_recipients) && st.lead_notify_recipients.length ? st.lead_notify_recipients
     : String(st.lead_notify_phone || '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean).map((phone, i) => ({ id: `legacy_${i}_${phone}`, name: '', phone, welcome_sent_at: null }));
   const nb = isBusy('notify');
@@ -1309,7 +1331,9 @@ async function loadSettings() {
   try {
     const data = await host.loadSettings();
     S.settings = data || {};
-    if (!S.set.opDirty) S.set.op = String(S.settings.operator_callback_phone || '').trim();
+    if (!S.set.opDirty) {
+      S.set.op = String(S.settings.active_caller_phone || S.settings.operator_callback_phone || '').trim();
+    }
   } catch (e) {
     if (!S.settings) S.settings = null;
   }
@@ -1777,15 +1801,40 @@ async function patchSettings(body, busyKey, okMsg) {
     setBusy(busyKey, false);
   }
 }
-async function saveOp() {
-  const data = await patchSettings({ operator_callback_phone: S.set.op.trim() }, 'op');
-  if (data) {
-    S.set.op = String(data.operator_callback_phone ?? S.set.op).trim();
-    S.settings.operator_callback_phone = S.set.op;
-    S.set.opDirty = false; S.set.opMsg = 'Saved';
+async function saveCallerPhone(phone, busyKey = 'op') {
+  setBusy(busyKey, true);
+  S.set.opMsg = '';
+  try {
+    const data = await host.act('saveCrmSettings', { active_caller_phone: String(phone || '').trim() });
+    S.settings = { ...(S.settings || {}), ...(data || {}) };
+    const saved = String(data.active_caller_phone ?? phone ?? '').trim();
+    S.settings.active_caller_phone = saved;
+    S.set.op = saved;
+    S.set.opDirty = false;
+    S.set.opMsg = 'Saved';
     setTimeout(() => { S.set.opMsg = ''; if (S.tab === 'settings') renderMain(); }, 1600);
     renderMain();
+    return data;
+  } catch (e) {
+    toast(errMsg(e, 'Could not save caller phone'), 'bad');
+    return null;
+  } finally {
+    setBusy(busyKey, false);
   }
+}
+async function saveOp() {
+  return saveCallerPhone(S.set.op.trim(), 'op');
+}
+async function selectRingFirst(v) {
+  if (v === '__custom__') {
+    S.set.opDirty = true;
+    if (!S.set.op.trim()) S.set.op = activeCallerPhone() || callbackPhone();
+    renderMain();
+    const t = root.querySelector('#opPhone');
+    if (t) t.focus();
+    return;
+  }
+  await saveCallerPhone(v, 'op');
 }
 async function notifyAdd(name, phone) {
   const data = await patchSettings({ action: 'add_notify_recipient', name, phone }, 'notify');
@@ -1991,7 +2040,7 @@ function onInput(e) {
     return;
   }
   if (k === 'cmd.q') { S.cmd.act = 0; refreshCmd(); return; }
-  if (k === 'set.op') { S.set.opDirty = true; const b = root.querySelector('[data-act="saveOp"]'); if (b) b.disabled = isBusy('op') || t.value.trim() === callbackPhone(); return; }
+  if (k === 'set.op') { S.set.opDirty = true; const b = root.querySelector('[data-act="saveOp"]'); if (b) b.disabled = isBusy('op') || t.value.trim() === activeCallerPhone(); return; }
   if (k === 'set.paste') { root.querySelectorAll('[data-act="pastePreview"],[data-act="pasteImport"]').forEach((b) => { b.disabled = isBusy('paste') || !t.value.trim(); }); return; }
   if (k === 'set.nPhone') { const b = root.querySelector('[data-act="notifyAdd"]'); if (b) b.disabled = isBusy('notify') || !t.value.trim(); return; }
   if (k === 'set.uCode') { const b = root.querySelector('[data-act="createCode"]'); if (b) b.disabled = isBusy('unlock') || t.value.trim().length < 4; return; }
@@ -2008,6 +2057,7 @@ function onChange(e) {
     const k = t.dataset.sel, v = t.value;
     if (k.startsWith('f.')) { S.f[k.slice(2)] = v; renderMain(); if (S.modal && S.modal.kind === 'filters') renderOverlay(); return; }
     if (k === 'nl.source') { S.nl.source = v; keepFocus(renderOverlay); return; }
+    if (k === 'ringFirst') { selectRingFirst(v); return; }
     const l = leadById(S.leadId); if (!l) return;
     if (k === 'status') patchLead({ status: v }, `Stage set to ${STATUS_LABEL[v] || v}`);
     else if (k === 'offerPath') patchLead({ offerPath: v }, `Path set to ${OFFER_PATH_LABEL[v] || v}`);

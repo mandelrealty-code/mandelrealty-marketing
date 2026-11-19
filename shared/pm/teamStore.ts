@@ -17,6 +17,8 @@ export type PmTeamMember = {
   name: string;
   /** What kind of team member this is. Empty until a partner sets it. */
   staff_type: StaffType;
+  /** Optional cell for CRM caller dropdown. */
+  phone: string;
 };
 
 function str(v: unknown): string {
@@ -29,6 +31,7 @@ function mapMember(row: Record<string, unknown>): PmTeamMember {
     created_at: String(row.created_at || ""),
     name: str(row.name),
     staff_type: (STAFF_TYPES as readonly string[]).includes(str(row.staff_type)) ? (str(row.staff_type) as StaffType) : "",
+    phone: str(row.phone),
   };
 }
 
@@ -106,6 +109,52 @@ export async function setPmTeamMemberType(input: { name: string; staff_type: str
   if (error) {
     if (/staff_type/i.test(error.message || "")) {
       throw new Error("Staff type column missing. Run supabase/onboarding_v1.sql in Supabase, then retry.");
+    }
+    throw error;
+  }
+  return mapMember(data as Record<string, unknown>);
+}
+
+/** Team members with a phone set — for the CRM “whose phone rings first” dropdown. */
+export async function listTeamCallers(): Promise<Array<{ name: string; phone: string }>> {
+  const { data, error } = await db()
+    .from("pm_team_members")
+    .select("name, phone")
+    .not("phone", "is", null)
+    .order("name", { ascending: true });
+  if (error) {
+    if (/phone|pm_team_members|relation/i.test(error.message || "")) {
+      throw new Error(
+        "Team phone column missing. Run supabase/crm_caller_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw error;
+  }
+  return (data ?? [])
+    .map((r) => ({
+      name: str((r as Record<string, unknown>).name),
+      phone: str((r as Record<string, unknown>).phone),
+    }))
+    .filter((r) => r.phone);
+}
+
+/** Saves a phone number on a roster row (CRM caller dropdown). */
+export async function setPmTeamMemberPhone(input: {
+  id: string;
+  phone: string;
+}): Promise<PmTeamMember> {
+  const id = str(input.id);
+  if (!id) throw new Error("id required.");
+  const phone = str(input.phone);
+  const { data, error } = await db()
+    .from("pm_team_members")
+    .update({ phone: phone || null })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) {
+    if (/phone/i.test(error.message || "")) {
+      throw new Error("Phone column missing. Run supabase/crm_caller_v1.sql in Supabase, then retry.");
     }
     throw error;
   }

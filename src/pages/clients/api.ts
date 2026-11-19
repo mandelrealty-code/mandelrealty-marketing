@@ -57,6 +57,8 @@ export type TeamMemberRow = {
   id: string;
   created_at: string;
   name: string;
+  staff_type?: string;
+  phone?: string;
 };
 
 export type PropertyRow = {

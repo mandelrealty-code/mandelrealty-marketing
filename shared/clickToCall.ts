@@ -1,7 +1,7 @@
 /**
  * CRM click-to-call: pre-call SMS → dial operator → bridge to lead → record.
  */
-import { getCrmSettings } from "./crmSettings.js";
+import { getActiveCallerPhone } from "./crmSettings.js";
 import {
   isNonClientCompanyPhone,
   isTwilioConfigured,
@@ -85,9 +85,8 @@ export async function startClickToCall(input: {
     };
   }
 
-  const settings = await getCrmSettings();
   const operatorPhone = toE164(
-    (input.operatorPhone || settings.operator_callback_phone || "").trim(),
+    (input.operatorPhone || (await getActiveCallerPhone()) || "").trim(),
   );
   if (!operatorPhone) {
     return {

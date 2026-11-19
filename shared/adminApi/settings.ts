@@ -155,11 +155,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true });
     }
 
+    async function normalizeCallerPhone(
+      rawIn: string,
+      label: string,
+    ): Promise<{ ok: true; phone: string } | { ok: false; error: string }> {
+      const { toE164, isTwilioSenderPhone } = await import("../followUpSequences.js");
+      const raw = rawIn.trim();
+      if (!raw) return { ok: true, phone: "" };
+      const e164 = toE164(raw);
+      if (!e164) {
+        return { ok: false, error: `Enter a valid CA/US phone number for the ${label}.` };
+      }
+      if (isTwilioSenderPhone(e164)) {
+        return {
+          ok: false,
+          error:
+            "Callback cannot be the Twilio SMS/voice number. Use the MRG business line (647-381-7325) or a personal cell.",
+        };
+      }
+      return { ok: true, phone: e164 };
+    }
+
+    if (body.action === "saveCrmSettings") {
+      const patch: { active_caller_phone?: string; operator_callback_phone?: string } = {};
+      if (typeof body.active_caller_phone === "string") {
+        const n = await normalizeCallerPhone(body.active_caller_phone, "caller");
+        if (!n.ok) return res.status(400).json({ error: n.error });
+        patch.active_caller_phone = n.phone;
+      }
+      if (typeof body.operator_callback_phone === "string") {
+        const n = await normalizeCallerPhone(body.operator_callback_phone, "callback");
+        if (!n.ok) return res.status(400).json({ error: n.error });
+        patch.operator_callback_phone = n.phone;
+      }
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ error: "Provide active_caller_phone or operator_callback_phone." });
+      }
+      const settings = await updateCrmSettings(patch);
+      return res.status(200).json({
+        ok: true,
+        ...settingsPayload(settings),
+      });
+    }
+
     const patch: {
       ai_responses_enabled?: boolean;
       lead_notify_sms_enabled?: boolean;
       lead_notify_phone?: string;
       operator_callback_phone?: string;
+      active_caller_phone?: string;
     } = {};
 
     if (typeof body.ai_responses_enabled === "boolean") {
@@ -172,31 +216,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       patch.lead_notify_phone = body.lead_notify_phone;
     }
     if (typeof body.operator_callback_phone === "string") {
-      const { toE164, isTwilioSenderPhone } = await import("../followUpSequences.js");
-      const raw = body.operator_callback_phone.trim();
-      if (!raw) {
-        patch.operator_callback_phone = "";
-      } else {
-        const e164 = toE164(raw);
-        if (!e164) {
-          return res.status(400).json({
-            error: "Enter a valid CA/US phone number for the callback.",
-          });
-        }
-        if (isTwilioSenderPhone(e164)) {
-          return res.status(400).json({
-            error:
-              "Callback cannot be the Twilio SMS/voice number. Use the MRG business line (647-381-7325) or a personal cell.",
-          });
-        }
-        patch.operator_callback_phone = e164;
-      }
+      const n = await normalizeCallerPhone(body.operator_callback_phone, "callback");
+      if (!n.ok) return res.status(400).json({ error: n.error });
+      patch.operator_callback_phone = n.phone;
+    }
+    if (typeof body.active_caller_phone === "string") {
+      const n = await normalizeCallerPhone(body.active_caller_phone, "caller");
+      if (!n.ok) return res.status(400).json({ error: n.error });
+      patch.active_caller_phone = n.phone;
     }
 
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({
         error:
-          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, remove_notify_recipient, create_unlock_code, or save_welcome_templates.",
+          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, active_caller_phone, add_notify_recipient, remove_notify_recipient, create_unlock_code, or save_welcome_templates.",
       });
     }
 

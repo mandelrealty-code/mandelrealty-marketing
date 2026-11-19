@@ -152,8 +152,10 @@ import {
 import {
   createPmTeamMember,
   setPmTeamMemberType,
+  setPmTeamMemberPhone,
   deletePmTeamMember,
   listPmTeamMembers,
+  listTeamCallers,
 } from "../pm/teamStore.js";
 import {
   createOrRefreshStaffInvite,
@@ -583,6 +585,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "team_members") {
         const members = await listPmTeamMembers();
         return res.status(200).json({ members });
+      }
+      if (resource === "team_callers") {
+        const callers = await listTeamCallers();
+        return res.status(200).json({ callers });
       }
       if (resource === "staff_users") {
         const users = await listStaffUsers();
@@ -1756,6 +1762,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (resource === "team_members") {
         if (op === "set_type") {
           const member = await setPmTeamMemberType({ name: str(body.name), staff_type: str(body.staff_type) });
+          return res.status(200).json({ member });
+        }
+        if (op === "set_phone") {
+          const member = await setPmTeamMemberPhone({ id: str(body.id), phone: str(body.phone) });
           return res.status(200).json({ member });
         }
         if (op === "create") {

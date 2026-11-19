@@ -25,6 +25,8 @@ export type CrmSettings = {
   lead_notify_recipients: LeadNotifyRecipient[];
   /** Partner cell for CRM click-to-call (Twilio dials this first). */
   operator_callback_phone: string;
+  /** Number Twilio calls first when CRM Call is clicked. Empty = fall back to operator_callback_phone. */
+  active_caller_phone: string;
   welcome_message_templates: WelcomeTemplate[];
   updated_at: string | null;
 };
@@ -35,15 +37,19 @@ const DEFAULT: CrmSettings = {
   lead_notify_phone: "",
   lead_notify_recipients: [],
   operator_callback_phone: "",
+  active_caller_phone: "",
   welcome_message_templates: [],
   updated_at: null,
 };
 
 const SETTINGS_SELECT =
-  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, welcome_message_templates, updated_at";
+  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, active_caller_phone, welcome_message_templates, updated_at";
 
 const SETTINGS_SELECT_WITHOUT_WELCOME =
-  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, updated_at";
+  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, active_caller_phone, updated_at";
+
+const SETTINGS_SELECT_WITHOUT_ACTIVE_CALLER =
+  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, welcome_message_templates, updated_at";
 
 /** Env kill switch always wins when set to "false" / "0" / "off". */
 export function isAiEnvKillSwitchOff(): boolean {
@@ -149,6 +155,10 @@ function mapSettings(data: Record<string, unknown> | null): CrmSettings {
       const raw = String(data.operator_callback_phone ?? "").trim();
       return toE164(raw) || raw;
     })(),
+    active_caller_phone: (() => {
+      const raw = String(data.active_caller_phone ?? "").trim();
+      return toE164(raw) || raw;
+    })(),
     welcome_message_templates: normalizeWelcomeTemplates(
       data.welcome_message_templates,
     ),
@@ -169,6 +179,14 @@ export async function getCrmSettings(): Promise<CrmSettings> {
   if (error || !data) {
     // Migration not applied yet — fall back without notify columns
     if (error) {
+      if (/active_caller_phone/i.test(error.message)) {
+        const { data: midCaller } = await sb
+          .from("crm_settings")
+          .select(SETTINGS_SELECT_WITHOUT_ACTIVE_CALLER)
+          .eq("id", 1)
+          .maybeSingle();
+        if (midCaller) return mapSettings(midCaller as Record<string, unknown>);
+      }
       if (/welcome_message_templates/i.test(error.message)) {
         const { data: midWelcome } = await sb
           .from("crm_settings")
@@ -216,6 +234,7 @@ export type CrmSettingsPatch = {
   lead_notify_phone?: string;
   lead_notify_recipients?: LeadNotifyRecipient[];
   operator_callback_phone?: string;
+  active_caller_phone?: string;
 };
 
 export async function updateCrmSettings(
@@ -267,6 +286,14 @@ export async function updateCrmSettings(
           : current.operator_callback_phone;
       return toE164(raw) || raw;
     })(),
+    active_caller_phone: (() => {
+      const raw =
+        patch.active_caller_phone !== undefined
+          ? patch.active_caller_phone.trim()
+          : current.active_caller_phone;
+      if (!raw) return "";
+      return toE164(raw) || raw;
+    })(),
     welcome_message_templates: current.welcome_message_templates,
   };
 
@@ -278,6 +305,21 @@ export async function updateCrmSettings(
 
   if (error || !data) {
     console.error("[crm_settings] write failed", error?.message);
+    if (error && /active_caller_phone/i.test(error.message)) {
+      const { active_caller_phone: _dropCaller, ...withoutCaller } = row;
+      void _dropCaller;
+      const { data: midCaller, error: midCallerErr } = await sb
+        .from("crm_settings")
+        .upsert(withoutCaller, { onConflict: "id" })
+        .select(SETTINGS_SELECT_WITHOUT_ACTIVE_CALLER)
+        .single();
+      if (!midCallerErr && midCaller) {
+        return {
+          ...mapSettings(midCaller as Record<string, unknown>),
+          active_caller_phone: String(row.active_caller_phone ?? ""),
+        };
+      }
+    }
     if (error && /welcome_message_templates/i.test(error.message)) {
       const { welcome_message_templates: _dropWelcome, ...withoutWelcome } = row;
       void _dropWelcome;
@@ -354,6 +396,15 @@ export async function updateCrmSettings(
 
 export async function setAiResponsesEnabled(enabled: boolean): Promise<CrmSettings> {
   return updateCrmSettings({ ai_responses_enabled: enabled });
+}
+
+/** Number Twilio dials first on CRM Call — active_caller_phone, else operator_callback_phone. */
+export async function getActiveCallerPhone(): Promise<string> {
+  const settings = await getCrmSettings();
+  const active = (settings.active_caller_phone || "").trim();
+  if (active) return toE164(active) || active;
+  const fallback = (settings.operator_callback_phone || "").trim();
+  return toE164(fallback) || fallback;
 }
 
 /** True when global AI is on and env kill switch is not off. */

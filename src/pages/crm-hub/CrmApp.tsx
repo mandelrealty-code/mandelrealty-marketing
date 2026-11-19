@@ -123,6 +123,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         callTranscript: null as string | null,
         callRecordingUrl: null as string | null,
         callRecordingId: null as string | null,
+        teamCallers: [] as Array<{ name: string; phone: string }>,
         activeCall: null as null | {
           callId: string;
           leadId: string;
@@ -183,7 +184,16 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
             : null;
         return data;
       },
-      loadSettings: () => call("/api/admin/settings"),
+      loadSettings: async () => {
+        const [settings, callersRes] = await Promise.all([
+          call("/api/admin/settings"),
+          call<{ callers?: Array<{ name: string; phone: string }> }>("/api/admin/pm?resource=team_callers").catch(() => ({ callers: [] })),
+        ]);
+        host.data.teamCallers = Array.isArray(callersRes.callers)
+          ? callersRes.callers.filter((c) => c && typeof c.name === "string" && typeof c.phone === "string" && c.phone.trim())
+          : [];
+        return settings;
+      },
       loadDocs: () => call("/api/admin/knowledge"),
       loadDoc: (id: string) => call(`/api/admin/knowledge?id=${encodeURIComponent(id)}`),
 
