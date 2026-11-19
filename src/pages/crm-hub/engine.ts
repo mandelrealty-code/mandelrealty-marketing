@@ -333,7 +333,7 @@ const S = {
   nl: null,
   ed: { id: null, title: '', text: '', busy: false, err: '', loading: false },
   kUp: { title: '', text: '' },
-  set: { op: '', opDirty: false, opMsg: '', nName: '', nPhone: '', nMsg: '', uCode: '', uLabel: '', uMsg: '', paste: '', preview: null, pMsg: '', pErr: '' },
+  set: { op: '', opDirty: false, opMsg: '', callerSel: null, nName: '', nPhone: '', nMsg: '', uCode: '', uLabel: '', uMsg: '', paste: '', preview: null, pMsg: '', pErr: '' },
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
 };
@@ -975,21 +975,27 @@ function settingsView() {
     ${set.pMsg ? `<div class="okbox">${ic('check', 'sm')}<span>${esc(set.pMsg)}</span></div>` : ''}
     <div class="paste-actions"><button class="btn sm${pasteDisabled ? ' dis' : ''}" data-act="pastePreview" ${pasteDisabled ? 'disabled' : ''}>${ic('eye', 'xs')}Preview</button><button class="btn primary sm${pasteDisabled ? ' dis' : ''}" data-act="pasteImport" ${pasteDisabled ? 'disabled' : ''}>${ic('plus', 'sm')}${pBusy ? 'Working…' : 'Import lead'}</button></div></div></div>`;
   const active = activeCallerPhone();
+  const callback = callbackPhone();
   const callers = teamCallers();
-  const matched = callers.find((c) => samePhone(c.phone, active));
-  const customMode = !matched;
-  const selectVal = matched ? String(matched.phone) : '__custom__';
+  // Only match active_caller_phone to a roster row. No active (or no match) → Custom.
+  const matchedFromActive = active ? (callers.find((c) => samePhone(c.phone, active)) || null) : null;
+  const callerSel = set.callerSel;
+  const customMode = callerSel === 'custom' || (callerSel == null && !matchedFromActive);
+  const selectVal = customMode
+    ? '__custom__'
+    : String(callerSel || (matchedFromActive && matchedFromActive.phone) || '__custom__');
   const callerOpts = [
     ...callers.map((c) => `<option value="${esc(c.phone)}" ${samePhone(c.phone, selectVal) ? 'selected' : ''}>${esc(c.name)} · ${esc(fmtPhone(c.phone))}</option>`),
     `<option value="__custom__" ${customMode ? 'selected' : ''}>Custom number</option>`,
   ].join('');
-  const displayOp = customMode ? (set.opDirty ? set.op : (active || callbackPhone())) : (matched ? matched.phone : set.op);
-  const saveOpDisabled = isBusy('op') || !customMode || set.op.trim() === active;
+  const displayOp = set.op || (customMode ? (active || callback) : selectVal);
+  const saveOpDisabled = isBusy('op') || !set.opDirty;
+  const warnPhone = customMode ? displayOp : selectVal;
   const sCalls = `<div class="card"><div class="cardhead"><h3>${ic('phone', 'sm')}CRM calls</h3></div><div class="cardbody" style="display:flex;flex-direction:column;gap:12px">
     <div class="field"><label for="ringFirst">Whose phone rings first</label><select id="ringFirst" class="input" data-sel="ringFirst" aria-describedby="ringFirstHint">${callerOpts}</select><div class="hint" id="ringFirstHint">Twilio rings this phone first, then connects the lead. Add numbers on the OPS Employees roster.</div></div>
     ${customMode ? `<div class="field"><label for="opPhone">Custom number</label><input id="opPhone" class="input" type="tel" inputmode="tel" autocomplete="tel" data-k="set.op" value="${esc(displayOp)}" placeholder="Business line or your cell"><div class="hint">Rings first, then connects to the lead. Calls are recorded. Don’t use the Twilio SMS number.</div></div>` : ''}
-    ${isTwilioSender(customMode ? displayOp : active) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>This is the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
-    ${customMode ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px">${set.opMsg ? `<span class="meta">${esc(set.opMsg)}</span>` : ''}<button class="btn primary sm${saveOpDisabled ? ' dis' : ''}" data-act="saveOp" ${saveOpDisabled ? 'disabled' : ''}>${isBusy('op') ? 'Saving…' : 'Save'}</button></div>` : (set.opMsg ? `<div class="meta">${esc(set.opMsg)}</div>` : '')}</div></div>`;
+    ${isTwilioSender(warnPhone) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>This is the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
+    <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px">${set.opMsg ? `<span class="meta">${esc(set.opMsg)}</span>` : ''}<button class="btn primary sm${saveOpDisabled ? ' dis' : ''}" data-act="saveOp" ${saveOpDisabled ? 'disabled' : ''}>${isBusy('op') ? 'Saving…' : 'Save'}</button></div></div></div>`;
   const recips = Array.isArray(st.lead_notify_recipients) && st.lead_notify_recipients.length ? st.lead_notify_recipients
     : String(st.lead_notify_phone || '').split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean).map((phone, i) => ({ id: `legacy_${i}_${phone}`, name: '', phone, welcome_sent_at: null }));
   const nb = isBusy('notify');
@@ -1331,9 +1337,13 @@ async function loadSettings() {
   try {
     const data = await host.loadSettings();
     S.settings = data || {};
-    if (!S.set.opDirty) {
-      S.set.op = String(S.settings.active_caller_phone || S.settings.operator_callback_phone || '').trim();
-    }
+    const active = String(S.settings.active_caller_phone || '').trim();
+    const callback = String(S.settings.operator_callback_phone || '').trim();
+    const callers = teamCallers();
+    const hit = active ? callers.find((c) => samePhone(c.phone, active)) : null;
+    S.set.callerSel = hit ? String(hit.phone) : 'custom';
+    S.set.opDirty = false;
+    S.set.op = active || callback;
   } catch (e) {
     if (!S.settings) S.settings = null;
   }
@@ -1809,7 +1819,10 @@ async function saveCallerPhone(phone, busyKey = 'op') {
     S.settings = { ...(S.settings || {}), ...(data || {}) };
     const saved = String(data.active_caller_phone ?? phone ?? '').trim();
     S.settings.active_caller_phone = saved;
-    S.set.op = saved;
+    const callers = teamCallers();
+    const hit = saved ? callers.find((c) => samePhone(c.phone, saved)) : null;
+    S.set.callerSel = hit ? String(hit.phone) : 'custom';
+    S.set.op = saved || callbackPhone();
     S.set.opDirty = false;
     S.set.opMsg = 'Saved';
     setTimeout(() => { S.set.opMsg = ''; if (S.tab === 'settings') renderMain(); }, 1600);
@@ -1823,18 +1836,29 @@ async function saveCallerPhone(phone, busyKey = 'op') {
   }
 }
 async function saveOp() {
-  return saveCallerPhone(S.set.op.trim(), 'op');
+  const phone =
+    S.set.callerSel === 'custom' || S.set.callerSel == null
+      ? S.set.op.trim()
+      : String(S.set.callerSel || '').trim();
+  return saveCallerPhone(phone, 'op');
 }
-async function selectRingFirst(v) {
+function selectRingFirst(v) {
   if (v === '__custom__') {
+    S.set.callerSel = 'custom';
+    if (S.settings) S.settings.active_caller_phone = '';
     S.set.opDirty = true;
-    if (!S.set.op.trim()) S.set.op = activeCallerPhone() || callbackPhone();
+    if (!S.set.op.trim()) S.set.op = callbackPhone();
     renderMain();
     const t = root.querySelector('#opPhone');
     if (t) t.focus();
     return;
   }
-  await saveCallerPhone(v, 'op');
+  S.set.callerSel = v;
+  if (S.settings) S.settings.active_caller_phone = v;
+  S.set.op = v;
+  S.set.opDirty = true;
+  S.set.opMsg = '';
+  renderMain();
 }
 async function notifyAdd(name, phone) {
   const data = await patchSettings({ action: 'add_notify_recipient', name, phone }, 'notify');
@@ -2040,7 +2064,7 @@ function onInput(e) {
     return;
   }
   if (k === 'cmd.q') { S.cmd.act = 0; refreshCmd(); return; }
-  if (k === 'set.op') { S.set.opDirty = true; const b = root.querySelector('[data-act="saveOp"]'); if (b) b.disabled = isBusy('op') || t.value.trim() === activeCallerPhone(); return; }
+  if (k === 'set.op') { S.set.opDirty = true; const b = root.querySelector('[data-act="saveOp"]'); if (b) b.disabled = isBusy('op'); return; }
   if (k === 'set.paste') { root.querySelectorAll('[data-act="pastePreview"],[data-act="pasteImport"]').forEach((b) => { b.disabled = isBusy('paste') || !t.value.trim(); }); return; }
   if (k === 'set.nPhone') { const b = root.querySelector('[data-act="notifyAdd"]'); if (b) b.disabled = isBusy('notify') || !t.value.trim(); return; }
   if (k === 'set.uCode') { const b = root.querySelector('[data-act="createCode"]'); if (b) b.disabled = isBusy('unlock') || t.value.trim().length < 4; return; }
