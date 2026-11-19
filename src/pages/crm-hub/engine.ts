@@ -740,9 +740,9 @@ function contactBlock(l) {
       <dt>Permit status</dt><dd>${notSet(PERMIT_LABEL[l.permit_status] || l.permit_status, 'Unknown')}</dd>
       <dt>Source</dt><dd>${l.source ? esc(sourceLabel(l.source)) : '<span class="meta">Not set</span>'}</dd>
       <dt>Added</dt><dd>${notSet(shortDate(l.created_at))}</dd></dl>
-    <div class="two" style="margin-top:10px">
-      <a class="btn ${tel ? '' : 'dis'}" ${tel ? `href="${tel}"` : 'aria-disabled="true" tabindex="-1"'}>${ic('phone', 'sm')}Dial from this phone</a>
-      <button class="btn ${canCall ? 'primary' : ''}" data-act="crmCall" ${canCall ? '' : 'disabled'}>${ic('rec', 'sm')}${isBusy('call') ? 'Starting…' : preDone ? 'CRM call again' : 'CRM call'}</button></div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+      <a class="btn ${tel ? '' : 'dis'}" style="width:100%" ${tel ? `href="${tel}"` : 'aria-disabled="true" tabindex="-1"'}>${ic('phone', 'sm')}Dial from this phone</a>
+      <button class="btn ${canCall ? 'primary' : ''}" style="width:100%" data-act="crmCall" ${canCall ? '' : 'disabled'}>${ic('rec', 'sm')}${isBusy('call') ? 'Starting…' : preDone ? 'CRM call again' : 'CRM call'}</button></div>
     ${phoneOk && op ? `<div class="meta" style="margin-top:6px">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'CRM call texts the lead once, rings the selected phone first, then the lead. Calls are recorded.'}</div>` : ''}
     ${S.callMsg ? `<div class="okbox">${ic('phone', 'sm')}<span>${esc(S.callMsg)}</span></div>` : ''}
     ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Choose whose phone rings first in Settings.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
