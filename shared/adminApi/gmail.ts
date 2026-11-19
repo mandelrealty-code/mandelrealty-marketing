@@ -13,7 +13,7 @@ const REDIRECT = "https://admin.mandelrealtygroup.com/api/admin/gmail/callback";
 // Calendar: calendar.app.created lets Copilot make the "Mandel Tasks" calendar and manage only the
 // calendars it created; it can't read or change any other calendar in the account.
 const SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar.app.created";
-const BACK = "https://admin.mandelrealtygroup.com/copilot";
+const BACK = "https://admin.mandelrealtygroup.com/settings";
 
 type GmailLogLine = Record<string, string | number | boolean | null>;
 let gmailLogger: ((line: GmailLogLine) => void) | null = null;

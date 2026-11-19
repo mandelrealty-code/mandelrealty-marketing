@@ -228,6 +228,50 @@ export async function getCrmSettings(): Promise<CrmSettings> {
   return mapSettings(data as Record<string, unknown>);
 }
 
+/** Env key wins; otherwise the optional crm_settings.pricelabs_api_key column. */
+export async function getPricelabsApiKey(): Promise<string> {
+  const fromEnv = process.env.PRICELABS_API_KEY?.trim() ?? "";
+  if (fromEnv) return fromEnv;
+  const sb = getSupabaseAdmin();
+  if (!sb) return "";
+  const { data, error } = await sb
+    .from("crm_settings")
+    .select("pricelabs_api_key")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) {
+    if (/pricelabs_api_key|column/i.test(error.message)) return "";
+    console.warn("[crm_settings] pricelabs read failed", error.message);
+    return "";
+  }
+  return typeof data?.pricelabs_api_key === "string" ? data.pricelabs_api_key.trim() : "";
+}
+
+export async function savePricelabsApiKey(
+  apiKey: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, error: "Supabase is not configured." };
+  const { error } = await sb.from("crm_settings").upsert(
+    {
+      id: 1,
+      pricelabs_api_key: apiKey.trim(),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "id" },
+  );
+  if (error) {
+    if (/pricelabs_api_key|column/i.test(error.message)) {
+      return {
+        ok: false,
+        error: "Run supabase/crm_connectors_v1.sql in Supabase first.",
+      };
+    }
+    return { ok: false, error: error.message || "Could not save PriceLabs key." };
+  }
+  return { ok: true };
+}
+
 export type CrmSettingsPatch = {
   ai_responses_enabled?: boolean;
   lead_notify_sms_enabled?: boolean;

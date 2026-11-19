@@ -37,7 +37,9 @@ import {
 } from "./leadStore.js";
 import {
   getCrmSettings,
+  getPricelabsApiKey,
   isAiEnvKillSwitchOff,
+  savePricelabsApiKey,
   setAiResponsesEnabled,
   updateCrmSettings,
 } from "./crmSettings.js";
@@ -704,6 +706,57 @@ export async function handleDevApi(
     }
     if (!isSupabaseConfigured()) {
       json(res, 503, { error: "Supabase is not configured." });
+      return true;
+    }
+    const settingsQs = new URL(req.url ?? "", "http://localhost").searchParams;
+    const settingsOp = settingsQs.get("op") || "";
+    if (method === "GET" && settingsOp === "connector_status") {
+      const { gmailStatus } = await import("./adminApi/gmail.js");
+      const { isHospitableConfigured } = await import("./pm/clientStore.js");
+      const [gmail, hospitableConnected, pricelabsKey] = await Promise.all([
+        gmailStatus().catch(() => ({ state: "not_connected" as const, email: "" })),
+        isHospitableConfigured().catch(() => false),
+        getPricelabsApiKey().catch(() => ""),
+      ]);
+      const twilioSid = Boolean(process.env.TWILIO_ACCOUNT_SID?.trim());
+      const twilioNumber =
+        process.env.TWILIO_PHONE_NUMBER?.trim() || "(289) 672-4026";
+      let hospitableCount: number | undefined;
+      try {
+        const { hospitableCard } = await import("./copilot/hospitableConnection.js");
+        const card = await hospitableCard();
+        if (card.connected && Array.isArray(card.properties)) {
+          hospitableCount = card.properties.length;
+        } else if (card.connected && card.chosenCount > 0) {
+          hospitableCount = card.chosenCount;
+        }
+      } catch {
+        /* optional */
+      }
+      json(res, 200, {
+        gmail: {
+          connected:
+            gmail.state === "connected" || gmail.state === "unverified",
+          expired: gmail.state === "needs_reauth",
+          ...(gmail.email ? { email: gmail.email } : {}),
+        },
+        hospitable: {
+          connected: hospitableConnected,
+          ...(hospitableCount != null ? { count: hospitableCount } : {}),
+        },
+        pricelabs: { connected: Boolean(pricelabsKey) },
+        twilio: { connected: twilioSid, number: twilioNumber },
+      });
+      return true;
+    }
+    if (method === "POST" && settingsOp === "save_pricelabs_key") {
+      const body = await readJsonBody(req);
+      const result = await savePricelabsApiKey(String(body.api_key ?? ""));
+      if (!result.ok) {
+        json(res, 400, { error: result.error });
+        return true;
+      }
+      json(res, 200, { ok: true });
       return true;
     }
     if (method === "GET") {

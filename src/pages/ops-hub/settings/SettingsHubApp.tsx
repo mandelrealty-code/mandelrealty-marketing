@@ -8,6 +8,7 @@ import { ConfirmModal, ErrorBanner, Toast, formatHeadDate, useIsPhone } from "..
 import { ConnectHospitableSheet } from "../properties/PropertySheets";
 import { HubSubscriptionsSheet } from "../revenue";
 import {
+  ConnectorsCard,
   CostsCard,
   DefaultsCard,
   HospitableCard,
@@ -16,6 +17,9 @@ import {
   type DefaultField,
 } from "./SettingsCards";
 import { TemplatesCard } from "./TemplatesCard";
+import { Icon } from "../clients/icons";
+
+type SettingsTab = "general" | "connectors";
 
 const FONT = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
 
@@ -65,6 +69,7 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   const [sheet, setSheet] = useState<Sheet>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [tab, setTab] = useState<SettingsTab>("general");
   /** Last values the server confirmed, so blur only saves a real change. */
   const lastSaved = useRef({ comm: "", hst: "" });
 
@@ -290,6 +295,37 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
     />
   ) : null;
 
+  const tabs = (
+    <div className="set-tabs seg" role="tablist" aria-label="Settings sections">
+      <span
+        role="tab"
+        tabIndex={0}
+        className={tab === "general" ? "on" : ""}
+        aria-selected={tab === "general"}
+        onClick={() => setTab("general")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") setTab("general");
+        }}
+      >
+        <Icon name="gear" className="i sm" />
+        General
+      </span>
+      <span
+        role="tab"
+        tabIndex={0}
+        className={tab === "connectors" ? "on" : ""}
+        aria-selected={tab === "connectors"}
+        onClick={() => setTab("connectors")}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") setTab("connectors");
+        }}
+      >
+        <Icon name="link" className="i sm" />
+        Connectors
+      </span>
+    </div>
+  );
+
   const defaultsCard = (
     <DefaultsCard
       commission={commission}
@@ -314,18 +350,48 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   const costsCard = <CostsCard onManage={() => setSheet("costs")} />;
   const templatesCard = <TemplatesCard phone={phone} onError={setError} onToast={setToast} />;
   const logoutCard = <LogoutCard busy={busy} onLogout={() => void logout()} />;
+  const connectorsCard = (
+    <ConnectorsCard
+      hospitableConnected={hospitableConnected}
+      hospitableMcp={hospitableMcp}
+      hospitableLoading={loading}
+      onConnectHospitable={() => setSheet("connect")}
+      onDisconnectHospitable={() => setSheet("disconnect")}
+      onToast={setToast}
+      onError={setError}
+    />
+  );
+
+  const generalPane = phone ? (
+    <>
+      {defaultsCard}
+      {hospCard}
+      {costsCard}
+      {templatesCard}
+      {logoutCard}
+    </>
+  ) : (
+    <div className="pgrid2 fill-grid">
+      <div className="col">
+        {defaultsCard}
+        {hospCard}
+        {costsCard}
+      </div>
+      <div className="col">
+        {templatesCard}
+        {logoutCard}
+      </div>
+    </div>
+  );
 
   const body = phone ? (
     <>
       <div className="ptitle">
         <h1>Settings</h1>
       </div>
+      {tabs}
       {banner}
-      {defaultsCard}
-      {hospCard}
-      {costsCard}
-      {templatesCard}
-      {logoutCard}
+      {tab === "general" ? generalPane : connectorsCard}
     </>
   ) : (
     <>
@@ -336,19 +402,10 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
         </div>
         <div className="headacts" />
       </div>
+      <div className="subnav">{tabs}</div>
       <div className="content" style={{ paddingTop: 16, overflow: "auto" }}>
         {banner}
-        <div className="pgrid2 fill-grid">
-          <div className="col">
-            {defaultsCard}
-            {hospCard}
-            {costsCard}
-          </div>
-          <div className="col">
-            {templatesCard}
-            {logoutCard}
-          </div>
-        </div>
+        {tab === "general" ? generalPane : connectorsCard}
       </div>
     </>
   );
