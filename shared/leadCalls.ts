@@ -18,9 +18,35 @@ export type LeadCallRow = {
   transcript: string | null;
   summary: string | null;
   error: string | null;
+  meta: Record<string, unknown>;
 };
 
+/** In-progress CRM call statuses (before recording / summary). */
+export const ACTIVE_CALL_STATUSES = new Set([
+  "starting",
+  "ringing_operator",
+  "bridging",
+  "operator_answered",
+  "in_call",
+  "transferring",
+  "transfer_connected",
+]);
+
+export function isActiveCallStatus(status: string): boolean {
+  return ACTIVE_CALL_STATUSES.has(String(status || "").toLowerCase());
+}
+
+export function transferStateFromCall(row: LeadCallRow): "connecting" | "connected" | null {
+  if (row.status === "transferring") return "connecting";
+  if (row.status === "transfer_connected") return "connected";
+  return null;
+}
+
 function mapRow(row: Record<string, unknown>): LeadCallRow {
+  const meta =
+    row.meta && typeof row.meta === "object" && !Array.isArray(row.meta)
+      ? (row.meta as Record<string, unknown>)
+      : {};
   return {
     id: String(row.id),
     created_at: String(row.created_at),
@@ -36,6 +62,7 @@ function mapRow(row: Record<string, unknown>): LeadCallRow {
     transcript: (row.transcript as string | null) ?? null,
     summary: (row.summary as string | null) ?? null,
     error: (row.error as string | null) ?? null,
+    meta,
   };
 }
 
@@ -75,6 +102,7 @@ export async function updateLeadCall(
     transcript: string | null;
     summary: string | null;
     error: string | null;
+    meta: Record<string, unknown>;
   }>,
 ): Promise<LeadCallRow | null> {
   const sb = getSupabaseAdmin();

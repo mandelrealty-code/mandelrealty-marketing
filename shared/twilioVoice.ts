@@ -70,6 +70,49 @@ export async function createTwilioCall(input: {
   }
 }
 
+export async function updateTwilioCall(input: {
+  accountSid: string;
+  authToken: string;
+  callSid: string;
+  url?: string;
+  status?: "completed" | "canceled";
+}): Promise<{ ok: boolean; error?: string }> {
+  const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(input.accountSid)}/Calls/${encodeURIComponent(input.callSid)}.json`;
+  const body = new URLSearchParams();
+  if (input.url) {
+    body.set("Url", input.url);
+    body.set("Method", "POST");
+  }
+  if (input.status) body.set("Status", input.status);
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${twilioBasicAuth(input.accountSid, input.authToken)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      message?: string;
+      error_message?: string;
+    };
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: data.message || data.error_message || `Twilio HTTP ${res.status}`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Twilio call update failed",
+    };
+  }
+}
+
 export function xmlEscape(s: string): string {
   return s
     .replace(/&/g, "&amp;")

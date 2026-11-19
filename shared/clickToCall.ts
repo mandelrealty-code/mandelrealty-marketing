@@ -9,13 +9,21 @@ import {
   toE164,
 } from "./followUpSequences.js";
 import { getLeadById, updateLeadCrm } from "./leadStore.js";
-import { createLeadCall, getLatestLeadCallForLead, getLeadCallById, listRecentLeadCalls, updateLeadCall } from "./leadCalls.js";
+import {
+  createLeadCall,
+  getLatestLeadCallForLead,
+  getLeadCallById,
+  isActiveCallStatus,
+  listRecentLeadCalls,
+  updateLeadCall,
+} from "./leadCalls.js";
 import { listSmsForLead, logSmsMessage } from "./smsStore.js";
 import { sendTwilioSms } from "./twilioSms.js";
 import {
   createTwilioCall,
   twilioWebhookBaseUrl,
   twimlResponse,
+  updateTwilioCall,
   xmlEscape,
 } from "./twilioVoice.js";
 
@@ -488,4 +496,180 @@ async function appendCallNoteToLead(
     delaysMin: AI_NUDGE_POST_CALL_DELAYS_MIN,
     allowIfInbound: true,
   }).catch((err) => console.error("[clickToCall] post-call follow-up schedule failed", err));
+}
+
+/** Conference room name for a CRM call (warm transfer / multi-party). */
+export function conferenceNameForCall(callId: string): string {
+  return `mrg-${callId}`;
+}
+
+/** TwiML: join the CRM call conference (operator, lead, or Ryan). */
+export function buildConferenceJoinTwiml(callId: string): string {
+  const name = conferenceNameForCall(callId);
+  return twimlResponse(
+    [
+      `<Say voice="Polly.Joanna">Connecting you now.</Say>`,
+      `<Dial>`,
+      `<Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(name)}</Conference>`,
+      `</Dial>`,
+    ].join(""),
+  );
+}
+
+function transferPhone(): string {
+  return (
+    process.env.CRM_TRANSFER_PHONE?.trim() ||
+    process.env.RYAN_CALLBACK_PHONE?.trim() ||
+    ""
+  );
+}
+
+/**
+ * Warm-ish transfer: move operator + lead into a Twilio Conference, then dial Ryan in.
+ * (Cold fallback if a leg has no CallSid yet — returns an error rather than dropping silently.)
+ */
+export async function transferCrmCall(input: {
+  leadId: string;
+  env: TwilioVoiceEnv;
+}): Promise<{ ok: boolean; error?: string; callId?: string }> {
+  if (!isTwilioConfigured(input.env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const ryan = toE164(transferPhone());
+  if (!ryan) {
+    return {
+      ok: false,
+      error: "Set CRM_TRANSFER_PHONE (Ryan’s cell) in the server env to enable transfer.",
+    };
+  }
+
+  const row = await getLatestLeadCallForLead(input.leadId);
+  if (!row || !isActiveCallStatus(row.status)) {
+    return { ok: false, error: "No active CRM call to transfer." };
+  }
+  if (!row.call_sid) {
+    return { ok: false, error: "Call is still connecting — try again in a moment." };
+  }
+
+  const accountSid = input.env.TWILIO_ACCOUNT_SID!.trim();
+  const authToken = input.env.TWILIO_AUTH_TOKEN!.trim();
+  const from = input.env.TWILIO_PHONE_NUMBER!.trim();
+  const base = twilioWebhookBaseUrl();
+  const confUrl = `${base}/api/twilio/voice?op=conference&callId=${encodeURIComponent(row.id)}`;
+
+  await updateLeadCall(row.id, { status: "transferring" });
+
+  const opMove = await updateTwilioCall({
+    accountSid,
+    authToken,
+    callSid: row.call_sid,
+    url: confUrl,
+  });
+  if (!opMove.ok) {
+    await updateLeadCall(row.id, {
+      status: "in_call",
+      error: opMove.error || "Could not move operator to conference",
+    });
+    return { ok: false, error: opMove.error || "Could not start transfer." };
+  }
+
+  if (row.dial_call_sid) {
+    await updateTwilioCall({
+      accountSid,
+      authToken,
+      callSid: row.dial_call_sid,
+      url: confUrl,
+    }).catch(() => undefined);
+  }
+
+  const ryanCall = await createTwilioCall({
+    accountSid,
+    authToken,
+    to: ryan,
+    from,
+    url: confUrl,
+  });
+  if (!ryanCall.ok || !ryanCall.sid) {
+    await updateLeadCall(row.id, {
+      status: "in_call",
+      error: ryanCall.error || "Could not dial Ryan",
+      meta: { ...(row.meta || {}), transfer_error: ryanCall.error || "dial_failed" },
+    });
+    return { ok: false, error: ryanCall.error || "Could not dial Ryan." };
+  }
+
+  await updateLeadCall(row.id, {
+    status: "transfer_connected",
+    error: null,
+    meta: {
+      ...(row.meta || {}),
+      transfer_call_sid: ryanCall.sid,
+      transfer_to: ryan,
+    },
+  });
+
+  return { ok: true, callId: row.id };
+}
+
+export async function cancelCrmTransfer(input: {
+  leadId: string;
+  env: TwilioVoiceEnv;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!isTwilioConfigured(input.env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const row = await getLatestLeadCallForLead(input.leadId);
+  if (!row) return { ok: false, error: "No active CRM call." };
+
+  const transferSid = String(row.meta?.transfer_call_sid || "").trim();
+  if (transferSid) {
+    await updateTwilioCall({
+      accountSid: input.env.TWILIO_ACCOUNT_SID!.trim(),
+      authToken: input.env.TWILIO_AUTH_TOKEN!.trim(),
+      callSid: transferSid,
+      status: "completed",
+    }).catch(() => undefined);
+  }
+
+  const nextMeta = { ...(row.meta || {}) };
+  delete nextMeta.transfer_call_sid;
+  await updateLeadCall(row.id, {
+    status: isActiveCallStatus(row.status) ? "in_call" : row.status,
+    meta: nextMeta,
+  });
+  return { ok: true };
+}
+
+export async function endCrmCall(input: {
+  leadId: string;
+  env: TwilioVoiceEnv;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!isTwilioConfigured(input.env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const row = await getLatestLeadCallForLead(input.leadId);
+  if (!row || !isActiveCallStatus(row.status)) {
+    return { ok: false, error: "No active CRM call to end." };
+  }
+
+  const accountSid = input.env.TWILIO_ACCOUNT_SID!.trim();
+  const authToken = input.env.TWILIO_AUTH_TOKEN!.trim();
+  const sids = [
+    row.call_sid,
+    row.dial_call_sid,
+    String(row.meta?.transfer_call_sid || "").trim() || null,
+  ].filter(Boolean) as string[];
+
+  for (const callSid of sids) {
+    await updateTwilioCall({
+      accountSid,
+      authToken,
+      callSid,
+      status: "completed",
+    }).catch(() => undefined);
+  }
+
+  await updateLeadCall(row.id, { status: "completed" });
+  await updateLeadCrm(row.lead_id, { aiPaused: false }).catch(() => undefined);
+  return { ok: true };
 }

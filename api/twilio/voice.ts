@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
+  buildConferenceJoinTwiml,
   buildLeadRecordingNoticeTwiml,
   buildOperatorBridgeTwiml,
   handleRecordingReady,
@@ -11,7 +12,7 @@ export const config = { maxDuration: 60 };
 
 /**
  * Single Hobby-plan serverless function for all CRM voice webhooks.
- * Routes via ?op=bridge|notice|status|recording|transcription
+ * Routes via ?op=bridge|notice|conference|status|recording|transcription
  */
 function formParams(req: VercelRequest): URLSearchParams {
   const body = req.body;
@@ -56,6 +57,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     res.setHeader("Content-Type", "text/xml");
     return res.status(200).send(buildLeadRecordingNoticeTwiml());
+  }
+
+  if (op === "conference") {
+    if (req.method !== "POST" && req.method !== "GET") {
+      return res.status(405).send("Method not allowed");
+    }
+    res.setHeader("Content-Type", "text/xml");
+    return res.status(200).send(buildConferenceJoinTwiml(callId));
   }
 
   if (req.method !== "POST") {

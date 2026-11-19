@@ -119,6 +119,17 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
     const patchLead = (body: Data) => call("/api/admin/leads", json("PATCH", body));
 
     const host = {
+      data: {
+        callTranscript: null as string | null,
+        callRecordingUrl: null as string | null,
+        activeCall: null as null | {
+          callId: string;
+          leadId: string;
+          startedAt: string;
+          status?: string;
+          transferState?: "connecting" | "connected" | null;
+        },
+      },
       vocab: {
         STATUS_LABEL,
         STATUS_JOURNEY,
@@ -153,7 +164,23 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       },
 
       loadLeads: (q?: string) => call(`/api/admin/leads${q ? `?q=${encodeURIComponent(q)}` : ""}`),
-      loadFollowups: (leadId: string) => call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`),
+      loadFollowups: async (leadId: string) => {
+        const data = await call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`);
+        host.data.callTranscript = typeof data.callTranscript === "string" ? data.callTranscript : null;
+        host.data.callRecordingUrl = typeof data.callRecordingUrl === "string" ? data.callRecordingUrl : null;
+        const ac = data.activeCall;
+        host.data.activeCall =
+          ac && typeof ac === "object"
+            ? (ac as {
+                callId: string;
+                leadId: string;
+                startedAt: string;
+                status?: string;
+                transferState?: "connecting" | "connected" | null;
+              })
+            : null;
+        return data;
+      },
       loadSettings: () => call("/api/admin/settings"),
       loadDocs: () => call("/api/admin/knowledge"),
       loadDoc: (id: string) => call(`/api/admin/knowledge?id=${encodeURIComponent(id)}`),
@@ -164,7 +191,34 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       sendSms: (id: string, text: string) => patchLead({ id, smsReply: text }),
       draftAction: (id: string, action: "approve" | "discard" | "save", draftId: string, draftBody?: string) =>
         patchLead({ id, draftAction: action, draftId, ...(draftBody !== undefined ? { draftBody } : {}) }),
-      startCall: (id: string) => patchLead({ id, startCall: true }),
+      startCall: async (id: string) => {
+        const data = await patchLead({ id, startCall: true });
+        if (data.activeCall && typeof data.activeCall === "object") {
+          host.data.activeCall = data.activeCall as {
+            callId: string;
+            leadId: string;
+            startedAt: string;
+            status?: string;
+            transferState?: "connecting" | "connected" | null;
+          };
+        } else if (typeof data.callId === "string") {
+          host.data.activeCall = {
+            callId: data.callId,
+            leadId: id,
+            startedAt: new Date().toISOString(),
+            status: "ringing_operator",
+            transferState: null,
+          };
+        }
+        return data;
+      },
+      transferCall: (id: string) => patchLead({ id, transferCall: true, op: "transfer_call" }),
+      cancelTransfer: (id: string) => patchLead({ id, cancelTransfer: true }),
+      endCall: async (id: string) => {
+        const data = await patchLead({ id, endCall: true });
+        host.data.activeCall = null;
+        return data;
+      },
       markBooked: (id: string) => patchLead({ id, markBooked: true }),
       markRead: (id: string) => patchLead({ id, markRead: true }),
       aiNudge: (id: string, playbookSteps?: unknown[]) => patchLead({ id, aiNudge: true, ...(playbookSteps ? { playbookSteps } : {}) }),

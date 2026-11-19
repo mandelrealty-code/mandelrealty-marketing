@@ -46,6 +46,45 @@ export const CRM_EXTRA_CSS = `
   .wmhead{flex-direction:column;align-items:stretch}
   .wmhead .btn.primary{width:100%}
 }
+
+/* Call UI (mrg-crm-calls_2.html) */
+.callsec{padding:12px 14px;border:1px solid var(--line);border-radius:14px}
+.callsec .r1{display:flex;align-items:center;gap:8px}
+.callsec .r1 .lab{flex:1;font-size:var(--t-xs);color:var(--muted);font-weight:500;min-width:0}
+.callsec .r1 .lab b{color:var(--ink);font-weight:600}
+.callsec .tm{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;font-size:var(--t-base)}
+.callsec .r2{display:flex;gap:6px;margin-top:8px}
+.callsec .r2 .btn{flex:1}
+.btn.endcall{border-color:var(--line);background:none;color:var(--redink);font-weight:600}
+.btn.endcall:hover{background:oklch(0.6 0.19 25 / .08)}
+.lnkbtn{background:none;border:0;color:var(--tealink);font:600 var(--t-sm)/1 Inter,sans-serif;padding:6px 0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.cdot{width:9px;height:9px;border-radius:50%;flex:none;position:relative}
+.cdot::after{content:"";position:absolute;inset:-4px;border-radius:50%;background:currentColor;opacity:0;animation:cpulse 1.4s ease-in-out infinite}
+.cdot.red{background:var(--red);color:var(--red)}.cdot.amber{background:var(--amber);color:var(--amber)}.cdot.green{background:var(--green);color:var(--green)}
+.cdot.green::after,.cdot.grey::after{animation:none}.cdot.grey{background:oklch(0.75 0.005 285)}
+@keyframes cpulse{0%{transform:scale(.6);opacity:.45}70%,100%{transform:scale(1.5);opacity:0}}
+.sumbox{position:relative;background:var(--panel);border-radius:8px;padding:12px;font-size:var(--t-sm);color:var(--ink);line-height:1.5;white-space:pre-wrap}
+.sumbox p{margin:0;padding-right:30px}
+.edl{position:absolute;top:9px;right:10px;background:none;border:0;color:var(--tealink);font:600 var(--t-xs)/1 Inter,sans-serif;cursor:pointer;padding:2px}
+.edl:hover{text-decoration:underline}
+.sumedit textarea{min-height:110px}
+.sumedit .r{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.disc{display:flex;align-items:center;justify-content:space-between;width:100%;background:none;border:0;padding:10px 0 6px;font:600 var(--t-xs)/1 Inter,sans-serif;color:var(--ink2);cursor:pointer}
+.disc:hover{color:var(--ink)}
+.disc svg{transition:transform var(--med) var(--ease)}
+.disc[aria-expanded="true"] svg{transform:rotate(180deg)}
+.trwrap{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--med) var(--ease)}
+.trwrap.open{grid-template-rows:1fr}
+.trwrap>div{overflow:hidden}
+.trbox{max-height:200px;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);white-space:pre-wrap}
+.reclab{font-size:var(--t-xs);font-weight:600;color:var(--ink2);margin:12px 0 6px}
+.player{display:flex;align-items:center;gap:8px;background:var(--panel);border-radius:8px;padding:8px 10px}
+.pbtn{width:28px;height:28px;border-radius:50%;border:0;background:var(--primary);color:#fff;display:grid;place-items:center;flex:none;cursor:pointer}
+.pbtn svg{width:11px;height:11px;fill:currentColor;stroke:none}
+.prog{flex:1;height:4px;border-radius:2px;background:oklch(0.86 0.004 285);position:relative;cursor:pointer}
+.prog i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--ink);width:0%}
+.pdur{font-size:var(--t-xs);font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.player .iconbtn{width:28px;height:28px}
 `;
 
 export function mountCrm(root, host) {
@@ -112,7 +151,8 @@ const I = {
   rec:'<circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9"/>',
   arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  filter:'<path d="M4 6h16M7 12h10M10 18h4"/>'
+  filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
+  dl:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 20h16"/>'
 };
 const ic = (n, c = '') => `<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n] || ''}</svg>`;
 const ok = (h, c, L = .6, a) => `oklch(${L} ${c} ${h}${a != null ? ` / ${a}` : ''})`;
@@ -285,6 +325,9 @@ const S = {
   fupDone: {},
   preCall: {},
   callMsg: '',
+  callNotesEdit: false,
+  transcriptOpen: false,
+  transferState: null,
   modal: null,
   menu: null,
   nl: null,
@@ -694,6 +737,35 @@ function contactBlock(l) {
     ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Callback is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
     ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
 }
+function callHostData() {
+  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, activeCall: null };
+  return host.data;
+}
+const fmtCallClock = (secs) => {
+  const s = Math.max(0, Math.floor(secs || 0));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+const fmtAudio = (secs) => {
+  const s = Math.max(0, Math.floor(secs || 0));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+function activeCallBlock() {
+  const ac = callHostData().activeCall;
+  if (!ac) return '';
+  const started = new Date(ac.startedAt).getTime();
+  const secs = Number.isFinite(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
+  const ts = S.transferState || ac.transferState || null;
+  const row = (dot, label) => `<div class="r1"><span class="cdot ${dot}"></span><span class="lab">${label}</span><span class="tm" id="ctm">${fmtCallClock(secs)}</span></div>`;
+  let body;
+  if (ts === 'connecting') {
+    body = row('amber', '<b>Connecting Ryan…</b>') + `<div class="r2"><button class="lnkbtn" data-act="cancelTransfer">Cancel</button></div>`;
+  } else if (ts === 'connected') {
+    body = row('green', '<b>Ryan connected</b> · you can drop off') + `<div class="r2"><button class="btn sm endcall" data-act="endCall">End call</button></div>`;
+  } else {
+    body = row('red', 'Recording') + `<div class="r2"><button class="btn sm ghost" data-act="transferCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Transfer to Ryan →</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`;
+  }
+  return `<div class="callsec" id="callsec" role="status" aria-live="polite">${body}</div>`;
+}
 function notesBlock(l) {
   const d = D(l), dis = isBusy('save') ? 'disabled' : '';
   const steps = l.playbook_steps || [];
@@ -702,9 +774,25 @@ function notesBlock(l) {
     : s.status === 'current'
       ? `<li><span class="cbx"></span><span>${esc(s.title)}</span><button class="btn sm" data-act="pbComplete" ${dis}>Complete</button><button class="btn sm ghost" data-act="pbSkip" ${dis}>Skip</button></li>`
       : `<li><span class="cbx"></span><span>${esc(s.title)}</span><span class="meta">Up next</span></li>`;
+  const hd = callHostData();
+  const transcript = (hd.callTranscript || '').trim();
+  const recUrl = (hd.callRecordingUrl || '').trim();
+  const summary = (d.callNotes || '').trim();
+  const summaryUi = S.callNotesEdit
+    ? `<div class="sumedit"><textarea class="input" id="sumTa" data-k="ld.callNotes" aria-label="Edit summary">${esc(d.callNotes)}</textarea><div class="r"><button class="btn sm" data-act="cancelCallNotesEdit">Cancel</button><button class="btn sm primary" data-act="saveCallNotes" ${dis}>Save</button></div></div>`
+    : `<div class="sumbox"><button class="edl" data-act="editCallNotes">Edit</button><p>${summary ? esc(summary) : '<span class="meta">No call notes yet.</span>'}</p></div>`;
+  const trUi = transcript
+    ? `<button class="disc" data-act="toggleTranscript" aria-expanded="${S.transcriptOpen ? 'true' : 'false'}" aria-controls="trWrap">Full transcript ${ic('chev', 'xs')}</button>
+  <div class="trwrap ${S.transcriptOpen ? 'open' : ''}" id="trWrap"><div><div class="trbox" tabindex="0" aria-label="Call transcript">${esc(transcript)}</div></div></div>`
+    : '';
+  const recUi = recUrl
+    ? `<div class="reclab">Recording</div>
+  <audio id="callAudio" src="${esc(recUrl)}" preload="metadata" hidden></audio>
+  <div class="player"><button type="button" class="pbtn" data-act="togglePlay" aria-label="Play recording">${ic('play', 'xs')}</button><div class="prog" data-act="seekAudio" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><i id="progFill"></i></div><span class="pdur" id="pDur">0:00</span><a class="iconbtn" href="${esc(recUrl)}" target="_blank" rel="noopener" download aria-label="Download recording" title="Download">${ic('dl', 'sm')}</a></div>`
+    : '';
   return `<div class="dsec"><h5>Tell the AI <button class="btn sm" data-act="saveNotes" ${dis}>Save</button></h5><textarea class="input" style="min-height:62px" data-k="ld.notes" data-save="notes" placeholder="What the AI should know about this lead before the next text…">${esc(d.notes)}</textarea><div class="hint">The AI uses this on the next SMS. Saves when you click away.</div></div>
    <div class="dsec"><h5>Team next</h5>${steps.length ? `<ul class="steps">${steps.map(stepRow).join('')}</ul>` : '<div class="meta">No next steps yet.</div>'}</div>
-   <div class="dsec"><h5>Call notes <span class="meta">After a CRM call</span></h5><textarea class="input" style="min-height:56px" data-k="ld.callNotes" data-save="callNotes" placeholder="What was discussed on the call…">${esc(d.callNotes)}</textarea></div>`;
+   <div class="dsec"><h5>Call notes <span class="meta">After a CRM call</span></h5>${summaryUi}${trUi}${recUi}</div>`;
 }
 function actionsBlock() {
   const dis = isBusy('save') ? 'disabled' : '';
@@ -717,9 +805,10 @@ function leadPanel(l) {
   if (hl) order = ['sale', 'ai', 'stage', 'contact', 'notes', 'actions'];
   else if (!phoneUsable(l.phone)) order = ['contact', 'ai', 'stage', 'sale', 'notes', 'actions'];
   const map = { ai: () => aiBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
+  const active = activeCallBlock();
   return `<div class="card lpanel t-${S.ptab}">${leadHeader(l)}
     <div class="plseg"><div class="pseg two" role="tablist"><button role="tab" data-act="ptab" data-v="chat" class="${S.ptab === 'chat' ? 'on' : ''}">Chat</button><button role="tab" data-act="ptab" data-v="details" class="${S.ptab === 'details' ? 'on' : ''}">Details</button></div></div>
-    <div class="thread">${thread(l)}</div><div class="details" data-scroll="details">${order.map((b) => map[b]()).join('')}</div></div>`;
+    <div class="thread">${thread(l)}</div><div class="details" data-scroll="details">${active}${order.map((b) => map[b]()).join('')}</div></div>`;
 }
 function leadView() {
   const l = leadById(S.leadId);
@@ -1059,7 +1148,63 @@ function renderContent() {
 }
 /* Set on destroy: a load that finishes after the CRM is unmounted must not draw into the emptied root. */
 let destroyed = false;
-function renderMain() { if (destroyed) return; keepFocus(() => { renderNav(); renderHead(); renderContent(); }); }
+let callTick = null;
+function ensureCallTimer() {
+  const ac = callHostData().activeCall;
+  if (!ac) {
+    if (callTick) { clearInterval(callTick); callTick = null; }
+    return;
+  }
+  if (callTick) return;
+  callTick = setInterval(() => {
+    const live = callHostData().activeCall;
+    const el = root.querySelector('#ctm');
+    if (!live || !el) {
+      if (!live && callTick) { clearInterval(callTick); callTick = null; }
+      return;
+    }
+    const started = new Date(live.startedAt).getTime();
+    const secs = Number.isFinite(started) ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
+    el.textContent = fmtCallClock(secs);
+  }, 1000);
+}
+function bindCallPlayer() {
+  const a = root.querySelector('#callAudio');
+  const fill = root.querySelector('#progFill');
+  const dur = root.querySelector('#pDur');
+  const btn = root.querySelector('[data-act="togglePlay"]');
+  const prog = root.querySelector('[data-act="seekAudio"]');
+  if (!a || !fill || !dur || !btn) return;
+  const paint = () => {
+    const total = a.duration || 0;
+    const cur = a.currentTime || 0;
+    fill.style.width = total ? `${(cur / total) * 100}%` : '0%';
+    if (prog) {
+      prog.setAttribute('aria-valuemax', String(Math.round(total || 0)));
+      prog.setAttribute('aria-valuenow', String(Math.round(cur || 0)));
+    }
+    dur.textContent = total ? (cur > 0 ? `${fmtAudio(cur)} / ${fmtAudio(total)}` : fmtAudio(total)) : '0:00';
+    btn.innerHTML = a.paused
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+    btn.setAttribute('aria-label', a.paused ? 'Play recording' : 'Pause recording');
+  };
+  if (a.dataset.bound !== '1') {
+    a.dataset.bound = '1';
+    a.addEventListener('timeupdate', paint);
+    a.addEventListener('loadedmetadata', paint);
+    a.addEventListener('play', paint);
+    a.addEventListener('pause', paint);
+    a.addEventListener('ended', paint);
+  }
+  paint();
+}
+function renderMain() {
+  if (destroyed) return;
+  keepFocus(() => { renderNav(); renderHead(); renderContent(); });
+  ensureCallTimer();
+  bindCallPlayer();
+}
 function render() { if (destroyed) return; renderMain(); renderOverlay(); renderMenu(); }
 function sizeComposer() {
   const t = root.querySelector('.composer textarea');
@@ -1106,7 +1251,18 @@ async function loadThread(id) {
     if (data.playbook_steps) patch.playbook_steps = data.playbook_steps;
     if (data.ai_send_mode) patch.ai_send_mode = data.ai_send_mode;
     patch.pending_draft = nd;
+    if (data.lead && data.lead.call_notes != null) patch.call_notes = data.lead.call_notes;
     mergeLead(id, patch);
+    const hd = callHostData();
+    if (data.callTranscript !== undefined) hd.callTranscript = data.callTranscript || null;
+    if (data.callRecordingUrl !== undefined) hd.callRecordingUrl = data.callRecordingUrl || null;
+    if (data.activeCall) {
+      hd.activeCall = data.activeCall;
+      if (data.activeCall.transferState != null) S.transferState = data.activeCall.transferState;
+    } else {
+      hd.activeCall = null;
+      if (S.transferState) S.transferState = null;
+    }
   } catch {
     if (S.th.id !== id) return;
     S.th.loaded = true;
@@ -1178,9 +1334,18 @@ function openLead(id, opts = {}) {
     S.phoneEdit = null;
     S.draftEdit = null;
     S.callMsg = '';
+    S.callNotesEdit = false;
+    S.transcriptOpen = false;
+    S.transferState = null;
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
     lastMsgKey = '';
+    {
+      const hd = callHostData();
+      hd.callTranscript = null;
+      hd.callRecordingUrl = null;
+      if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
+    }
     loadThread(id);
     if (host.markRead) host.markRead(id).catch(() => undefined);
     const l = leadById(id);
@@ -1193,6 +1358,13 @@ function closeLead(opts = {}) {
   S.leadId = null;
   S.th = { id: null, messages: [], followups: [], draft: null, loaded: false };
   S.menu = null;
+  S.callNotesEdit = false;
+  S.transcriptOpen = false;
+  S.transferState = null;
+  const hd = callHostData();
+  hd.callTranscript = null;
+  hd.callRecordingUrl = null;
+  hd.activeCall = null;
   if (!opts.noRoute && host.setRoute) host.setRoute({ tab: 'contacts', leadId: null });
   render();
 }
@@ -1300,10 +1472,53 @@ async function crmCall() {
     const data = await host.startCall(l.id);
     if (data.preCallSmsSent || data.preCallSmsSkipped) S.preCall[l.id] = true;
     S.callMsg = data.preCallSmsSent ? 'Texted the lead once. Now ringing your phone. Answer to connect.' : 'Ringing your phone (no new text). Answer to connect the lead.';
+    S.transferState = null;
+    if (data.activeCall) callHostData().activeCall = data.activeCall;
     setTimeout(() => { S.callMsg = ''; renderMain(); }, 6000);
     loadThread(l.id); loadLeads();
   } catch (e) {
     toast(errMsg(e, 'Call failed'), 'bad');
+  } finally {
+    setBusy('call', false);
+  }
+}
+async function transferCall() {
+  const l = leadById(S.leadId); if (!l || !host.transferCall || isBusy('call')) return;
+  S.transferState = 'connecting';
+  renderMain();
+  setBusy('call', true);
+  try {
+    await host.transferCall(l.id);
+    S.transferState = 'connected';
+    if (callHostData().activeCall) callHostData().activeCall.transferState = 'connected';
+    toast('Ryan connected');
+  } catch (e) {
+    S.transferState = null;
+    toast(errMsg(e, 'Transfer failed'), 'bad');
+  } finally {
+    setBusy('call', false);
+    renderMain();
+  }
+}
+async function cancelTransfer() {
+  const l = leadById(S.leadId); if (!l) return;
+  S.transferState = null;
+  renderMain();
+  if (!host.cancelTransfer) return;
+  try { await host.cancelTransfer(l.id); }
+  catch (e) { toast(errMsg(e, 'Could not cancel transfer'), 'bad'); }
+}
+async function endCall() {
+  const l = leadById(S.leadId); if (!l || isBusy('call')) return;
+  setBusy('call', true);
+  try {
+    if (host.endCall) await host.endCall(l.id);
+    callHostData().activeCall = null;
+    S.transferState = null;
+    toast('Call ended');
+    loadThread(l.id); loadLeads();
+  } catch (e) {
+    toast(errMsg(e, 'Could not end call'), 'bad');
   } finally {
     setBusy('call', false);
   }
@@ -1637,6 +1852,39 @@ const ACT = {
   savePhone: async () => { const v = String(S.phoneEdit || '').trim(); if (!v) { toast('Enter a phone number.', 'bad'); return; } const data = await patchLead({ phone: v }, 'Phone saved'); if (data) { S.phoneEdit = null; renderMain(); } },
   copyPhone: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.phone) copyText(fmtPhone(l.phone), 'Phone'); S.menu = null; renderMenu(); },
   crmCall: () => crmCall(),
+  transferCall: () => transferCall(),
+  cancelTransfer: () => cancelTransfer(),
+  endCall: () => endCall(),
+  editCallNotes: () => { S.callNotesEdit = true; renderMain(); const t = root.querySelector('#sumTa'); if (t) t.focus(); },
+  cancelCallNotesEdit: () => {
+    const l = leadById(S.leadId);
+    if (l) D(l).callNotes = l.call_notes || '';
+    S.callNotesEdit = false;
+    renderMain();
+  },
+  saveCallNotes: async () => {
+    const l = leadById(S.leadId); if (!l) return;
+    const ta = root.querySelector('#sumTa');
+    const v = ta ? ta.value : D(l).callNotes;
+    D(l).callNotes = v;
+    await runSave('callNotes', v);
+    S.callNotesEdit = false;
+    renderMain();
+  },
+  toggleTranscript: () => { S.transcriptOpen = !S.transcriptOpen; renderMain(); },
+  togglePlay: () => {
+    const a = root.querySelector('#callAudio');
+    if (!a) return;
+    if (a.paused) a.play().catch(() => toast('Could not play recording', 'bad'));
+    else a.pause();
+  },
+  seekAudio: (b, e) => {
+    const a = root.querySelector('#callAudio');
+    if (!a || !a.duration) return;
+    const r = b.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    a.currentTime = ratio * a.duration;
+  },
   saveNotes: () => { const l = leadById(S.leadId); if (l) runSave('notes', D(l).notes); },
   pbComplete: () => patchLead({ playbookAction: 'complete' }, 'Step completed').then(() => undefined),
   pbSkip: () => patchLead({ playbookAction: 'skip' }, 'Step skipped').then(() => undefined),
@@ -1795,6 +2043,7 @@ return {
   destroy() {
     destroyed = true;
     clearInterval(poll); clearInterval(tick); clearTimeout(qT); clearTimeout(toastT);
+    if (callTick) { clearInterval(callTick); callTick = null; }
     document.removeEventListener('keydown', onDocKey);
     window.removeEventListener('resize', onResize);
     root.innerHTML = '';

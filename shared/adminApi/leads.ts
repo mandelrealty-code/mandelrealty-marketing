@@ -25,7 +25,17 @@ import {
   type PlaybookStep,
 } from "../playbook.js";
 import { listLeadsInbox, markLeadSmsRead } from "../crmInbox.js";
-import { startClickToCall } from "../clickToCall.js";
+import {
+  cancelCrmTransfer,
+  endCrmCall,
+  startClickToCall,
+  transferCrmCall,
+} from "../clickToCall.js";
+import {
+  getLatestLeadCallForLead,
+  isActiveCallStatus,
+  transferStateFromCall,
+} from "../leadCalls.js";
 import {
   LEAD_STATUSES,
   deleteLead,
@@ -76,10 +86,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
-        const [followups, messages, pendingDraft] = await Promise.all([
+        const [followups, messages, pendingDraft, latestCall] = await Promise.all([
           listFollowupsForLead(followupsFor),
           listSmsForLead(followupsFor),
           getPendingDraft(followupsFor),
+          getLatestLeadCallForLead(followupsFor),
         ]);
         const { getLeadById, updateLeadCrm } = await import("../leadStore.js");
         const lead = await getLeadById(followupsFor);
@@ -87,12 +98,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (lead && (!lead.playbook_steps || lead.playbook_steps.length === 0) && playbook.length) {
           await updateLeadCrm(lead.id, { playbookSteps: playbook }).catch(() => undefined);
         }
+        const callTranscript = latestCall?.transcript || null;
+        const callRecordingUrl = latestCall?.recording_url || null;
+        const activeCall =
+          latestCall && isActiveCallStatus(latestCall.status)
+            ? {
+                callId: latestCall.id,
+                leadId: latestCall.lead_id,
+                startedAt: latestCall.created_at,
+                status: latestCall.status,
+                transferState: transferStateFromCall(latestCall),
+              }
+            : null;
         return res.status(200).json({
           followups,
           messages,
           pending_draft: pendingDraft,
           playbook_steps: playbook,
           ai_send_mode: lead?.ai_send_mode || "autopilot",
+          callTranscript,
+          callRecordingUrl,
+          activeCall,
+          lead: lead
+            ? {
+                ...lead,
+                callTranscript,
+                callRecordingUrl,
+              }
+            : null,
         });
       }
       const q = typeof req.query.q === "string" ? req.query.q : "";
@@ -163,16 +196,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing lead id." });
 
+    const twilioEnv = {
+      TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+      TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+      TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+    };
+
     if (body.startCall === true) {
       const result = await startClickToCall({
         leadId: id,
         operatorPhone:
           typeof body.operatorPhone === "string" ? body.operatorPhone.trim() : undefined,
-        env: {
-          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
-          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
-          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
-        },
+        env: twilioEnv,
       });
       if (!result.ok) {
         return res.status(400).json({ error: result.error || "Could not start call." });
@@ -183,7 +218,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         callSid: result.callSid,
         preCallSmsSent: Boolean(result.preCallSmsSent),
         preCallSmsSkipped: Boolean(result.preCallSmsSkipped),
+        activeCall: result.callId
+          ? {
+              callId: result.callId,
+              leadId: id,
+              startedAt: new Date().toISOString(),
+              status: "ringing_operator",
+              transferState: null,
+            }
+          : null,
       });
+    }
+
+    if (body.transferCall === true || body.op === "transfer_call") {
+      const result = await transferCrmCall({ leadId: id, env: twilioEnv });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error || "Could not transfer call." });
+      }
+      return res.status(200).json({ ok: true, callId: result.callId });
+    }
+
+    if (body.cancelTransfer === true) {
+      const result = await cancelCrmTransfer({ leadId: id, env: twilioEnv });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error || "Could not cancel transfer." });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    if (body.endCall === true) {
+      const result = await endCrmCall({ leadId: id, env: twilioEnv });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error || "Could not end call." });
+      }
+      return res.status(200).json({ ok: true });
     }
 
     if (body.sendSmsBump === true) {
