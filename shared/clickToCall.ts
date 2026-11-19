@@ -269,6 +269,8 @@ export async function buildOperatorBridgeTwiml(callId: string): Promise<string> 
   await updateLeadCall(callId, {
     status: "bridging",
     conference_name: confName,
+    // Booker answered the outbound leg and is joining the conference now.
+    booker_joined_at: row.booker_joined_at || new Date().toISOString(),
   });
 
   const base = twilioWebhookBaseUrl();
@@ -354,6 +356,21 @@ export async function handleVoiceStatus(input: {
     patch.status = input.leg === "lead" ? "in_call" : "operator_answered";
   }
 
+  // Booker joined the conference: CallSid matches the original outbound booker leg.
+  if (
+    input.leg !== "lead" &&
+    (status === "in-progress" || status === "answered") &&
+    input.callSid
+  ) {
+    const row = await getLeadCallById(input.callId);
+    if (row && !row.booker_joined_at) {
+      const bookerSid = (row.call_sid || "").trim();
+      if (!bookerSid || bookerSid === input.callSid) {
+        patch.booker_joined_at = new Date().toISOString();
+      }
+    }
+  }
+
   if (Object.keys(patch).length) {
     await updateLeadCall(input.callId, patch);
   }
@@ -437,11 +454,21 @@ export async function handleRecordingReady(input: {
     summary: summaryText,
     status: summary ? "summarized" : "transcript_ready",
     error: summary ? null : "Summary failed — transcript saved",
+    meta: {
+      ...(row.meta || {}),
+      ...(summary?.callType ? { call_type: summary.callType } : {}),
+      ...(summary?.leadScore ? { lead_score: summary.leadScore } : {}),
+      ...(summary?.transferToRyan != null
+        ? { transfer_to_ryan: summary.transferToRyan }
+        : {}),
+      ...(summary?.bookedTime ? { booked_time: summary.bookedTime } : {}),
+    },
   });
 
   await appendCallNoteToLead(row.lead_id, {
     callNotes: summary?.callNotes ?? null,
     nextSteps: summary?.nextSteps ?? null,
+    mappedStatus: summary?.mappedStatus ?? null,
     transcript,
     recordingUrl: mp3Url,
     error: summary ? null : "Summary failed — transcript saved",
@@ -490,11 +517,21 @@ export async function handleTranscriptionReady(input: {
     summary: summaryText,
     status: summary ? "summarized" : "transcript_ready",
     error: summary ? null : "Summary failed — transcript saved",
+    meta: {
+      ...(row.meta || {}),
+      ...(summary?.callType ? { call_type: summary.callType } : {}),
+      ...(summary?.leadScore ? { lead_score: summary.leadScore } : {}),
+      ...(summary?.transferToRyan != null
+        ? { transfer_to_ryan: summary.transferToRyan }
+        : {}),
+      ...(summary?.bookedTime ? { booked_time: summary.bookedTime } : {}),
+    },
   });
 
   await appendCallNoteToLead(row.lead_id, {
     callNotes: summary?.callNotes ?? null,
     nextSteps: summary?.nextSteps ?? null,
+    mappedStatus: summary?.mappedStatus ?? null,
     transcript,
     recordingUrl: row.recording_url,
     error: null,
@@ -506,6 +543,7 @@ async function appendCallNoteToLead(
   input: {
     callNotes: string | null;
     nextSteps: string | null;
+    mappedStatus?: import("./crmTypes.js").LeadStatus | null;
     transcript: string | null;
     recordingUrl: string | null;
     error: string | null;
@@ -532,13 +570,19 @@ async function appendCallNoteToLead(
       ? `Review call recording / fix: ${input.error.slice(0, 200)}`
       : "Review call and set next team action.");
 
+  const locked =
+    lead.status === "won" || lead.status === "skip" || lead.status === "low_fit";
+  const statusPatch = locked
+    ? {}
+    : input.mappedStatus
+      ? { status: input.mappedStatus }
+      : { status: "call_done" as const };
+
   await updateLeadCrm(leadId, {
     callNotes: prevCallNotes ? `${block}\n\n${prevCallNotes}`.slice(0, 8000) : block,
     whatsNext: nextSteps.slice(0, 900),
     aiPaused: false,
-    ...(lead.status === "won" || lead.status === "skip" || lead.status === "low_fit"
-      ? {}
-      : { status: "call_done" as const }),
+    ...statusPatch,
   });
 
   const { scheduleAiSilenceNudges, AI_NUDGE_POST_CALL_DELAYS_MIN } = await import(
@@ -718,7 +762,7 @@ export async function cancelCrmTransfer(input: {
 export async function leaveCrmCall(input: {
   leadId: string;
   env: TwilioVoiceEnv;
-}): Promise<{ ok: boolean; error?: string }> {
+}): Promise<{ ok: boolean; error?: string; booker_call_seconds?: number }> {
   if (!isTwilioConfigured(input.env)) {
     return { ok: false, error: "Twilio is not configured." };
   }
@@ -742,10 +786,21 @@ export async function leaveCrmCall(input: {
     return { ok: false, error: moved.error || "Could not leave call." };
   }
 
+  const leftAt = new Date();
+  const joinedMs = row.booker_joined_at
+    ? new Date(row.booker_joined_at).getTime()
+    : new Date(row.created_at).getTime();
+  const seconds = Number.isFinite(joinedMs)
+    ? Math.max(0, Math.round((leftAt.getTime() - joinedMs) / 1000))
+    : 0;
+
   await updateLeadCall(row.id, {
+    booker_left_at: leftAt.toISOString(),
+    booker_joined_at: row.booker_joined_at || new Date(joinedMs).toISOString(),
+    booker_call_seconds: seconds,
     meta: { ...(row.meta || {}), operator_left: true },
   });
-  return { ok: true };
+  return { ok: true, booker_call_seconds: seconds };
 }
 
 /** End the whole conference — hang up every known participant leg. */

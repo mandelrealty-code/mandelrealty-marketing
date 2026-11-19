@@ -2,12 +2,52 @@
  * Claude summary of a call transcript → call notes + team next steps.
  * Transcription: download Twilio recording + OpenAI Whisper (OPENAI_API_KEY).
  */
+import type { LeadStatus } from "./crmTypes.js";
+
 const DEFAULT_MODEL = "claude-haiku-4-5";
 
 export type CallSummaryResult = {
   callNotes: string;
   nextSteps: string;
+  callType: "booker" | "ryan" | null;
+  leadScore: string | null;
+  transferToRyan: boolean | null;
+  bookedTime: string | null;
+  /** Mapped CRM pipeline status, or null to leave unchanged. */
+  mappedStatus: LeadStatus | null;
 };
+
+const SYSTEM_PROMPT = `You write CRM call notes for Mandel Realty Group (short-term rental management, Greater Toronto Area).
+
+There are two types of calls:
+1. BOOKER CALL: A booker (Gene) qualifies the lead and either transfers them live to Ryan or books a call. The booker collects: property type and location, whether the listing is live, furnished status, revenue estimate, biggest headache, goal, timing, decision makers.
+
+2. RYAN CALL: Ryan (the founder) closes the deal. He discusses the plan, AirROI revenue potential, contract, and next steps.
+
+Identify which type this is from the transcript.
+
+Return ONLY valid JSON (no markdown) with these keys:
+{
+  "call_type": "booker" or "ryan",
+  "call_notes": "2–4 sentences covering what was discussed: property details, lead interest, key facts learned, outcome. Facts only. If it was a test call or internal call, say so.",
+  "next_steps": "Short imperative lines for the team. e.g. 'Ryan to call Thursday 2pm', 'Send Revenue Potential Report', 'Check STR bylaws for Brampton'. Skip if test call.",
+  "lead_score": "Hot / Warm / Nurture / Disqualified / Test call",
+  "transfer_to_ryan": true or false,
+  "booked_time": "Thu Nov 21 2:00 PM or null"
+}
+
+If the transcript is mostly the team talking to each other (testing, debugging, internal discussion), set lead_score to "Test call" and keep call_notes brief: "Internal test call. [one line summary of what was tested]."`;
+
+/** Map AI lead_score → CRM pipeline status (closest real status keys). */
+export function mapLeadScoreToStatus(score: string | null | undefined): LeadStatus | null {
+  const s = String(score || "").trim().toLowerCase();
+  if (!s || s === "test call" || s.includes("test")) return null;
+  if (s === "hot") return "interested";
+  if (s === "warm") return "engaging";
+  if (s === "nurture" || s === "nurturing") return "nurturing";
+  if (s === "disqualified" || s === "dead" || s === "low fit") return "low_fit";
+  return null;
+}
 
 export async function summarizeCallTranscript(input: {
   leadName: string;
@@ -29,19 +69,8 @@ export async function summarizeCallTranscript(input: {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 700,
-        system: `You write CRM fields after a phone call for Mandel Realty Group (Airbnb / STR management, GTA).
-
-Return ONLY valid JSON (no markdown) with exactly these keys:
-{
-  "call_notes": "What was discussed — 2–5 sentences plus short bullets for interest, property/city, objections, and outcome. Facts only.",
-  "next_steps": "Internal team to-dos to move them toward becoming a client — short imperative lines (e.g. check Brampton bylaws, text Tuesday slot, send comparison vs other co-host). No fluff."
-}
-
-Rules:
-- call_notes = record of the conversation (for anyone reading the file later)
-- next_steps = what Ryan/Shane should DO next as the team (actionable)
-- No invented facts. Keep each field under 350 words.`,
+        max_tokens: 900,
+        system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
@@ -69,10 +98,14 @@ Rules:
     const parsed = parseCallSummaryJson(text);
     if (parsed) return parsed;
 
-    // Fallback: treat whole reply as call notes
     return {
       callNotes: text.slice(0, 3500),
       nextSteps: "Review call recording and set the next team action.",
+      callType: null,
+      leadScore: null,
+      transferToRyan: null,
+      bookedTime: null,
+      mappedStatus: null,
     };
   } catch (err) {
     console.error("[callNotesAi] failed", err);
@@ -90,9 +123,32 @@ function parseCallSummaryJson(raw: string): CallSummaryResult | null {
     const callNotes = String(obj.call_notes ?? obj.callNotes ?? "").trim();
     const nextSteps = String(obj.next_steps ?? obj.nextSteps ?? obj.whats_next ?? "").trim();
     if (!callNotes && !nextSteps) return null;
+    const callTypeRaw = String(obj.call_type ?? obj.callType ?? "").trim().toLowerCase();
+    const callType =
+      callTypeRaw === "booker" || callTypeRaw === "ryan" ? (callTypeRaw as "booker" | "ryan") : null;
+    const leadScore = String(obj.lead_score ?? obj.leadScore ?? "").trim() || null;
+    const transferRaw = obj.transfer_to_ryan ?? obj.transferToRyan;
+    const transferToRyan =
+      typeof transferRaw === "boolean"
+        ? transferRaw
+        : String(transferRaw ?? "").toLowerCase() === "true"
+          ? true
+          : String(transferRaw ?? "").toLowerCase() === "false"
+            ? false
+            : null;
+    const bookedRaw = obj.booked_time ?? obj.bookedTime;
+    const bookedTime =
+      bookedRaw == null || String(bookedRaw).trim().toLowerCase() === "null"
+        ? null
+        : String(bookedRaw).trim() || null;
     return {
       callNotes: callNotes || "Call completed — see transcript in call log.",
       nextSteps: nextSteps || "Review call and set next team action.",
+      callType,
+      leadScore,
+      transferToRyan,
+      bookedTime,
+      mappedStatus: mapLeadScoreToStatus(leadScore),
     };
   } catch {
     const notesMatch = cleaned.match(/"call_notes"\s*:\s*"((?:\\.|[^"\\])*)"/i);
@@ -102,6 +158,11 @@ function parseCallSummaryJson(raw: string): CallSummaryResult | null {
     return {
       callNotes: notesMatch ? unesc(notesMatch[1]) : "Call completed.",
       nextSteps: stepsMatch ? unesc(stepsMatch[1]) : "Review call and set next team action.",
+      callType: null,
+      leadScore: null,
+      transferToRyan: null,
+      bookedTime: null,
+      mappedStatus: null,
     };
   }
 }

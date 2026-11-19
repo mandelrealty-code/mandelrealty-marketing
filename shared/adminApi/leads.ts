@@ -103,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const callRecordingUrl = latestCall?.recording_url || null;
         const callRecordingId =
           latestCall && latestCall.recording_url ? latestCall.id : null;
+        const transfer_status = latestCall?.transfer_status ?? null;
         const activeCall =
           latestCall && isActiveCallStatus(latestCall.status)
             ? {
@@ -110,6 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 leadId: latestCall.lead_id,
                 startedAt: latestCall.created_at,
                 status: latestCall.status,
+                transfer_status,
                 transferState: transferStateFromCall(latestCall),
               }
             : null;
@@ -122,6 +124,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           callTranscript,
           callRecordingUrl,
           callRecordingId,
+          transfer_status,
+          booker_call_seconds: latestCall?.booker_call_seconds ?? null,
           activeCall,
           lead: lead
             ? {
@@ -260,7 +264,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!result.ok) {
         return res.status(400).json({ error: result.error || "Could not leave call." });
       }
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({
+        ok: true,
+        booker_call_seconds: result.booker_call_seconds ?? null,
+      });
     }
 
     if (body.endCall === true) {

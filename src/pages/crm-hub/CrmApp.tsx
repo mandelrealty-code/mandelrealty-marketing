@@ -123,6 +123,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         callTranscript: null as string | null,
         callRecordingUrl: null as string | null,
         callRecordingId: null as string | null,
+        bookerCallSeconds: null as number | null,
         teamCallers: [] as Array<{ name: string; phone: string }>,
         activeCall: null as null | {
           callId: string;
@@ -171,16 +172,44 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         host.data.callTranscript = typeof data.callTranscript === "string" ? data.callTranscript : null;
         host.data.callRecordingUrl = typeof data.callRecordingUrl === "string" ? data.callRecordingUrl : null;
         host.data.callRecordingId = typeof data.callRecordingId === "string" ? data.callRecordingId : null;
+        host.data.bookerCallSeconds =
+          typeof data.booker_call_seconds === "number" ? data.booker_call_seconds : null;
         const ac = data.activeCall;
+        const rawTs =
+          typeof data.transfer_status === "string"
+            ? data.transfer_status
+            : ac && typeof ac === "object" && typeof (ac as { transfer_status?: unknown }).transfer_status === "string"
+              ? String((ac as { transfer_status: string }).transfer_status)
+              : null;
+        const ts = (rawTs || "").toLowerCase();
+        const callStatus =
+          ac && typeof ac === "object" ? String((ac as { status?: string }).status || "").toLowerCase() : "";
+        // Map DB transfer_status → UI: connected wins; null/ringing/connecting while transferring → connecting.
+        let transferState: "connecting" | "connected" | null = null;
+        if (ts === "connected" || callStatus === "transfer_connected") {
+          transferState = "connected";
+        } else if (
+          ts === "connecting" ||
+          ts === "ringing" ||
+          callStatus === "transferring" ||
+          (ts === "" && callStatus === "transferring")
+        ) {
+          transferState = "connecting";
+        } else if (ac && typeof ac === "object" && (ac as { transferState?: string }).transferState) {
+          const existing = String((ac as { transferState?: string }).transferState);
+          if (existing === "connecting" || existing === "connected") {
+            transferState = existing;
+          }
+        }
         host.data.activeCall =
           ac && typeof ac === "object"
-            ? (ac as {
-                callId: string;
-                leadId: string;
-                startedAt: string;
-                status?: string;
-                transferState?: "connecting" | "connected" | null;
-              })
+            ? {
+                callId: String((ac as { callId: string }).callId),
+                leadId: String((ac as { leadId: string }).leadId),
+                startedAt: String((ac as { startedAt: string }).startedAt),
+                status: (ac as { status?: string }).status,
+                transferState,
+              }
             : null;
         return data;
       },

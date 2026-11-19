@@ -750,7 +750,7 @@ function contactBlock(l) {
     ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
 }
 function callHostData() {
-  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, callRecordingId: null, teamCallers: [], activeCall: null };
+  if (!host.data) host.data = { callTranscript: null, callRecordingUrl: null, callRecordingId: null, bookerCallSeconds: null, teamCallers: [], activeCall: null };
   if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
   return host.data;
 }
@@ -773,7 +773,9 @@ function activeCallBlock() {
   if (ts === 'connecting') {
     body = row('amber', '<b>Connecting Ryan…</b>') + `<div class="r2"><button class="lnkbtn" data-act="cancelTransfer">Cancel</button></div>`;
   } else if (ts === 'connected') {
-    body = row('green', '<b>Ryan connected</b> · you can drop off') + `<div class="r2"><button class="btn sm ghost" data-act="leaveCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Leave call</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`;
+    body = row('green', '<b>Ryan is on the call</b>')
+      + `<div class="r2"><button class="btn sm ghost" data-act="leaveCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Leave call</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`
+      + `<div class="meta" style="margin-top:6px">You can drop off — Ryan and the lead will stay connected.</div>`;
   } else {
     body = row('red', 'Recording') + `<div class="r2"><button class="btn sm ghost" data-act="transferCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Transfer to Ryan →</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`;
   }
@@ -804,9 +806,20 @@ function notesBlock(l) {
   <audio id="callAudio" src="${esc(playUrl)}" preload="metadata" hidden></audio>
   <div class="player"><button type="button" class="pbtn" data-act="togglePlay" aria-label="Play recording">${ic('play', 'xs')}</button><div class="prog" data-act="seekAudio" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><i id="progFill"></i></div><span class="pdur" id="pDur">0:00</span><a class="iconbtn" href="${esc(playUrl)}" target="_blank" rel="noopener" download aria-label="Download recording" title="Download">${ic('dl', 'sm')}</a></div>`
     : '';
+  const bookerSecs = Number(hd.bookerCallSeconds);
+  const bookerUi = Number.isFinite(bookerSecs) && bookerSecs > 0
+    ? `<div class="reclab" style="margin-top:12px">Booker time</div><div><b>On call: ${esc(fmtBookerTime(bookerSecs))}</b><div class="meta">Time Gene was personally on this call</div></div>`
+    : '';
   return `<div class="dsec"><h5>Tell the AI <button class="btn sm" data-act="saveNotes" ${dis}>Save</button></h5><textarea class="input" style="min-height:62px" data-k="ld.notes" data-save="notes" placeholder="What the AI should know about this lead before the next text…">${esc(d.notes)}</textarea><div class="hint">The AI uses this on the next SMS. Saves when you click away.</div></div>
    <div class="dsec"><h5>Team next</h5>${steps.length ? `<ul class="steps">${steps.map(stepRow).join('')}</ul>` : '<div class="meta">No next steps yet.</div>'}</div>
-   <div class="dsec"><h5>Call notes <span class="meta">After a CRM call</span></h5>${summaryUi}${trUi}${recUi}</div>`;
+   <div class="dsec"><h5>Call notes <span class="meta">After a CRM call</span></h5>${summaryUi}${trUi}${recUi}${bookerUi}</div>`;
+}
+function fmtBookerTime(totalSecs) {
+  const s = Math.max(0, Math.floor(Number(totalSecs) || 0));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m <= 0) return `${r} sec`;
+  return `${m} min ${r} sec`;
 }
 function actionsBlock() {
   const dis = isBusy('save') ? 'disabled' : '';
@@ -1322,11 +1335,13 @@ async function loadThread(id) {
     if (data.callRecordingId !== undefined) hd.callRecordingId = data.callRecordingId || null;
     if (data.activeCall) {
       hd.activeCall = data.activeCall;
-      if (data.activeCall.transferState != null) S.transferState = data.activeCall.transferState;
+      // Always sync from poll so "Connecting Ryan…" clears when transfer_status becomes connected.
+      S.transferState = data.activeCall.transferState ?? null;
     } else {
       hd.activeCall = null;
       if (S.transferState) S.transferState = null;
     }
+    if (data.booker_call_seconds != null) hd.bookerCallSeconds = data.booker_call_seconds;
   } catch {
     if (S.th.id !== id) return;
     S.th.loaded = true;

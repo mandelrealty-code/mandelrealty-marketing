@@ -16,8 +16,12 @@ export type LeadCallRow = {
   conference_name: string | null;
   /** Ryan transfer outbound Call SID. */
   transfer_call_sid: string | null;
-  /** connecting | connected | null */
+  /** connecting | connected | ringing | null */
   transfer_status: string | null;
+  booker_joined_at: string | null;
+  booker_left_at: string | null;
+  /** Seconds the booker was personally on the call. */
+  booker_call_seconds: number | null;
   recording_sid: string | null;
   recording_url: string | null;
   transcription_sid: string | null;
@@ -44,8 +48,14 @@ export function isActiveCallStatus(status: string): boolean {
 
 export function transferStateFromCall(row: LeadCallRow): "connecting" | "connected" | null {
   const ts = String(row.transfer_status || "").toLowerCase();
-  if (ts === "connecting" || row.status === "transferring") return "connecting";
   if (ts === "connected" || row.status === "transfer_connected") return "connected";
+  // null / ringing / connecting while a transfer is in flight → UI "connecting"
+  if (ts === "connecting" || ts === "ringing" || row.status === "transferring") {
+    return "connecting";
+  }
+  if ((row.transfer_call_sid || "").trim() && ts !== "connected") {
+    return "connecting";
+  }
   return null;
 }
 
@@ -66,6 +76,12 @@ function mapRow(row: Record<string, unknown>): LeadCallRow {
     conference_name: (row.conference_name as string | null) ?? null,
     transfer_call_sid: (row.transfer_call_sid as string | null) ?? null,
     transfer_status: (row.transfer_status as string | null) ?? null,
+    booker_joined_at: (row.booker_joined_at as string | null) ?? null,
+    booker_left_at: (row.booker_left_at as string | null) ?? null,
+    booker_call_seconds: (() => {
+      const n = Number(row.booker_call_seconds);
+      return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null;
+    })(),
     recording_sid: (row.recording_sid as string | null) ?? null,
     recording_url: (row.recording_url as string | null) ?? null,
     transcription_sid: (row.transcription_sid as string | null) ?? null,
@@ -109,6 +125,9 @@ export async function updateLeadCall(
     conference_name: string | null;
     transfer_call_sid: string | null;
     transfer_status: string | null;
+    booker_joined_at: string | null;
+    booker_left_at: string | null;
+    booker_call_seconds: number | null;
     recording_sid: string | null;
     recording_url: string | null;
     transcription_sid: string | null;
