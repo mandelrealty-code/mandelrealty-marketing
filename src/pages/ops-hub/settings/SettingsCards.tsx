@@ -366,10 +366,26 @@ export type HospitablePickProperty = {
   id: string;
   name: string;
   address: string;
+  picture?: string;
   selected: boolean;
 };
 
-/** Property checklist after Hospitable connect / Manage. ConnectHospitableSheet only handles tokens. */
+const PROP_HUES = [210, 240, 40, 150, 255, 200, 280, 60, 95, 140, 30];
+
+function propHue(id: string, index: number): number {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PROP_HUES[h % PROP_HUES.length] ?? PROP_HUES[index % PROP_HUES.length] ?? 210;
+}
+
+const HOUSE_MARK = (
+  <svg viewBox="0 0 64 48" fill="#fff" aria-hidden style={{ width: "30%", opacity: 0.8 }}>
+    <path d="M8 24 32 6l24 18v20H8z" opacity="0.9" />
+    <rect x="26" y="30" width="12" height="14" fill="oklch(0.4 0.03 270 / .35)" />
+  </svg>
+);
+
+/** Property cards after Hospitable connect / Manage — matches mrg-settings-connectors. */
 export function HospitablePropertyPicker({
   phone,
   fresh,
@@ -483,13 +499,13 @@ export function HospitablePropertyPicker({
       }}
     >
       <div
-        className={`modal frost hpick${phone ? " phone" : ""}`}
+        className={`modal frost pmodal${phone ? " phone" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="hpick-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="hpick-ph">
+        <div className="ph">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 id="hpick-title">
               {loading
@@ -497,7 +513,7 @@ export function HospitablePropertyPicker({
                 : `Found ${rows.length} ${rows.length === 1 ? "property" : "properties"}`}
             </h2>
             <p>
-              {n} {n === 1 ? "property is" : "properties are"} selected.
+              {n} {n === 1 ? "property is" : "properties are"} selected. Turn the others off.
             </p>
             {fresh ? (
               <div className="okbox2">
@@ -510,7 +526,7 @@ export function HospitablePropertyPicker({
             <Icon name="x" />
           </button>
         </div>
-        <div className="hpick-pb">
+        <div className="pb">
           {loading ? (
             <div className="empty" style={{ padding: "28px 12px" }}>
               <span className="refreshing">
@@ -524,28 +540,50 @@ export function HospitablePropertyPicker({
               <span>Add a listing in Hospitable, then try again.</span>
             </div>
           ) : (
-            <div className="hpick-list">
-              {rows.map((p) => {
+            <div className="pgrid">
+              {rows.map((p, i) => {
                 const on = picked.has(p.id);
+                const hue = propHue(p.id, i);
+                const photo = (p.picture || "").trim();
                 return (
-                  <label key={p.id} className={`hpick-row${on ? " on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      disabled={locked}
-                      onChange={() => toggle(p.id)}
-                    />
-                    <span className="t">
-                      <b>{p.name || "Untitled"}</b>
-                      <span className="meta">{p.address || "No address"}</span>
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`pk${on ? " on" : ""}`}
+                    aria-pressed={on}
+                    disabled={locked}
+                    onClick={() => toggle(p.id)}
+                  >
+                    <span
+                      className="pimg"
+                      style={
+                        photo
+                          ? {
+                              backgroundImage: `url(${photo})`,
+                              backgroundSize: "cover",
+                              backgroundPosition: "center",
+                            }
+                          : {
+                              background: `linear-gradient(140deg,oklch(0.86 0.045 ${hue}),oklch(0.64 0.07 ${hue + 30}))`,
+                            }
+                      }
+                    >
+                      {!photo ? HOUSE_MARK : null}
+                      {on ? (
+                        <span className="pck">
+                          <Icon name="check" className="i xs" />
+                        </span>
+                      ) : null}
                     </span>
-                  </label>
+                    <b>{p.name || "Untitled"}</b>
+                    <span className="pst">{on ? "Selected" : "Not selected"}</span>
+                  </button>
                 );
               })}
             </div>
           )}
         </div>
-        <div className="hpick-pf">
+        <div className="pf">
           <button type="button" className="btn ghost" disabled={locked || rows.length === 0} onClick={selectAll}>
             {allOn ? "Clear all" : "Select all"}
           </button>

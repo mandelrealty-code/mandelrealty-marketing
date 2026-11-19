@@ -776,6 +776,7 @@ export async function handleDevApi(
             id: p.id,
             name: p.name,
             address: p.address || "",
+            picture: p.picture || "",
             selected: choiceSaved ? selected.has(p.id) : false,
           })),
           total: all.length,

@@ -948,24 +948,30 @@
   .mrgc .secthead{flex-direction:column;align-items:flex-start}
 }
 
-/* ---------- Hospitable property picker (Settings → Connectors) ---------- */
-.mrgc .hpick{width:560px;max-width:calc(100vw - 32px);max-height:90dvh;display:flex;flex-direction:column;padding:0;overflow:hidden}
-.mrgc .hpick.phone{width:100%;max-width:none;max-height:94dvh;border-radius:20px 20px 0 0}
-.mrgc .hpick-ph{display:flex;align-items:flex-start;gap:12px;padding:20px 24px 14px;border-bottom:1px solid var(--line-2)}
-.mrgc .hpick-ph h2{font-size:20px;font-weight:650;margin:0}
-.mrgc .hpick-ph p{margin:4px 0 0;font-size:var(--t-sm);color:var(--ink2)}
-.mrgc .hpick-pb{flex:1;min-height:0;overflow:auto;padding:12px 16px;background:#fff}
-.mrgc .hpick-pf{display:flex;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid var(--line-2);background:#fff;flex-wrap:wrap}
-.mrgc .hpick-list{display:flex;flex-direction:column;gap:6px}
-.mrgc .hpick-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--line-2);border-radius:10px;cursor:pointer;background:#fff}
-.mrgc .hpick-row.on{border-color:rgb(0 0 0 / .35);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .12);background:oklch(0.985 0.003 95)}
-.mrgc .hpick-row input{margin-top:3px;flex:none;width:16px;height:16px;accent-color:var(--ink)}
-.mrgc .hpick-row .t{flex:1;min-width:0}
-.mrgc .hpick-row .t b{display:block;font-size:var(--t-sm);font-weight:600;color:var(--ink);line-height:1.35}
-.mrgc .hpick-row .t .meta{display:block;margin-top:2px;font-size:var(--t-xs);color:var(--muted);font-weight:500}
+/* ---------- Hospitable property picker cards (mrg-settings-connectors) ---------- */
+.mrgc .pmodal{width:980px;max-width:calc(100vw - 32px);max-height:90dvh;display:flex;flex-direction:column;padding:0;overflow:hidden}
+.mrgc .pmodal.phone{width:100%;max-width:none;max-height:94dvh;border-radius:20px 20px 0 0}
+.mrgc .pmodal .ph{display:flex;align-items:flex-start;gap:12px;padding:20px 24px 14px;border-bottom:1px solid var(--line-2)}
+.mrgc .pmodal .ph h2{font-size:20px;font-weight:650;margin:0}
+.mrgc .pmodal .ph p{margin:4px 0 0;font-size:var(--t-sm);color:var(--ink2)}
+.mrgc .pmodal .pb{flex:1;min-height:0;overflow:auto;padding:16px 24px;background:#fff}
+.mrgc .pmodal .pf{display:flex;align-items:center;gap:8px;padding:12px 24px;border-top:1px solid var(--line-2);background:#fff;flex-wrap:wrap}
+.mrgc .pmodal .pgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.mrgc .pmodal .pk{display:flex;flex-direction:column;gap:4px;text-align:left;background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit}
+.mrgc .pmodal .pk[disabled]{opacity:.6;pointer-events:none}
+.mrgc .pmodal .pimg{position:relative;display:grid;place-items:center;aspect-ratio:4/3;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px var(--line);transition:box-shadow var(--fast) var(--ease)}
+.mrgc .pmodal .pk:hover .pimg{box-shadow:0 0 0 1px rgb(0 0 0 / .3)}
+.mrgc .pmodal .pk.on .pimg{box-shadow:0 0 0 3px var(--ink)}
+.mrgc .pmodal .pck{position:absolute;top:8px;right:8px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:#fff;display:grid;place-items:center}
+.mrgc .pmodal .pk b{font-size:var(--t-sm);color:var(--ink);font-weight:600;line-height:1.35;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mrgc .pmodal .pk .pst{font-size:var(--t-xs);font-weight:500;color:var(--muted)}
+.mrgc .pmodal .pk.on .pst{color:var(--greenink);font-weight:600}
+.mrgc .pmodal .pk:focus-visible{outline:none}
+.mrgc .pmodal .pk:focus-visible .pimg{box-shadow:0 0 0 2px #fff,0 0 0 4px oklch(0.6 0.15 255)}
 .mrgc .okbox2{display:flex;gap:8px;align-items:center;margin-top:10px;padding:8px 11px;border-radius:10px;background:oklch(0.6 0.13 155 / .1);font-size:var(--t-sm);color:var(--ink)}
 .mrgc .okbox2 svg{color:var(--greenink);flex:none}
 @media (max-width:768px){
-  .mrgc .hpick-ph,.mrgc .hpick-pb,.mrgc .hpick-pf{padding-left:16px;padding-right:16px}
-  .mrgc .hpick-pf .btn{flex:1;min-height:44px}
+  .mrgc .pmodal .pgrid{grid-template-columns:1fr 1fr;gap:12px}
+  .mrgc .pmodal .ph,.mrgc .pmodal .pb,.mrgc .pmodal .pf{padding-left:16px;padding-right:16px}
+  .mrgc .pmodal .pf .btn{flex:1;min-height:44px}
 }

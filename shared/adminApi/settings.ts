@@ -149,6 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           id: p.id,
           name: p.name,
           address: p.address || "",
+          picture: p.picture || "",
           selected: choiceSaved ? selected.has(p.id) : false,
         })),
         total: all.length,
