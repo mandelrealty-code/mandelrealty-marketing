@@ -5,7 +5,11 @@ import {
   inferAdAngle,
   safeFirstSmsForAngle,
 } from "./adAngle.js";
-import { isGlobalAiEnabled } from "./crmSettings.js";
+import {
+  getCrmSettings,
+  isGlobalAiEnabled,
+  resolveWelcomeMessage,
+} from "./crmSettings.js";
 import { matchKnowledgeChunks } from "./knowledgeStore.js";
 import {
   getLeadById,
@@ -956,12 +960,21 @@ export async function canAiTextLead(
   return { ok: true };
 }
 
-function safeFirstSmsFallback(lead: LeadRow): string {
+async function safeFirstSmsFallback(lead: LeadRow): Promise<string> {
   const name = firstName(lead.name);
   const city = lead.address || "your area";
   const angle = leadAdAngle(lead);
   let body: string;
-  if (lead.offer_path === "education" && angle === "unknown") {
+
+  const settings = await getCrmSettings();
+  const fromTemplate = resolveWelcomeMessage(
+    settings.welcome_message_templates,
+    lead.source || "",
+    name,
+  );
+  if (fromTemplate) {
+    body = fromTemplate;
+  } else if (lead.offer_path === "education" && angle === "unknown") {
     body = `Hey ${name}, thanks for reaching out to Mandel Realty Group. Happy to help you figure out Airbnb in ${city}. Do you already own a place, or still looking?`;
   } else if (lead.offer_path === "makeover" || angle === "makeover") {
     body = safeFirstSmsForAngle("makeover", name, city, lead.has_listing);
@@ -1010,12 +1023,12 @@ export async function sendAiFirstSms(input: {
     }
     if (body && isUnsafeCustomerSms(body)) {
       await noteAiFailure(lead.id, "AI draft blocked; sent safe template instead.");
-      body = safeFirstSmsFallback(lead);
+      body = await safeFirstSmsFallback(lead);
       decision = null;
     }
   } else {
     await noteAiFailure(lead.id, claudeErrorMessage(claude) || "AI call failed");
-    body = safeFirstSmsFallback(lead);
+    body = await safeFirstSmsFallback(lead);
   }
 
   const claudeError = claudeErrorMessage(claude);

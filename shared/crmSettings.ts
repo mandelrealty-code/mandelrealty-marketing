@@ -8,6 +8,16 @@ export type LeadNotifyRecipient = {
   welcome_sent_at: string | null;
 };
 
+export type WelcomeTemplate = {
+  id: string;
+  name: string;
+  /** Empty string = default (also set is_default). */
+  trigger: string;
+  /** `{name}` is interpolated with the lead's first name at send time. */
+  message: string;
+  is_default: boolean;
+};
+
 export type CrmSettings = {
   ai_responses_enabled: boolean;
   lead_notify_sms_enabled: boolean;
@@ -15,6 +25,7 @@ export type CrmSettings = {
   lead_notify_recipients: LeadNotifyRecipient[];
   /** Partner cell for CRM click-to-call (Twilio dials this first). */
   operator_callback_phone: string;
+  welcome_message_templates: WelcomeTemplate[];
   updated_at: string | null;
 };
 
@@ -24,10 +35,14 @@ const DEFAULT: CrmSettings = {
   lead_notify_phone: "",
   lead_notify_recipients: [],
   operator_callback_phone: "",
+  welcome_message_templates: [],
   updated_at: null,
 };
 
 const SETTINGS_SELECT =
+  "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, welcome_message_templates, updated_at";
+
+const SETTINGS_SELECT_WITHOUT_WELCOME =
   "ai_responses_enabled, lead_notify_sms_enabled, lead_notify_phone, lead_notify_recipients, operator_callback_phone, updated_at";
 
 /** Env kill switch always wins when set to "false" / "0" / "off". */
@@ -91,8 +106,35 @@ export function recipientsToLegacyPhone(recipients: LeadNotifyRecipient[]): stri
   return recipients.map((r) => r.phone).join(",");
 }
 
+function newWelcomeTemplateId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function normalizeWelcomeTemplates(raw: unknown): WelcomeTemplate[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WelcomeTemplate[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const message = String(row.message ?? "").trim();
+    if (!message) continue;
+    const trigger = String(row.trigger ?? "").trim();
+    out.push({
+      id: String(row.id ?? newWelcomeTemplateId()),
+      name: String(row.name ?? "").trim() || "Untitled template",
+      trigger,
+      message: String(row.message ?? ""),
+      is_default: Boolean(row.is_default) || trigger === "",
+    });
+  }
+  return out;
+}
+
 function mapSettings(data: Record<string, unknown> | null): CrmSettings {
-  if (!data) return { ...DEFAULT };
+  if (!data) return { ...DEFAULT, welcome_message_templates: [] };
   const legacyPhone = String(data.lead_notify_phone ?? "");
   const recipients = normalizeLeadNotifyRecipients(
     data.lead_notify_recipients,
@@ -107,6 +149,9 @@ function mapSettings(data: Record<string, unknown> | null): CrmSettings {
       const raw = String(data.operator_callback_phone ?? "").trim();
       return toE164(raw) || raw;
     })(),
+    welcome_message_templates: normalizeWelcomeTemplates(
+      data.welcome_message_templates,
+    ),
     updated_at: (data.updated_at as string | null) ?? null,
   };
 }
@@ -124,6 +169,14 @@ export async function getCrmSettings(): Promise<CrmSettings> {
   if (error || !data) {
     // Migration not applied yet — fall back without notify columns
     if (error) {
+      if (/welcome_message_templates/i.test(error.message)) {
+        const { data: midWelcome } = await sb
+          .from("crm_settings")
+          .select(SETTINGS_SELECT_WITHOUT_WELCOME)
+          .eq("id", 1)
+          .maybeSingle();
+        if (midWelcome) return mapSettings(midWelcome as Record<string, unknown>);
+      }
       if (/operator_callback_phone/i.test(error.message)) {
         const { data: midOps } = await sb
           .from("crm_settings")
@@ -214,6 +267,7 @@ export async function updateCrmSettings(
           : current.operator_callback_phone;
       return toE164(raw) || raw;
     })(),
+    welcome_message_templates: current.welcome_message_templates,
   };
 
   const { data, error } = await sb
@@ -224,6 +278,21 @@ export async function updateCrmSettings(
 
   if (error || !data) {
     console.error("[crm_settings] write failed", error?.message);
+    if (error && /welcome_message_templates/i.test(error.message)) {
+      const { welcome_message_templates: _dropWelcome, ...withoutWelcome } = row;
+      void _dropWelcome;
+      const { data: midWelcome, error: midWelcomeErr } = await sb
+        .from("crm_settings")
+        .upsert(withoutWelcome, { onConflict: "id" })
+        .select(SETTINGS_SELECT_WITHOUT_WELCOME)
+        .single();
+      if (!midWelcomeErr && midWelcome) {
+        return {
+          ...mapSettings(midWelcome as Record<string, unknown>),
+          welcome_message_templates: current.welcome_message_templates,
+        };
+      }
+    }
     if (error && /operator_callback_phone/i.test(error.message)) {
       const { operator_callback_phone: _drop, ...withoutOps } = row;
       void _drop;
@@ -297,4 +366,57 @@ export async function isGlobalAiEnabled(): Promise<boolean> {
 export function firstNameFromNotifyName(name: string): string {
   const first = name.trim().split(/\s+/)[0] || "there";
   return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+/** Upserts the full welcome templates array into crm_settings. */
+export async function saveWelcomeTemplates(
+  templates: WelcomeTemplate[],
+): Promise<void> {
+  const sb = getSupabaseAdmin();
+  const normalized = normalizeWelcomeTemplates(templates);
+  if (!sb) return;
+
+  const { error } = await sb.from("crm_settings").upsert(
+    {
+      id: 1,
+      updated_at: new Date().toISOString(),
+      welcome_message_templates: normalized,
+    },
+    { onConflict: "id" },
+  );
+
+  if (error) {
+    console.error("[crm_settings] saveWelcomeTemplates failed", error.message);
+    throw error;
+  }
+}
+
+/**
+ * Pick a welcome template by trigger substring match on lead source
+ * (case-insensitive). Falls back to is_default. Interpolates {name}.
+ * Empty string when no templates — caller uses safeFirstSmsForAngle.
+ */
+export function resolveWelcomeMessage(
+  templates: WelcomeTemplate[],
+  source: string,
+  name: string,
+): string {
+  const list = normalizeWelcomeTemplates(templates);
+  if (!list.length) return "";
+
+  const src = String(source ?? "").toLowerCase();
+  const matched =
+    (src
+      ? list.find(
+          (t) => t.trigger && src.includes(t.trigger.toLowerCase()),
+        )
+      : undefined) ||
+    list.find((t) => t.is_default) ||
+    list.find((t) => !t.trigger) ||
+    null;
+
+  if (!matched) return "";
+
+  const first = firstNameFromNotifyName(name);
+  return matched.message.replace(/\{name\}/gi, first);
 }

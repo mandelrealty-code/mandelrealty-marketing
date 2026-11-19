@@ -207,5 +207,5 @@ shared/opsNav.ts                 — OPS_NAV tab definitions
 shared/pm/cleanerHubSync.ts      — calls to ops-hub-sync
 shared/adminApi/opsHubWebhook.ts — handles POST /api/webhooks/ops-hub
 supabase/onboarding_v1.sql       — schema (NOT YET RUN)
-mrg-onboarding_1.html            — approved design spec (read this)
+mrg-hub_5.html                   — approved design spec (read this)
 ```

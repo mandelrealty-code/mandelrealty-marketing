@@ -7,7 +7,10 @@ import {
 import {
   getCrmSettings,
   isAiEnvKillSwitchOff,
+  normalizeWelcomeTemplates,
+  saveWelcomeTemplates,
   updateCrmSettings,
+  type WelcomeTemplate,
 } from "../crmSettings.js";
 import {
   removeLeadNotifyRecipient,
@@ -140,6 +143,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    if (body.action === "save_welcome_templates") {
+      const templates = normalizeWelcomeTemplates(body.templates) as WelcomeTemplate[];
+      try {
+        await saveWelcomeTemplates(templates);
+      } catch (e) {
+        const msg =
+          e instanceof Error ? e.message : "Could not save welcome templates";
+        return res.status(500).json({ error: msg });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
     const patch: {
       ai_responses_enabled?: boolean;
       lead_notify_sms_enabled?: boolean;
@@ -181,7 +196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (Object.keys(patch).length === 0) {
       return res.status(400).json({
         error:
-          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, remove_notify_recipient, or create_unlock_code.",
+          "Provide ai_responses_enabled, lead_notify_sms_enabled, operator_callback_phone, add_notify_recipient, remove_notify_recipient, create_unlock_code, or save_welcome_templates.",
       });
     }
 

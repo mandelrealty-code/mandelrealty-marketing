@@ -5,7 +5,7 @@ import { LEAD_STATUSES, OFFER_PATH_LABEL, OFFER_PATHS, STATUS_JOURNEY, STATUS_LA
 import { isBookedThisWeek, NEEDS_YOU_LABEL } from "../../../shared/crmInboxTypes";
 import { LEAD_SOURCES } from "../../../shared/pm/onboardingLogic";
 import { CONTRACT_OPTIONS, PLAN_OPTIONS } from "../crm/LeadSale";
-import { CRM_CSS, mountCrm } from "./engine";
+import { CRM_CSS, CRM_EXTRA_CSS, mountCrm } from "./engine";
 
 /**
  * The CRM, built from the CRM design file (markup, colours and phone layout) with every lead, message, document and
@@ -172,6 +172,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       playbookAction: (id: string, action: "complete" | "skip") => patchLead({ id, playbookAction: action }),
 
       patchSettings: (body: Data) => call("/api/admin/settings", json("PATCH", body)),
+      act: (name: string, body?: Data) =>
+        call("/api/admin/settings", json("PATCH", { action: name, ...(body || {}) })),
 
       knowledgeUpload: async (input: { file?: File; text?: string; title?: string }) => {
         if (input.file) {
@@ -194,7 +196,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
     const shadow = holder.current.shadowRoot ?? holder.current.attachShadow({ mode: "open" });
     shadow.innerHTML = "";
     const style = document.createElement("style");
-    style.textContent = CRM_CSS;
+    style.textContent = CRM_CSS + CRM_EXTRA_CSS;
     const root = document.createElement("div");
     root.className = propsRef.current.embedded ? "crm embed" : "crm";
     shadow.append(style, root);
