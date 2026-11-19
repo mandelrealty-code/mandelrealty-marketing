@@ -902,12 +902,11 @@ function leadCallsAsc() {
 function callCard(call, n) {
   const id = String(call.id);
   const ui = callUiState(id);
-  const outcome = callOutcome(call);
   const secs = Number(call.booker_call_seconds);
   const bookerPill = Number.isFinite(secs) && secs > 0
     ? `<span class="bpill">Gene · ${esc(fmtBookerTime(secs))}</span>`
     : '';
-  const head = `<button type="button" class="chead" data-act="toggleCallCard" data-id="${esc(id)}" aria-expanded="${ui.open ? 'true' : 'false'}"><span class="cnum">#${n}</span><span class="cwhen">${esc(fmtCallWhen(call.created_at))}</span><span class="cchips">${outcomeChip(outcome)}${bookerPill}</span><span class="cchev">${ic('chev', 'sm')}</span></button>`;
+  const head = `<button type="button" class="chead" data-act="toggleCallCard" data-id="${esc(id)}" aria-expanded="${ui.open ? 'true' : 'false'}"><span class="cnum">#${n}</span><span class="cwhen">${esc(fmtCallWhen(call.created_at))}</span><span class="cchips">${bookerPill}</span><span class="cchev">${ic('chev', 'sm')}</span></button>`;
   if (!ui.open) return `<article class="ccard">${head}</article>`;
 
   const summaryText = String(ui.edit && ui.draft != null ? ui.draft : (call.summary || '')).trim();
