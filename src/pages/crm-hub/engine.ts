@@ -1372,6 +1372,7 @@ function openLead(id, opts = {}) {
     S.callMsg = '';
     S.callNotesEdit = false;
     S.transcriptOpen = false;
+    transcriptScrollTop = 0;
     S.transferState = null;
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
