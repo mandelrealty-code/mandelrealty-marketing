@@ -217,3 +217,89 @@ export async function countLeadCalls(leadId: string): Promise<number> {
   if (error) return 0;
   return count ?? 0;
 }
+
+/** Oldest first — Call #1 is the first row. */
+export async function listLeadCallsForLead(leadId: string): Promise<LeadCallRow[]> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return [];
+  const { data, error } = await sb
+    .from("lead_calls")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return (data as Record<string, unknown>[]).map(mapRow);
+}
+
+/** Batch call counts for the inbox list. */
+export async function countLeadCallsByLeadIds(
+  leadIds: string[],
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  const ids = [...new Set(leadIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) return out;
+  const sb = getSupabaseAdmin();
+  if (!sb) return out;
+  const { data, error } = await sb
+    .from("lead_calls")
+    .select("lead_id")
+    .in("lead_id", ids);
+  if (error || !data) return out;
+  for (const row of data as { lead_id?: string }[]) {
+    const id = String(row.lead_id || "");
+    if (!id) continue;
+    out[id] = (out[id] || 0) + 1;
+  }
+  return out;
+}
+
+/** Public shape for CRM call history UI. */
+export type LeadCallHistoryItem = {
+  id: string;
+  created_at: string;
+  status: string;
+  duration_seconds: number | null;
+  recording_url: string | null;
+  transcript: string | null;
+  summary: string | null;
+  booker_joined_at: string | null;
+  booker_left_at: string | null;
+  booker_call_seconds: number | null;
+  transfer_status: string | null;
+  conference_name: string | null;
+  meta: Record<string, unknown>;
+};
+
+function durationSecondsFromCall(row: LeadCallRow): number | null {
+  const metaDur = Number(row.meta?.duration_seconds);
+  if (Number.isFinite(metaDur) && metaDur >= 0) return Math.round(metaDur);
+  if (row.booker_joined_at && row.booker_left_at) {
+    const a = new Date(row.booker_joined_at).getTime();
+    const b = new Date(row.booker_left_at).getTime();
+    if (Number.isFinite(a) && Number.isFinite(b) && b >= a) {
+      return Math.round((b - a) / 1000);
+    }
+  }
+  if (row.booker_call_seconds != null && row.booker_call_seconds >= 0) {
+    return row.booker_call_seconds;
+  }
+  return null;
+}
+
+export function toLeadCallHistoryItem(row: LeadCallRow): LeadCallHistoryItem {
+  return {
+    id: row.id,
+    created_at: row.created_at,
+    status: row.status,
+    duration_seconds: durationSecondsFromCall(row),
+    recording_url: row.recording_url,
+    transcript: row.transcript,
+    summary: row.summary,
+    booker_joined_at: row.booker_joined_at,
+    booker_left_at: row.booker_left_at,
+    booker_call_seconds: row.booker_call_seconds,
+    transfer_status: row.transfer_status,
+    conference_name: row.conference_name,
+    meta: row.meta || {},
+  };
+}

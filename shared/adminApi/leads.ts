@@ -33,9 +33,13 @@ import {
   transferCrmCall,
 } from "../clickToCall.js";
 import {
+  countLeadCallsByLeadIds,
   getLatestLeadCallForLead,
   isActiveCallStatus,
+  listLeadCallsForLead,
+  toLeadCallHistoryItem,
   transferStateFromCall,
+  updateLeadCall,
 } from "../leadCalls.js";
 import {
   LEAD_STATUSES,
@@ -87,11 +91,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
-        const [followups, messages, pendingDraft, latestCall] = await Promise.all([
+        const [followups, messages, pendingDraft, latestCall, callRows] = await Promise.all([
           listFollowupsForLead(followupsFor),
           listSmsForLead(followupsFor),
           getPendingDraft(followupsFor),
           getLatestLeadCallForLead(followupsFor),
+          listLeadCallsForLead(followupsFor),
         ]);
         const { getLeadById, updateLeadCrm } = await import("../leadStore.js");
         const lead = await getLeadById(followupsFor);
@@ -104,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const callRecordingId =
           latestCall && latestCall.recording_url ? latestCall.id : null;
         const transfer_status = latestCall?.transfer_status ?? null;
+        const calls = callRows.map(toLeadCallHistoryItem);
         const activeCall =
           latestCall && isActiveCallStatus(latestCall.status)
             ? {
@@ -126,6 +132,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           callRecordingId,
           transfer_status,
           booker_call_seconds: latestCall?.booker_call_seconds ?? null,
+          calls,
+          call_count: calls.length,
           activeCall,
           lead: lead
             ? {
@@ -141,7 +149,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const leads = await listLeadsInbox(200, q);
       // Which leads are in onboarding, and where. Read only; a missing onboarding table just means nobody is.
       const onboarding: Awaited<ReturnType<typeof leadOnboardingSummary>> = await leadOnboardingSummary().catch(() => ({}));
-      return res.status(200).json({ leads: leads.map((l) => ({ ...l, onboarding: onboarding[l.id] ?? null })) });
+      const callCounts = await countLeadCallsByLeadIds(leads.map((l) => l.id)).catch(
+        () => ({} as Record<string, number>),
+      );
+      return res.status(200).json({
+        leads: leads.map((l) => ({
+          ...l,
+          onboarding: onboarding[l.id] ?? null,
+          call_count: callCounts[l.id] ?? 0,
+        })),
+      });
     } catch {
       return res.status(500).json({ error: "Could not load leads." });
     }
@@ -276,6 +293,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: result.error || "Could not end call." });
       }
       return res.status(200).json({ ok: true });
+    }
+
+    // Edit AI summary on a specific lead_calls row (Calls tab).
+    if (body.updateCallSummary === true) {
+      const callId = String(body.callId ?? "").trim();
+      if (!callId) return res.status(400).json({ error: "callId is required." });
+      const summary = String(body.summary ?? body.callNotes ?? "").trim();
+      const updated = await updateLeadCall(callId, { summary: summary || null });
+      if (!updated || updated.lead_id !== id) {
+        return res.status(404).json({ error: "Call not found for this lead." });
+      }
+      // Keep lead.call_notes in sync when editing the latest call (same field the old Details editor used).
+      const latest = await getLatestLeadCallForLead(id);
+      if (latest && latest.id === callId) {
+        await updateLeadCrm(id, { callNotes: summary }).catch(() => undefined);
+      }
+      const calls = (await listLeadCallsForLead(id)).map(toLeadCallHistoryItem);
+      return res.status(200).json({ ok: true, calls, call_count: calls.length });
     }
 
     if (body.sendSmsBump === true) {

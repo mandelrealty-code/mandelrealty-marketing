@@ -124,6 +124,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         callRecordingUrl: null as string | null,
         callRecordingId: null as string | null,
         bookerCallSeconds: null as number | null,
+        calls: [] as Array<Record<string, unknown>>,
+        leadCallCounts: {} as Record<string, number>,
         teamCallers: [] as Array<{ name: string; phone: string }>,
         activeCall: null as null | {
           callId: string;
@@ -166,7 +168,20 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         propsRef.current.onLoggedOut();
       },
 
-      loadLeads: (q?: string) => call(`/api/admin/leads${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+      loadLeads: async (q?: string) => {
+        const data = await call(`/api/admin/leads${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+        const counts: Record<string, number> = {};
+        for (const lead of Array.isArray(data.leads) ? data.leads : []) {
+          if (!lead || typeof lead !== "object") continue;
+          const row = lead as { id?: string; call_count?: number };
+          const id = String(row.id || "");
+          if (!id) continue;
+          const n = Number(row.call_count);
+          counts[id] = Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+        }
+        host.data.leadCallCounts = counts;
+        return data;
+      },
       loadFollowups: async (leadId: string) => {
         const data = await call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`);
         host.data.callTranscript = typeof data.callTranscript === "string" ? data.callTranscript : null;
@@ -174,6 +189,14 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         host.data.callRecordingId = typeof data.callRecordingId === "string" ? data.callRecordingId : null;
         host.data.bookerCallSeconds =
           typeof data.booker_call_seconds === "number" ? data.booker_call_seconds : null;
+        host.data.calls = Array.isArray(data.calls)
+          ? (data.calls as Array<Record<string, unknown>>)
+          : [];
+        const callCount = Array.isArray(data.calls) ? data.calls.length : Number(data.call_count) || 0;
+        host.data.leadCallCounts = {
+          ...host.data.leadCallCounts,
+          [leadId]: callCount,
+        };
         const ac = data.activeCall;
         const rawTs =
           typeof data.transfer_status === "string"
