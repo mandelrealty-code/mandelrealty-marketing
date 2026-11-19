@@ -1120,7 +1120,10 @@ export async function handleDevApi(
     const fakeReq = {
       method,
       query: { callId: qs.get("callId") || "" },
-      headers: { cookie: req.headers.cookie || "" },
+      headers: {
+        cookie: req.headers.cookie || "",
+        range: req.headers.range || "",
+      },
     } as any;
     const fakeRes = {
       statusCode: 200,

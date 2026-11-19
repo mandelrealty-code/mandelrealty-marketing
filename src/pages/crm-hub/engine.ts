@@ -1150,6 +1150,15 @@ function renderContent() {
 /* Set on destroy: a load that finishes after the CRM is unmounted must not draw into the emptied root. */
 let destroyed = false;
 let callTick = null;
+/** Snapshot so CRM re-renders (12s poll) don't kill an in-progress recording. */
+let playerSnap = { src: '', t: 0, playing: false };
+function snapshotCallPlayer() {
+  const a = root.querySelector('#callAudio');
+  if (!a) return;
+  const src = a.getAttribute('src') || '';
+  if (!src) return;
+  playerSnap = { src, t: a.currentTime || 0, playing: !a.paused && !a.ended };
+}
 function ensureCallTimer() {
   const ac = callHostData().activeCall;
   if (!ac) {
@@ -1198,10 +1207,26 @@ function bindCallPlayer() {
     a.addEventListener('pause', paint);
     a.addEventListener('ended', paint);
   }
-  paint();
+  const src = a.getAttribute('src') || '';
+  if (playerSnap.src && src && playerSnap.src === src && (playerSnap.t > 0.25 || playerSnap.playing)) {
+    const restore = () => {
+      try {
+        if (playerSnap.t > 0 && Number.isFinite(a.duration) && playerSnap.t < a.duration) {
+          a.currentTime = playerSnap.t;
+        }
+      } catch { /* seek not ready */ }
+      if (playerSnap.playing) a.play().catch(() => undefined);
+      paint();
+    };
+    if (a.readyState >= 1) restore();
+    else a.addEventListener('loadedmetadata', restore, { once: true });
+  } else {
+    paint();
+  }
 }
 function renderMain() {
   if (destroyed) return;
+  snapshotCallPlayer();
   keepFocus(() => { renderNav(); renderHead(); renderContent(); });
   ensureCallTimer();
   bindCallPlayer();
