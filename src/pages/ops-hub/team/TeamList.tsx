@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Icon } from "../clients/icons";
 import { Avatar, Chip, formatHeadDate } from "../clients/uiBits";
 import {
@@ -68,6 +68,7 @@ function RosterCard({
   users,
   savingName,
   onSetType,
+  onSetPhone,
   onSendLogin,
   onRemove,
   onAddPartner,
@@ -77,11 +78,16 @@ function RosterCard({
   users: StaffRow[];
   savingName: string;
   onSetType: (name: string, type: string) => void;
+  onSetPhone: (row: RosterRow, phone: string) => void;
   onSendLogin: (name: string) => void;
   onRemove: (row: RosterRow) => void;
   onAddPartner: (name: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [phoneDraft, setPhoneDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setPhoneDraft(Object.fromEntries(roster.map((m) => [m.id, m.phone || ""])));
+  }, [roster]);
   const hasLogin = (n: string) => users.some((u) => sameName(u.display_name, n));
   const withLogin = roster.filter((r) => hasLogin(r.name)).length;
 
@@ -127,11 +133,26 @@ function RosterCard({
                 )}
               </div>
               <span className="tm-typesel">
+                <input
+                  className="input tm-phone"
+                  type="tel"
+                  inputMode="tel"
+                  aria-label={`Phone for ${r.name}`}
+                  placeholder="+1 647 123 4567"
+                  value={phoneDraft[r.id] ?? r.phone ?? ""}
+                  disabled={saving || savingName === r.id}
+                  onChange={(e) => setPhoneDraft((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                  onBlur={() => {
+                    const next = (phoneDraft[r.id] ?? r.phone ?? "").trim();
+                    if (next === (r.phone || "").trim()) return;
+                    onSetPhone(r, next);
+                  }}
+                />
                 <select
                   className="input"
                   aria-label={`Type for ${r.name}`}
                   value={r.staff_type}
-                  disabled={saving}
+                  disabled={saving || savingName === r.id}
                   onChange={(e) => onSetType(r.name, e.target.value)}
                 >
                   {Object.entries(STAFF_TYPE_LABEL).map(([value, label]) => (
@@ -140,7 +161,7 @@ function RosterCard({
                     </option>
                   ))}
                 </select>
-                {saving ? (
+                {saving || savingName === r.id ? (
                   <span className="refreshing">
                     <i className="spin" />
                     Saving…
@@ -157,7 +178,7 @@ function RosterCard({
                 <button
                   type="button"
                   className="btn sm ghost tm-remove"
-                  disabled={saving}
+                  disabled={saving || savingName === r.id}
                   onClick={() => onRemove(r)}
                 >
                   Remove
@@ -217,6 +238,7 @@ export function TeamList({
   onInvite,
   onOpen,
   onSetType,
+  onSetPhone,
   onSendLogin,
   onRemove,
   onAddPartner,
@@ -233,6 +255,7 @@ export function TeamList({
   onInvite: () => void;
   onOpen: (u: StaffRow) => void;
   onSetType: (name: string, type: string) => void;
+  onSetPhone: (row: RosterRow, phone: string) => void;
   onSendLogin: (name: string) => void;
   onRemove: (row: RosterRow) => void;
   onAddPartner: (name: string) => void;
@@ -333,6 +356,7 @@ export function TeamList({
       users={users}
       savingName={savingName}
       onSetType={onSetType}
+      onSetPhone={onSetPhone}
       onSendLogin={onSendLogin}
       onRemove={onRemove}
       onAddPartner={onAddPartner}

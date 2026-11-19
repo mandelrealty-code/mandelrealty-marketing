@@ -298,6 +298,18 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     setSavingName("");
   };
 
+  const setPhone = async (row: RosterRow, phoneValue: string) => {
+    setSavingName(row.id);
+    try {
+      await pmPost("team_members", { op: "set_phone", id: row.id, phone: phoneValue });
+      await loadRoster();
+      setToast(phoneValue ? `Saved phone for ${row.name}` : `Cleared phone for ${row.name}`);
+    } catch (e) {
+      setError(errMsg(e, "Could not save the phone."));
+    }
+    setSavingName("");
+  };
+
   const removeRosterRow = async (r: RosterRow) => {
     const login = users.find((u) => sameName(u.display_name, r.name));
     setSavingName(r.name);
@@ -356,6 +368,7 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       onInvite={() => setInvite({ name: "", prefilled: false })}
       onOpen={(u) => onSelect(u.id)}
       onSetType={(name, type) => void setType(name, type)}
+      onSetPhone={(row, phoneValue) => void setPhone(row, phoneValue)}
       onSendLogin={(name) => setInvite({ name, prefilled: true })}
       onRemove={(row) => setConfirm({ kind: "remove", row })}
       onAddPartner={(name) => void setType(name, "partner", `${name} added as a partner`)}

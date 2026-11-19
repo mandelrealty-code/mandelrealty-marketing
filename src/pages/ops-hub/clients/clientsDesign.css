@@ -787,8 +787,9 @@
 .mrgc .tm-fold{display:none;margin-top:2px}
 .mrgc .tm-roster-row .t{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mrgc .tm-roster-row .t b{display:inline}
-.mrgc .tm-typesel{position:relative;display:inline-flex;align-items:center;gap:8px}
+.mrgc .tm-typesel{position:relative;display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mrgc .tm-typesel .input{height:36px;width:150px}
+.mrgc .tm-typesel .input.tm-phone{width:168px}
 .mrgc .tm-roster-acts{display:flex;gap:6px;align-items:center;justify-content:flex-end;min-width:210px}
 .mrgc .tm-remove{color:var(--redink);padding:0 6px}
 .mrgc .tm-weekrow{background:var(--panel)}

@@ -37,7 +37,7 @@ export type BoardTask = {
   updatedAt: string;
 };
 
-export type RosterRow = { id: string; name: string; staff_type: string };
+export type RosterRow = { id: string; name: string; staff_type: string; phone?: string };
 
 export type InvitePayload = {
   team_url: string;
