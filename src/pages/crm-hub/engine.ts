@@ -773,7 +773,7 @@ function activeCallBlock() {
   if (ts === 'connecting') {
     body = row('amber', '<b>Connecting Ryan…</b>') + `<div class="r2"><button class="lnkbtn" data-act="cancelTransfer">Cancel</button></div>`;
   } else if (ts === 'connected') {
-    body = row('green', '<b>Ryan connected</b> · you can drop off') + `<div class="r2"><button class="btn sm endcall" data-act="endCall">End call</button></div>`;
+    body = row('green', '<b>Ryan connected</b> · you can drop off') + `<div class="r2"><button class="btn sm ghost" data-act="leaveCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Leave call</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`;
   } else {
     body = row('red', 'Recording') + `<div class="r2"><button class="btn sm ghost" data-act="transferCall" style="border-color:var(--line)" ${isBusy('call') ? 'disabled' : ''}>Transfer to Ryan →</button><button class="btn sm endcall" data-act="endCall" ${isBusy('call') ? 'disabled' : ''}>End call</button></div>`;
   }
@@ -1558,15 +1558,19 @@ async function crmCall() {
 async function transferCall() {
   const l = leadById(S.leadId); if (!l || !host.transferCall || isBusy('call')) return;
   S.transferState = 'connecting';
+  if (callHostData().activeCall) callHostData().activeCall.transferState = 'connecting';
   renderMain();
   setBusy('call', true);
   try {
-    await host.transferCall(l.id);
-    S.transferState = 'connected';
-    if (callHostData().activeCall) callHostData().activeCall.transferState = 'connected';
-    toast('Ryan connected');
+    const data = await host.transferCall(l.id);
+    const next = data && data.status === 'connected' ? 'connected' : 'connecting';
+    S.transferState = next;
+    if (callHostData().activeCall) callHostData().activeCall.transferState = next;
+    toast(next === 'connected' ? 'Ryan connected' : 'Calling Ryan…');
+    loadThread(l.id);
   } catch (e) {
     S.transferState = null;
+    if (callHostData().activeCall) callHostData().activeCall.transferState = null;
     toast(errMsg(e, 'Transfer failed'), 'bad');
   } finally {
     setBusy('call', false);
@@ -1576,10 +1580,26 @@ async function transferCall() {
 async function cancelTransfer() {
   const l = leadById(S.leadId); if (!l) return;
   S.transferState = null;
+  if (callHostData().activeCall) callHostData().activeCall.transferState = null;
   renderMain();
   if (!host.cancelTransfer) return;
-  try { await host.cancelTransfer(l.id); }
+  try { await host.cancelTransfer(l.id); toast('Transfer cancelled'); }
   catch (e) { toast(errMsg(e, 'Could not cancel transfer'), 'bad'); }
+}
+async function leaveCall() {
+  const l = leadById(S.leadId); if (!l || isBusy('call')) return;
+  setBusy('call', true);
+  try {
+    if (host.leaveCall) await host.leaveCall(l.id);
+    callHostData().activeCall = null;
+    S.transferState = null;
+    toast('You left the call. Lead and Ryan stay connected.');
+    loadThread(l.id); loadLeads();
+  } catch (e) {
+    toast(errMsg(e, 'Could not leave call'), 'bad');
+  } finally {
+    setBusy('call', false);
+  }
 }
 async function endCall() {
   const l = leadById(S.leadId); if (!l || isBusy('call')) return;
@@ -1966,6 +1986,7 @@ const ACT = {
   crmCall: () => crmCall(),
   transferCall: () => transferCall(),
   cancelTransfer: () => cancelTransfer(),
+  leaveCall: () => leaveCall(),
   endCall: () => endCall(),
   editCallNotes: () => { S.callNotesEdit = true; renderMain(); const t = root.querySelector('#sumTa'); if (t) t.focus(); },
   cancelCallNotesEdit: () => {

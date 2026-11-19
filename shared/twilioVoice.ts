@@ -27,6 +27,8 @@ export async function createTwilioCall(input: {
   from: string;
   url: string;
   statusCallback?: string;
+  /** Space-separated Twilio StatusCallbackEvent values (default: full lifecycle). */
+  statusCallbackEvent?: string;
 }): Promise<{ ok: boolean; sid?: string; error?: string }> {
   const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(input.accountSid)}/Calls.json`;
   const body = new URLSearchParams({
@@ -38,7 +40,10 @@ export async function createTwilioCall(input: {
   if (input.statusCallback) {
     body.set("StatusCallback", input.statusCallback);
     body.set("StatusCallbackMethod", "POST");
-    body.set("StatusCallbackEvent", "initiated ringing answered completed");
+    body.set(
+      "StatusCallbackEvent",
+      input.statusCallbackEvent || "initiated ringing answered completed",
+    );
   }
 
   try {

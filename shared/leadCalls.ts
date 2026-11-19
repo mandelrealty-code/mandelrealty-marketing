@@ -12,6 +12,12 @@ export type LeadCallRow = {
   operator_phone: string;
   lead_phone: string;
   status: string;
+  /** Twilio Conference FriendlyName — mrg-{id}. */
+  conference_name: string | null;
+  /** Ryan transfer outbound Call SID. */
+  transfer_call_sid: string | null;
+  /** connecting | connected | null */
+  transfer_status: string | null;
   recording_sid: string | null;
   recording_url: string | null;
   transcription_sid: string | null;
@@ -37,8 +43,9 @@ export function isActiveCallStatus(status: string): boolean {
 }
 
 export function transferStateFromCall(row: LeadCallRow): "connecting" | "connected" | null {
-  if (row.status === "transferring") return "connecting";
-  if (row.status === "transfer_connected") return "connected";
+  const ts = String(row.transfer_status || "").toLowerCase();
+  if (ts === "connecting" || row.status === "transferring") return "connecting";
+  if (ts === "connected" || row.status === "transfer_connected") return "connected";
   return null;
 }
 
@@ -56,6 +63,9 @@ function mapRow(row: Record<string, unknown>): LeadCallRow {
     operator_phone: String(row.operator_phone ?? ""),
     lead_phone: String(row.lead_phone ?? ""),
     status: String(row.status ?? "starting"),
+    conference_name: (row.conference_name as string | null) ?? null,
+    transfer_call_sid: (row.transfer_call_sid as string | null) ?? null,
+    transfer_status: (row.transfer_status as string | null) ?? null,
     recording_sid: (row.recording_sid as string | null) ?? null,
     recording_url: (row.recording_url as string | null) ?? null,
     transcription_sid: (row.transcription_sid as string | null) ?? null,
@@ -96,6 +106,9 @@ export async function updateLeadCall(
     call_sid: string | null;
     dial_call_sid: string | null;
     status: string;
+    conference_name: string | null;
+    transfer_call_sid: string | null;
+    transfer_status: string | null;
     recording_sid: string | null;
     recording_url: string | null;
     transcription_sid: string | null;

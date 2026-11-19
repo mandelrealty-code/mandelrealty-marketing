@@ -1174,6 +1174,14 @@ export async function handleDevApi(
       return true;
     }
 
+    if (op === "lead_join") {
+      const { buildLeadConferenceJoinTwiml } = await import("./clickToCall.js");
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end(buildLeadConferenceJoinTwiml(callId));
+      return true;
+    }
+
     if (op === "notice") {
       const { buildLeadRecordingNoticeTwiml } = await import("./clickToCall.js");
       res.statusCode = 200;
@@ -1190,6 +1198,14 @@ export async function handleDevApi(
       return true;
     }
 
+    if (op === "hangup") {
+      const { buildHangupTwiml } = await import("./clickToCall.js");
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end(buildHangupTwiml());
+      return true;
+    }
+
     if (method !== "POST") {
       res.statusCode = 405;
       res.end("Method not allowed");
@@ -1203,6 +1219,19 @@ export async function handleDevApi(
         callStatus: body.get("CallStatus") || body.get("DialCallStatus") || "",
         callSid: body.get("CallSid") || undefined,
         leg: qs.get("leg") || body.get("leg") || undefined,
+      }).catch(() => undefined);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/xml");
+      res.end('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+      return true;
+    }
+
+    if (op === "transfer_status") {
+      const { handleTransferStatus } = await import("./clickToCall.js");
+      await handleTransferStatus({
+        callId,
+        callStatus: body.get("CallStatus") || "",
+        callSid: body.get("CallSid") || undefined,
       }).catch(() => undefined);
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/xml");

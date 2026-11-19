@@ -1,10 +1,13 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   buildConferenceJoinTwiml,
+  buildHangupTwiml,
+  buildLeadConferenceJoinTwiml,
   buildLeadRecordingNoticeTwiml,
   buildOperatorBridgeTwiml,
   handleRecordingReady,
   handleTranscriptionReady,
+  handleTransferStatus,
   handleVoiceStatus,
 } from "../../shared/clickToCall.js";
 
@@ -12,7 +15,7 @@ export const config = { maxDuration: 60 };
 
 /**
  * Single Hobby-plan serverless function for all CRM voice webhooks.
- * Routes via ?op=bridge|notice|conference|status|recording|transcription
+ * Routes via ?op=bridge|lead_join|notice|conference|hangup|status|transfer_status|recording|transcription
  */
 function formParams(req: VercelRequest): URLSearchParams {
   const body = req.body;
@@ -51,6 +54,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).send(twiml);
   }
 
+  if (op === "lead_join") {
+    if (req.method !== "POST" && req.method !== "GET") {
+      return res.status(405).send("Method not allowed");
+    }
+    res.setHeader("Content-Type", "text/xml");
+    return res.status(200).send(buildLeadConferenceJoinTwiml(callId));
+  }
+
   if (op === "notice") {
     if (req.method !== "POST" && req.method !== "GET") {
       return res.status(405).send("Method not allowed");
@@ -65,6 +76,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     res.setHeader("Content-Type", "text/xml");
     return res.status(200).send(buildConferenceJoinTwiml(callId));
+  }
+
+  if (op === "hangup") {
+    if (req.method !== "POST" && req.method !== "GET") {
+      return res.status(405).send("Method not allowed");
+    }
+    res.setHeader("Content-Type", "text/xml");
+    return res.status(200).send(buildHangupTwiml());
   }
 
   if (req.method !== "POST") {
@@ -86,10 +105,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return emptyTwiml(res);
   }
 
+  if (op === "transfer_status") {
+    const callStatus = params.get("CallStatus") || "";
+    const callSid = params.get("CallSid") || "";
+    if (callId) {
+      await handleTransferStatus({
+        callId,
+        callStatus,
+        callSid: callSid || undefined,
+      }).catch((err) => console.error("[voice-transfer-status]", err));
+    }
+    return emptyTwiml(res);
+  }
+
   if (op === "recording") {
     const recordingStatus = (params.get("RecordingStatus") || "").toLowerCase();
     const recordingSid = params.get("RecordingSid") || "";
     const recordingUrl = params.get("RecordingUrl") || "";
+    // callId is always on the callback URL (conference + Dial), so we match by callId — not CallSid.
     if (callId && recordingStatus === "completed" && recordingSid && recordingUrl) {
       await handleRecordingReady({
         callId,

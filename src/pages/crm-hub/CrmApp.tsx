@@ -226,6 +226,11 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       },
       transferCall: (id: string) => patchLead({ id, transferCall: true, op: "transfer_call" }),
       cancelTransfer: (id: string) => patchLead({ id, cancelTransfer: true }),
+      leaveCall: async (id: string) => {
+        const data = await patchLead({ id, leaveCall: true });
+        host.data.activeCall = null;
+        return data;
+      },
       endCall: async (id: string) => {
         const data = await patchLead({ id, endCall: true });
         host.data.activeCall = null;

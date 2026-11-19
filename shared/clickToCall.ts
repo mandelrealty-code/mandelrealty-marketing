@@ -219,6 +219,10 @@ export async function startClickToCall(input: {
     call_sid: call.sid,
     status: "ringing_operator",
   });
+  // Optional until supabase/crm_conference_v1.sql is run — call still works without the column.
+  await updateLeadCall(callRow.id, {
+    conference_name: conferenceNameForCall(callRow.id),
+  }).catch(() => undefined);
 
   const stamp = new Date().toLocaleString("en-CA", { timeZone: "America/Toronto" });
   const prev = (lead.whats_next || "").trim();
@@ -241,39 +245,88 @@ export async function startClickToCall(input: {
   };
 }
 
-/** TwiML when the operator answers — bridge to the lead and record. */
+/** Conference room name for a CRM call (warm transfer / multi-party). */
+export function conferenceNameForCall(callId: string): string {
+  return `mrg-${callId}`;
+}
+
+/**
+ * TwiML when the booker answers — join the named conference (recorded) and dial the lead in.
+ * Conference must sit inside <Dial> (Twilio requirement).
+ */
 export async function buildOperatorBridgeTwiml(callId: string): Promise<string> {
   const row = await getLeadCallById(callId);
   const from = process.env.TWILIO_PHONE_NUMBER?.trim() || "";
+  const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim() || "";
+  const authToken = process.env.TWILIO_AUTH_TOKEN?.trim() || "";
   if (!row || !from) {
     return twimlResponse(
       `<Say voice="Polly.Joanna">Sorry, this call could not be connected.</Say><Hangup/>`,
     );
   }
 
-  await updateLeadCall(callId, { status: "bridging" });
+  const confName = row.conference_name || conferenceNameForCall(callId);
+  await updateLeadCall(callId, {
+    status: "bridging",
+    conference_name: confName,
+  });
 
   const base = twilioWebhookBaseUrl();
   const recordingCb = `${base}/api/twilio/voice?op=recording&callId=${encodeURIComponent(callId)}`;
+  const leadJoinUrl = `${base}/api/twilio/voice?op=lead_join&callId=${encodeURIComponent(callId)}`;
   const leadStatus = `${base}/api/twilio/voice?op=status&callId=${encodeURIComponent(callId)}&leg=lead`;
-  // Whisper to the lead when they answer — recording disclosure before bridge
-  const leadNotice = `${base}/api/twilio/voice?op=notice`;
 
+  // Dial the lead into the same conference once (guard against Twilio bridge retries).
+  if (accountSid && authToken && !row.dial_call_sid) {
+    const leadCall = await createTwilioCall({
+      accountSid,
+      authToken,
+      to: row.lead_phone,
+      from,
+      url: leadJoinUrl,
+      statusCallback: leadStatus,
+    });
+    if (leadCall.ok && leadCall.sid) {
+      await updateLeadCall(callId, { dial_call_sid: leadCall.sid });
+    } else {
+      console.warn("[clickToCall] lead dial failed", leadCall.error);
+    }
+  }
+
+  const waitUrl = "http://twimlets.com/holdmusic?Bucket=com.twilio.music.classical";
   return twimlResponse(
     [
-      `<Say voice="Polly.Joanna">Connecting you to the lead. This call is being recorded for quality assurance.</Say>`,
-      `<Dial callerId="${xmlEscape(from)}" record="record-from-answer-dual" recordingStatusCallback="${xmlEscape(recordingCb)}" recordingStatusCallbackEvent="completed" timeout="45">`,
-      `<Number url="${xmlEscape(leadNotice)}" method="POST" statusCallback="${xmlEscape(leadStatus)}" statusCallbackEvent="initiated ringing answered completed">${xmlEscape(row.lead_phone)}</Number>`,
+      `<Say voice="Polly.Joanna">This call is being recorded.</Say>`,
+      `<Dial>`,
+      `<Conference beep="false" record="record-from-start" recordingStatusCallback="${xmlEscape(recordingCb)}" recordingStatusCallbackEvent="completed" waitUrl="${xmlEscape(waitUrl)}" waitMethod="GET" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(confName)}</Conference>`,
       `</Dial>`,
     ].join(""),
   );
 }
 
-/** Played to the lead when they answer, before they are connected to the operator. */
+/** Lead answers — disclosure, then join the same conference. */
+export function buildLeadConferenceJoinTwiml(callId: string): string {
+  const name = conferenceNameForCall(callId);
+  return twimlResponse(
+    [
+      `<Say voice="Polly.Joanna">This call is being recorded.</Say>`,
+      `<Dial>`,
+      `<Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(name)}</Conference>`,
+      `</Dial>`,
+    ].join(""),
+  );
+}
+
+/** Legacy notice endpoint — same disclosure as lead join (kept for old webhook URLs). */
 export function buildLeadRecordingNoticeTwiml(): string {
   return twimlResponse(
     `<Say voice="Polly.Joanna">This call is being recorded for quality assurance. Connecting you now.</Say>`,
   );
+}
+
+/** Hang up this leg only (booker Leave call). */
+export function buildHangupTwiml(): string {
+  return twimlResponse(`<Hangup/>`);
 }
 
 export async function handleVoiceStatus(input: {
@@ -497,17 +550,11 @@ async function appendCallNoteToLead(
   }).catch((err) => console.error("[clickToCall] post-call follow-up schedule failed", err));
 }
 
-/** Conference room name for a CRM call (warm transfer / multi-party). */
-export function conferenceNameForCall(callId: string): string {
-  return `mrg-${callId}`;
-}
-
-/** TwiML: join the CRM call conference (operator, lead, or Ryan). */
+/** TwiML: join the CRM call conference (Ryan transfer leg). */
 export function buildConferenceJoinTwiml(callId: string): string {
   const name = conferenceNameForCall(callId);
   return twimlResponse(
     [
-      `<Say voice="Polly.Joanna">Connecting you now.</Say>`,
       `<Dial>`,
       `<Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(name)}</Conference>`,
       `</Dial>`,
@@ -524,13 +571,12 @@ function transferPhone(): string {
 }
 
 /**
- * Warm-ish transfer: move operator + lead into a Twilio Conference, then dial Ryan in.
- * (Cold fallback if a leg has no CallSid yet — returns an error rather than dropping silently.)
+ * Add Ryan to the existing conference. Does NOT redirect or end booker/lead legs.
  */
 export async function transferCrmCall(input: {
   leadId: string;
   env: TwilioVoiceEnv;
-}): Promise<{ ok: boolean; error?: string; callId?: string }> {
+}): Promise<{ ok: boolean; error?: string; callId?: string; status?: string }> {
   if (!isTwilioConfigured(input.env)) {
     return { ok: false, error: "Twilio is not configured." };
   }
@@ -546,40 +592,21 @@ export async function transferCrmCall(input: {
   if (!row || !isActiveCallStatus(row.status)) {
     return { ok: false, error: "No active CRM call to transfer." };
   }
-  if (!row.call_sid) {
-    return { ok: false, error: "Call is still connecting — try again in a moment." };
-  }
 
+  const confName = row.conference_name || conferenceNameForCall(row.id);
   const accountSid = input.env.TWILIO_ACCOUNT_SID!.trim();
   const authToken = input.env.TWILIO_AUTH_TOKEN!.trim();
   const from = input.env.TWILIO_PHONE_NUMBER!.trim();
   const base = twilioWebhookBaseUrl();
   const confUrl = `${base}/api/twilio/voice?op=conference&callId=${encodeURIComponent(row.id)}`;
+  const transferStatusUrl = `${base}/api/twilio/voice?op=transfer_status&callId=${encodeURIComponent(row.id)}`;
 
-  await updateLeadCall(row.id, { status: "transferring" });
-
-  const opMove = await updateTwilioCall({
-    accountSid,
-    authToken,
-    callSid: row.call_sid,
-    url: confUrl,
+  await updateLeadCall(row.id, {
+    status: "transferring",
+    transfer_status: "connecting",
+    conference_name: confName,
+    error: null,
   });
-  if (!opMove.ok) {
-    await updateLeadCall(row.id, {
-      status: "in_call",
-      error: opMove.error || "Could not move operator to conference",
-    });
-    return { ok: false, error: opMove.error || "Could not start transfer." };
-  }
-
-  if (row.dial_call_sid) {
-    await updateTwilioCall({
-      accountSid,
-      authToken,
-      callSid: row.dial_call_sid,
-      url: confUrl,
-    }).catch(() => undefined);
-  }
 
   const ryanCall = await createTwilioCall({
     accountSid,
@@ -587,10 +614,14 @@ export async function transferCrmCall(input: {
     to: ryan,
     from,
     url: confUrl,
+    statusCallback: transferStatusUrl,
+    statusCallbackEvent: "answered completed",
   });
   if (!ryanCall.ok || !ryanCall.sid) {
     await updateLeadCall(row.id, {
       status: "in_call",
+      transfer_status: null,
+      transfer_call_sid: null,
       error: ryanCall.error || "Could not dial Ryan",
       meta: { ...(row.meta || {}), transfer_error: ryanCall.error || "dial_failed" },
     });
@@ -598,18 +629,58 @@ export async function transferCrmCall(input: {
   }
 
   await updateLeadCall(row.id, {
-    status: "transfer_connected",
+    status: "transferring",
+    transfer_status: "connecting",
+    transfer_call_sid: ryanCall.sid,
     error: null,
     meta: {
       ...(row.meta || {}),
-      transfer_call_sid: ryanCall.sid,
       transfer_to: ryan,
+      transfer_call_sid: ryanCall.sid,
     },
   });
 
-  return { ok: true, callId: row.id };
+  return { ok: true, callId: row.id, status: "connecting" };
 }
 
+/** Ryan outbound call status — answered → transfer_status connected. */
+export async function handleTransferStatus(input: {
+  callId: string;
+  callStatus: string;
+  callSid?: string;
+}): Promise<void> {
+  const status = input.callStatus.toLowerCase();
+  const patch: Parameters<typeof updateLeadCall>[1] = {};
+  if (input.callSid) patch.transfer_call_sid = input.callSid;
+
+  if (status === "answered" || status === "in-progress") {
+    patch.transfer_status = "connected";
+    patch.status = "transfer_connected";
+    patch.error = null;
+  } else if (
+    status === "busy" ||
+    status === "no-answer" ||
+    status === "failed" ||
+    status === "canceled"
+  ) {
+    patch.transfer_status = null;
+    patch.status = "in_call";
+    patch.error = `Ryan ${status}`;
+  } else if (status === "completed") {
+    const row = await getLeadCallById(input.callId);
+    if (row && String(row.transfer_status || "").toLowerCase() === "connecting") {
+      patch.transfer_status = null;
+      patch.status = "in_call";
+      patch.error = "Ryan did not connect";
+    }
+  }
+
+  if (Object.keys(patch).length) {
+    await updateLeadCall(input.callId, patch);
+  }
+}
+
+/** Cancel Ryan’s outbound leg only — booker + lead stay in conference. */
 export async function cancelCrmTransfer(input: {
   leadId: string;
   env: TwilioVoiceEnv;
@@ -620,7 +691,9 @@ export async function cancelCrmTransfer(input: {
   const row = await getLatestLeadCallForLead(input.leadId);
   if (!row) return { ok: false, error: "No active CRM call." };
 
-  const transferSid = String(row.meta?.transfer_call_sid || "").trim();
+  const transferSid =
+    (row.transfer_call_sid || "").trim() ||
+    String(row.meta?.transfer_call_sid || "").trim();
   if (transferSid) {
     await updateTwilioCall({
       accountSid: input.env.TWILIO_ACCOUNT_SID!.trim(),
@@ -634,11 +707,48 @@ export async function cancelCrmTransfer(input: {
   delete nextMeta.transfer_call_sid;
   await updateLeadCall(row.id, {
     status: isActiveCallStatus(row.status) ? "in_call" : row.status,
+    transfer_status: null,
+    transfer_call_sid: null,
     meta: nextMeta,
   });
   return { ok: true };
 }
 
+/** Booker leaves — hang up their leg only; conference continues for lead (+ Ryan). */
+export async function leaveCrmCall(input: {
+  leadId: string;
+  env: TwilioVoiceEnv;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (!isTwilioConfigured(input.env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const row = await getLatestLeadCallForLead(input.leadId);
+  if (!row || !isActiveCallStatus(row.status)) {
+    return { ok: false, error: "No active CRM call." };
+  }
+  if (!row.call_sid) {
+    return { ok: false, error: "Booker call leg not found." };
+  }
+
+  const base = twilioWebhookBaseUrl();
+  const hangupUrl = `${base}/api/twilio/voice?op=hangup`;
+  const moved = await updateTwilioCall({
+    accountSid: input.env.TWILIO_ACCOUNT_SID!.trim(),
+    authToken: input.env.TWILIO_AUTH_TOKEN!.trim(),
+    callSid: row.call_sid,
+    url: hangupUrl,
+  });
+  if (!moved.ok) {
+    return { ok: false, error: moved.error || "Could not leave call." };
+  }
+
+  await updateLeadCall(row.id, {
+    meta: { ...(row.meta || {}), operator_left: true },
+  });
+  return { ok: true };
+}
+
+/** End the whole conference — hang up every known participant leg. */
 export async function endCrmCall(input: {
   leadId: string;
   env: TwilioVoiceEnv;
@@ -656,7 +766,9 @@ export async function endCrmCall(input: {
   const sids = [
     row.call_sid,
     row.dial_call_sid,
-    String(row.meta?.transfer_call_sid || "").trim() || null,
+    (row.transfer_call_sid || "").trim() ||
+      String(row.meta?.transfer_call_sid || "").trim() ||
+      null,
   ].filter(Boolean) as string[];
 
   for (const callSid of sids) {
@@ -668,7 +780,10 @@ export async function endCrmCall(input: {
     }).catch(() => undefined);
   }
 
-  await updateLeadCall(row.id, { status: "completed" });
+  await updateLeadCall(row.id, {
+    status: "completed",
+    transfer_status: null,
+  });
   await updateLeadCrm(row.lead_id, { aiPaused: false }).catch(() => undefined);
   return { ok: true };
 }

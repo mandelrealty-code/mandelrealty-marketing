@@ -28,6 +28,7 @@ import { listLeadsInbox, markLeadSmsRead } from "../crmInbox.js";
 import {
   cancelCrmTransfer,
   endCrmCall,
+  leaveCrmCall,
   startClickToCall,
   transferCrmCall,
 } from "../clickToCall.js";
@@ -239,13 +240,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!result.ok) {
         return res.status(400).json({ error: result.error || "Could not transfer call." });
       }
-      return res.status(200).json({ ok: true, callId: result.callId });
+      return res.status(200).json({
+        ok: true,
+        callId: result.callId,
+        status: result.status || "connecting",
+      });
     }
 
     if (body.cancelTransfer === true) {
       const result = await cancelCrmTransfer({ leadId: id, env: twilioEnv });
       if (!result.ok) {
         return res.status(400).json({ error: result.error || "Could not cancel transfer." });
+      }
+      return res.status(200).json({ ok: true });
+    }
+
+    if (body.leaveCall === true) {
+      const result = await leaveCrmCall({ leadId: id, env: twilioEnv });
+      if (!result.ok) {
+        return res.status(400).json({ error: result.error || "Could not leave call." });
       }
       return res.status(200).json({ ok: true });
     }
