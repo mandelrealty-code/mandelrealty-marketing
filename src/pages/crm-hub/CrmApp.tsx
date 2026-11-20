@@ -236,6 +236,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
           launch?: string;
           tier?: string;
           benchmarks?: Record<string, number>;
+          designPackage?: string;
+          paymentMethod?: string;
         },
       ) => {
         const data = await call<{

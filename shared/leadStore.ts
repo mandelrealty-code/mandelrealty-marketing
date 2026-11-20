@@ -71,6 +71,8 @@ export type LeadRow = {
   contract_launch_payment: string;
   contract_benchmarks: Record<string, number> | null;
   contract_is_blank: boolean;
+  contract_design_package: string;
+  contract_payment_method: string;
   /** Sales-call property profile (crm_profile_v1). */
   property_address: string;
   property_place_id: string;
@@ -149,6 +151,8 @@ export type LeadCrmUpdate = {
   contractLaunchPayment?: string | null;
   contractBenchmarks?: Record<string, number> | null;
   contractIsBlank?: boolean | null;
+  contractDesignPackage?: string | null;
+  contractPaymentMethod?: string | null;
 };
 
 export type LeadProfileUpdate = {
@@ -225,6 +229,8 @@ export function mapLead(row: Record<string, unknown>): LeadRow {
         ? (row.contract_benchmarks as Record<string, number>)
         : null,
     contract_is_blank: Boolean(row.contract_is_blank),
+    contract_design_package: String(row.contract_design_package ?? ""),
+    contract_payment_method: String(row.contract_payment_method ?? ""),
     property_address: String(row.property_address ?? ""),
     property_place_id: String(row.property_place_id ?? ""),
     property_city: String(row.property_city ?? ""),
@@ -498,6 +504,12 @@ export async function updateLeadCrm(
   }
   if (patch.contractBenchmarks !== undefined) update.contract_benchmarks = patch.contractBenchmarks;
   if (patch.contractIsBlank !== undefined) update.contract_is_blank = Boolean(patch.contractIsBlank);
+  if (patch.contractDesignPackage !== undefined) {
+    update.contract_design_package = patch.contractDesignPackage || null;
+  }
+  if (patch.contractPaymentMethod !== undefined) {
+    update.contract_payment_method = patch.contractPaymentMethod || null;
+  }
 
   if (Object.keys(update).length === 0) return null;
 

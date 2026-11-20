@@ -49,9 +49,13 @@ export type ContractSendDetails = {
   tier?: string;
   benchmarks?: Record<string, number>;
   propertySize?: string;
+  /** furniture: essential | signature */
+  designPackage?: string;
+  /** furniture: credit_card | pad */
+  paymentMethod?: string;
 };
 
-export type ContractStampKind = "standard" | "growth" | "essentials";
+export type ContractStampKind = "standard" | "growth" | "essentials" | "furniture";
 
 export type ContractStampDetails = {
   clientName: string;
@@ -67,6 +71,8 @@ export type ContractStampDetails = {
   launchPayment?: string;
   benchmarks?: Record<string, number>;
   propertySize?: string;
+  designPackage?: string;
+  paymentMethod?: string;
   /** e.g. "November 20, 2026" */
   signedDate: string;
 };
@@ -194,6 +200,7 @@ function resolveContractStampKind(
   template: ContractTemplate,
 ): ContractStampKind {
   const blob = `${type || ""} ${template.label || ""} ${template.filename || ""}`.toLowerCase();
+  if (/furniture/.test(blob) || type === "furniture") return "furniture";
   if (/growth/.test(blob) || type === "growth") return "growth";
   if (/essential/.test(blob) || type === "essentials") return "essentials";
   return "standard";
@@ -384,6 +391,38 @@ export async function stampContractDetails(
     if (page2 && details.term === "12") {
       drawText(page2, 59, 755, "x", 11);
     }
+  } else if (contractType === "furniture") {
+    // MRG_Furniture_Investment_Program_Agreement_FINAL — 4 pages
+    drawText(page1, 188, 636, details.signedDate, 10);
+    drawText(page1, 101, 557, details.clientName, 10);
+    drawText(page1, 362, 557, details.propertyAddress, 10);
+    drawText(page1, 101, 541, details.clientPhone, 10);
+    drawText(page1, 390, 541, details.cityProvince, 10);
+    drawText(page1, 101, 524, details.clientEmail, 10);
+    drawText(page1, 390, 524, details.postalCode, 10);
+
+    const page2 = pages[1];
+    if (page2) {
+      if (details.designPackage === "essential") {
+        drawText(page2, 60, 554, "x", 11);
+      } else {
+        // signature (default when set / not essential)
+        drawText(page2, 60, 518, "x", 11);
+      }
+    }
+
+    const page3 = pages[2];
+    if (page3) {
+      if (details.paymentMethod === "pad") {
+        drawText(page3, 60, 184, "x", 11);
+      } else {
+        // credit card (default)
+        drawText(page3, 60, 215, "x", 11);
+      }
+      drawText(page3, 224, 137, details.clientName, 10);
+      drawText(page3, 462, 137, details.clientInitials, 10);
+    }
+    // Page 4 signatures are stamped by the magic-sign flow, not here.
   }
 
   return Buffer.from(await pdfDoc.save());
@@ -467,6 +506,8 @@ export async function sendCrmLeadContract(input: {
       launchPayment: launchPayment || undefined,
       benchmarks: details.benchmarks,
       propertySize: details.propertySize,
+      designPackage: details.designPackage,
+      paymentMethod: details.paymentMethod,
       signedDate: formatContractSignedDate(),
     });
   }
@@ -525,6 +566,8 @@ export async function sendCrmLeadContract(input: {
     contractLaunchPayment: details.launch || null,
     contractBenchmarks: details.benchmarks || null,
     contractIsBlank: blank,
+    contractDesignPackage: details.designPackage || null,
+    contractPaymentMethod: details.paymentMethod || null,
   });
   if (!updated) {
     throw Object.assign(

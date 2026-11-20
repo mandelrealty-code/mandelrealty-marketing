@@ -474,6 +474,8 @@ export async function handleDevApi(
                 launch: String(body.launch ?? "").trim() || undefined,
                 tier: String(body.tier ?? "").trim() || undefined,
                 benchmarks,
+                designPackage: String(body.designPackage ?? "").trim() || undefined,
+                paymentMethod: String(body.paymentMethod ?? "").trim() || undefined,
               },
             }),
           );

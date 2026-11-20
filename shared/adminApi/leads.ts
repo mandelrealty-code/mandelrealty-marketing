@@ -255,6 +255,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             launch: String(body.launch ?? "").trim() || undefined,
             tier: String(body.tier ?? "").trim() || undefined,
             benchmarks,
+            designPackage: String(body.designPackage ?? "").trim() || undefined,
+            paymentMethod: String(body.paymentMethod ?? "").trim() || undefined,
           },
         });
         return res.status(200).json(result);

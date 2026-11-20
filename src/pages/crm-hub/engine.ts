@@ -605,6 +605,8 @@ const S = {
   contractLaunch: '',
   contractTier: '',
   contractBenchmarks: {},
+  contractDesignPackage: '',
+  contractPaymentMethod: '',
   sections: {
     book: false,
     profile: false,
@@ -1173,6 +1175,8 @@ function resetContractForm() {
   S.contractLaunch = '';
   S.contractTier = '';
   S.contractBenchmarks = {};
+  S.contractDesignPackage = '';
+  S.contractPaymentMethod = '';
   S.selectedTemplate = null;
   S.selectedTemplateId = '';
   S.contractTemplatesLoading = false;
@@ -1180,6 +1184,7 @@ function resetContractForm() {
 }
 function deriveContractTypeFromLabel(label) {
   const s = String(label || '');
+  if (/furniture/i.test(s)) return 'furniture';
   // Essentials before Management: "Managed" must not match via "Management"
   if (/essential/i.test(s) || /\bmanaged\b/i.test(s)) return 'essentials';
   if (/growth|partnership/i.test(s)) return 'growth';
@@ -1187,6 +1192,7 @@ function deriveContractTypeFromLabel(label) {
   return 'standard';
 }
 function contractTypeDescription(type, label) {
+  if (type === 'furniture') return 'Design package · Stripe at signing';
   if (type === 'growth') return 'Performance-based · 12 months';
   if (type === 'essentials') return 'Flat monthly fee · Cancel anytime';
   if (type === 'standard') return '20% or 25% · 12 or 24 months';
@@ -1225,6 +1231,7 @@ function contractFormReady() {
     return Boolean(S.contractTier && S.contractLaunch && BM_MONTHS.every((m) => Number(S.contractBenchmarks[m]) > 0));
   }
   if (S.contractType === 'essentials') return Boolean(S.contractPlan && S.contractTerm);
+  if (S.contractType === 'furniture') return Boolean(S.contractDesignPackage && S.contractPaymentMethod);
   return false;
 }
 function planLabel(v) {
@@ -1240,9 +1247,20 @@ function tierLabel(v) {
   return v || '—';
 }
 function typeLabel(v) {
+  if (v === 'furniture') return 'Furniture Investment';
   if (v === 'growth') return 'Growth Partnership';
   if (v === 'essentials') return 'Managed Essentials';
   return 'Standard Management';
+}
+function designPackageLabel(v) {
+  if (v === 'essential') return 'Essential · $299';
+  if (v === 'signature') return 'Signature · $499';
+  return v || '—';
+}
+function paymentMethodLabel(v) {
+  if (v === 'pad') return 'Pre-authorized debit';
+  if (v === 'credit_card') return 'Credit card';
+  return v || '—';
 }
 function contractTypeCardsHtml(dis) {
   const templates = contractTemplatesList();
@@ -1328,6 +1346,22 @@ function contractFormBlock(l) {
       ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
       <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
   }
+  if (step === 'furniture') {
+    const ready = contractFormReady();
+    return `<div class="cf"><p class="fh">Furniture Investment details</p><p class="fm">Pre-filled from the lead profile where available</p>${contractClientBlock(l)}
+      <div class="fg"><span class="fl">Design Package<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractDesignPackage === 'essential' ? 'on' : ''}" data-act="toggleContractDesignPackage" data-v="essential" ${dis}>Essential · $299</button>
+        <button type="button" class="pill ${S.contractDesignPackage === 'signature' ? 'on' : ''}" data-act="toggleContractDesignPackage" data-v="signature" ${dis}>Signature · $499</button>
+      </div></div>
+      <div class="fg"><span class="fl">Payment method<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractPaymentMethod === 'credit_card' ? 'on' : ''}" data-act="toggleContractPaymentMethod" data-v="credit_card" ${dis}>Credit card</button>
+        <button type="button" class="pill ${S.contractPaymentMethod === 'pad' ? 'on' : ''}" data-act="toggleContractPaymentMethod" data-v="pad" ${dis}>Pre-authorized debit</button>
+      </div></div>
+      <div class="warnbox" style="margin:0 0 16px"><span>Owner enters payment details directly with Stripe at signing. MRG never stores card or bank details.</span></div>
+      <button type="button" class="btn primary wide" data-act="submitContractForm" ${ready && !busy ? '' : 'disabled'}>Continue →</button>
+      ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
+      <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
+  }
   if (step === 'review_blank') {
     const email = String(l.email || '').trim() || '—';
     const tpl = contractTemplatesList().find((t) => String(t.id) === String(S.selectedTemplateId));
@@ -1349,6 +1383,8 @@ function contractFormBlock(l) {
       rows = [['Contract', contractTitle], ['Tier', tierLabel(S.contractTier)], ['Annual benchmark', fmtMoney(contractBmTotal())], ['Launch', `Option ${S.contractLaunch || '—'}`]];
     } else if (S.contractType === 'essentials') {
       rows = [['Contract', contractTitle], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '12' ? '12-month commitment' : 'Monthly']];
+    } else if (S.contractType === 'furniture') {
+      rows = [['Contract', contractTitle], ['Design package', designPackageLabel(S.contractDesignPackage)], ['Payment', paymentMethodLabel(S.contractPaymentMethod)]];
     } else {
       rows = [['Contract', contractTitle], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '24' ? '24 months' : '12 months'], ['Launch', `Option ${S.contractLaunch || '—'}`]];
     }
@@ -3632,6 +3668,8 @@ const ACT = {
       S.contractLaunch = '';
       S.contractTier = '';
       S.contractBenchmarks = {};
+      S.contractDesignPackage = '';
+      S.contractPaymentMethod = '';
       renderMain();
       return;
     }
@@ -3654,6 +3692,8 @@ const ACT = {
   toggleContractTerm: (b) => { S.contractTerm = b.dataset.v || ''; renderMain(); },
   toggleContractLaunch: (b) => { S.contractLaunch = b.dataset.v || ''; renderMain(); },
   toggleContractTier: (b) => { S.contractTier = b.dataset.v || ''; renderMain(); },
+  toggleContractDesignPackage: (b) => { S.contractDesignPackage = b.dataset.v || ''; renderMain(); },
+  toggleContractPaymentMethod: (b) => { S.contractPaymentMethod = b.dataset.v || ''; renderMain(); },
   setContractBenchmark: (b) => {
     const month = String(b.dataset.month || '').toLowerCase();
     if (!month) return;
@@ -3728,6 +3768,8 @@ const ACT = {
         launch: S.contractLaunch,
         tier: S.contractTier,
         benchmarks: S.contractType === 'growth' ? { ...S.contractBenchmarks } : undefined,
+        designPackage: S.contractDesignPackage,
+        paymentMethod: S.contractPaymentMethod,
       };
       const data = await host.sendContractWithDetails(l.id, details);
       S.contractStep = 'sending';
@@ -3739,6 +3781,8 @@ const ACT = {
         contract_term: details.term || '',
         contract_launch_payment: details.launch || '',
         contract_benchmarks: details.benchmarks || null,
+        contract_design_package: details.designPackage || '',
+        contract_payment_method: details.paymentMethod || '',
       });
       if (data && data.contract) {
         const hd = callHostData();

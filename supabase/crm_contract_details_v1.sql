@@ -6,7 +6,9 @@ ALTER TABLE leads
   ADD COLUMN IF NOT EXISTS contract_term text,
   ADD COLUMN IF NOT EXISTS contract_launch_payment text,
   ADD COLUMN IF NOT EXISTS contract_benchmarks jsonb,
-  ADD COLUMN IF NOT EXISTS contract_is_blank boolean DEFAULT false;
+  ADD COLUMN IF NOT EXISTS contract_is_blank boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS contract_design_package text,
+  ADD COLUMN IF NOT EXISTS contract_payment_method text;
 
 COMMENT ON COLUMN leads.contract_plan_tier IS
   'standard | full_service | aligned_growth | confidence_partner';
@@ -18,3 +20,7 @@ COMMENT ON COLUMN leads.contract_benchmarks IS
   '{ jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec } in dollars';
 COMMENT ON COLUMN leads.contract_is_blank IS
   'true when sent as blank for review; false when filled and stamped';
+COMMENT ON COLUMN leads.contract_design_package IS
+  'furniture: essential | signature';
+COMMENT ON COLUMN leads.contract_payment_method IS
+  'furniture: credit_card | pad';
