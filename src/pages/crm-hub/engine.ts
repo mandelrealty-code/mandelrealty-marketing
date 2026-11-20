@@ -107,7 +107,8 @@ export const CRM_EXTRA_CSS = `
 .rdl{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;margin:0;font-size:var(--t-sm)}
 .rdl dt{color:var(--muted);font-size:var(--t-xs);font-weight:500;padding-top:2px}
 .rdl dd{margin:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
-.ccardk{border:1px solid var(--line);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;background:#fff;color:var(--ink)}
+.ccardk{border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:10px;padding:12px 14px;background:#fff;color:var(--ink)}
+.ccardk.ok{border-left-color:var(--green)}
 .ccardk .kt{font-weight:700;font-size:var(--t-sm);color:var(--ink)}
 .ccardk .kt.ok{color:var(--greenink)}
 .ccardk .kn{font-size:16px;font-weight:650;margin:3px 0 2px}
@@ -117,7 +118,56 @@ export const CRM_EXTRA_CSS = `
 .klinks .lnk{font-size:var(--t-sm)}
 .klinks .sp{flex:1}
 .cnote2{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-bottom:8px}
+.blanknote{margin-top:8px;font-size:var(--t-xs);color:var(--amberink);font-weight:500;line-height:1.45}
 .okbox .okc{width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;flex:none}
+/* Contract send form (mrg-crm-contract-form.html) */
+.cf .fh{font-size:16px;font-weight:650;color:var(--ink);margin:0 0 2px}
+.cf .fm{font-size:13px;color:var(--muted);margin:0 0 12px}
+.cf .tc{display:flex;align-items:center;gap:12px;width:100%;min-height:72px;padding:12px 14px;margin-bottom:4px;border:1px solid var(--line);border-radius:12px;background:#fff;text-align:left;cursor:pointer;font:inherit}
+.cf .tc:hover{border-color:rgb(0 0 0 / .35);background:oklch(0.99 0.002 95)}
+.cf .tc .ico{width:40px;height:40px;border-radius:10px;background:var(--panel);display:grid;place-items:center;color:var(--ink);flex:none}
+.cf .tc .t{flex:1;min-width:0}.cf .tc b{display:block;font-size:15px;color:var(--ink);font-weight:650}
+.cf .tc .t span{font-size:13px;color:var(--muted)}
+.cf .blanklnk{display:block;width:100%;margin:0 0 10px;min-height:36px;border:0;background:none;font-size:13px;color:var(--muted);cursor:pointer;text-align:center}
+.cf .blanklnk:hover{color:var(--ink);text-decoration:underline}
+.cf .ro{background:var(--panel);border-radius:10px;padding:10px 12px;margin-bottom:14px}
+.cf .ro div{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0}
+.cf .ro dt{color:var(--muted)}.cf .ro dd{margin:0;color:var(--ink);font-weight:600;text-align:right;overflow-wrap:anywhere}
+.cf .fl{display:block;font-size:13px;font-weight:600;color:var(--ink);margin:0 0 6px}
+.cf .fl em{font-style:normal;color:var(--redink);margin-left:2px}
+.cf .fg{margin-bottom:16px}
+.cf .pills{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.cf .pill{min-height:44px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--ink2);line-height:1.25;cursor:pointer;font:inherit}
+.cf .pill.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.cf .pill small{display:block;font-size:11px;font-weight:500;opacity:.8}
+.cf .ex{margin-top:8px;background:#f9f9f7;border:1px solid #eeece8;border-radius:6px;padding:10px 12px;font-size:12px;color:var(--muted);line-height:1.5}
+.cf .ex b{color:var(--ink)}
+.cf .opts{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.cf .opt{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 12px;border:0;border-bottom:1px solid var(--line-2);background:#fff;text-align:left;font-size:13px;color:var(--ink);cursor:pointer;font:inherit}
+.cf .opt:last-child{border-bottom:0}
+.cf .opt.on{background:oklch(0.975 0.003 95)}
+.cf .opt .ltr{width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;flex:none}
+.cf .opt .tx{flex:1;line-height:1.35}
+.cf .opt .rad{width:20px;height:20px;border-radius:50%;border:1.5px solid rgb(0 0 0 / .3);flex:none}
+.cf .opt.on .rad{border:6px solid var(--primary)}
+.cf .bm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.cf .bmf label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px}
+.cf .bmi{display:flex;align-items:center;height:44px;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
+.cf .bmi span{padding:0 4px 0 10px;color:var(--muted);font-size:14px}
+.cf .bmi input{flex:1;min-width:0;height:100%;border:0;outline:0;font:500 16px Inter,sans-serif;color:var(--ink);padding:0 8px 0 0;background:none}
+.cf .tot{display:flex;justify-content:space-between;margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel);font-size:13px;color:var(--ink2)}
+.cf .tot b{color:var(--ink);font-variant-numeric:tabular-nums}
+.cf .sum{background:#f9f9f7;border:1px solid #eeece8;border-radius:8px;padding:16px;margin-bottom:12px}
+.cf .sum div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0}
+.cf .sum dt{font-size:12px;color:var(--muted);flex:none}
+.cf .sum dd{margin:0;font-size:14px;font-weight:700;color:var(--ink);text-align:right;overflow-wrap:anywhere}
+.cf .sent{text-align:center;padding:20px 8px 8px}
+.cf .sent b{display:block;font-size:17px;color:var(--ink)}
+.cf .sent span{font-size:13px;color:var(--muted)}
+.cf .req{font-size:12px;color:var(--muted);text-align:center;margin-top:6px}
+.cf .btn.ghost{background:none;color:var(--ink2);border:1px solid var(--line);margin-top:8px}
+.ss.a{color:var(--amberink);font-weight:600}.ss.g{color:var(--greenink);font-weight:600}
+.ss .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
 @media (max-width:768px){.days{flex-wrap:wrap;overflow:visible}.bookbtn,.cbtns .btn{min-height:44px}.ks .two{grid-template-columns:1fr}.btn.wide{min-height:46px}}
 @media (max-width:767px){
   .subnav .seg{grid-template-columns:repeat(4,minmax(0,1fr))}
@@ -537,6 +587,12 @@ const S = {
   selectedTemplate: null,
   contractAskCancel: false,
   contractBusy: false,
+  contractType: '',
+  contractPlan: '',
+  contractTerm: '',
+  contractLaunch: '',
+  contractTier: '',
+  contractBenchmarks: {},
   sections: {
     book: false,
     profile: false,
@@ -1095,77 +1151,179 @@ function contractDateLabel(iso) {
   if (Number.isNaN(d.getTime())) return shortDate(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+function resetContractForm() {
+  S.contractStep = null;
+  S.contractType = '';
+  S.contractPlan = '';
+  S.contractTerm = '';
+  S.contractLaunch = '';
+  S.contractTier = '';
+  S.contractBenchmarks = {};
+  S.selectedTemplate = null;
+  S.contractAskCancel = false;
+}
+const BM_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const BM_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const LAUNCH_OPTS = [
+  ['A', 'At signing (e-transfer or card)'],
+  ['B', 'With first monthly invoice'],
+  ['C', 'No upfront cost (+2% to management fee)'],
+  ['D', '0% installments via Affirm/Klarna'],
+];
+function contractClientBlock(l) {
+  const name = String(l.full_name || l.name || '—').trim();
+  const email = String(l.email || '—').trim();
+  const prop = String(l.property_address || l.address || '—').trim();
+  return `<dl class="ro"><div><dt>Name</dt><dd>${esc(name)}</dd></div><div><dt>Email</dt><dd>${esc(email)}</dd></div><div><dt>Property</dt><dd>${esc(prop)}</dd></div></dl>`;
+}
+function contractLaunchRadios(dis) {
+  return `<div class="fg"><span class="fl">Launch package payment<em>*</em></span><div class="opts" role="radiogroup">${LAUNCH_OPTS.map(([k, t]) => `<button type="button" class="opt ${S.contractLaunch === k ? 'on' : ''}" data-act="toggleContractLaunch" data-v="${k}" ${dis}><span class="ltr">${k}</span><span class="tx">${esc(t)}</span><span class="rad"></span></button>`).join('')}</div></div>`;
+}
+function contractBmTotal() {
+  return BM_MONTHS.reduce((a, m) => a + (Number(S.contractBenchmarks[m]) || 0), 0);
+}
+function fmtMoney(n) {
+  return '$' + Number(n || 0).toLocaleString('en-CA', { maximumFractionDigits: 0 });
+}
+function contractFormReady() {
+  if (S.contractType === 'standard') return Boolean(S.contractPlan && S.contractTerm && S.contractLaunch);
+  if (S.contractType === 'growth') {
+    return Boolean(S.contractTier && S.contractLaunch && BM_MONTHS.every((m) => Number(S.contractBenchmarks[m]) > 0));
+  }
+  return false;
+}
+function planLabel(v) {
+  if (v === 'full_service' || v === 'full') return 'Full Service · 25%';
+  if (v === 'standard') return 'Standard · 20%';
+  return v || '—';
+}
+function tierLabel(v) {
+  if (v === 'aligned_growth' || v === 'ag') return 'Aligned Growth · 10% / 35%';
+  if (v === 'confidence_partner' || v === 'cp') return 'Confidence Partner · 5% / 45%';
+  return v || '—';
+}
+function typeLabel(v) {
+  return v === 'growth' ? 'Growth Partnership' : 'Standard Management';
+}
+function contractFormBlock(l) {
+  const busy = S.contractBusy || isBusy('contract');
+  const dis = busy ? 'disabled' : '';
+  const step = S.contractStep;
+  if (step === 'type') {
+    return `<div class="cf"><p class="fh">Choose a contract</p>
+      <button type="button" class="tc" data-act="selectContractType" data-v="standard" ${dis}><span class="ico">${ic('file', 'sm')}</span><span class="t"><b>Standard Management</b><span>20% or 25% · 12 or 24 months</span></span><span class="ar">${ic('arrow', 'sm')}</span></button>
+      <button type="button" class="blanklnk" data-act="selectBlankContract" data-v="standard" ${dis}>Send blank for review ↗</button>
+      <button type="button" class="tc" data-act="selectContractType" data-v="growth" ${dis}><span class="ico">${ic('chart', 'sm')}</span><span class="t"><b>Growth Partnership</b><span>Performance-based · 12 months</span></span><span class="ar">${ic('arrow', 'sm')}</span></button>
+      <button type="button" class="blanklnk" data-act="selectBlankContract" data-v="growth" ${dis}>Send blank for review ↗</button>
+      <button type="button" class="btn ghost" data-act="cancelContractPick" ${dis}>Cancel</button></div>`;
+  }
+  if (step === 'standard') {
+    const ready = contractFormReady();
+    return `<div class="cf"><p class="fh">Standard Management details</p><p class="fm">Pre-filled from the lead profile where available</p>${contractClientBlock(l)}
+      <div class="fg"><span class="fl">Management plan<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractPlan === 'standard' ? 'on' : ''}" data-act="toggleContractPlan" data-v="standard" ${dis}>Standard · 20%</button>
+        <button type="button" class="pill ${S.contractPlan === 'full_service' ? 'on' : ''}" data-act="toggleContractPlan" data-v="full_service" ${dis}>Full Service · 25%</button>
+      </div></div>
+      <div class="fg"><span class="fl">Agreement term<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractTerm === '12' ? 'on' : ''}" data-act="toggleContractTerm" data-v="12" ${dis}>12 months</button>
+        <button type="button" class="pill ${S.contractTerm === '24' ? 'on' : ''}" data-act="toggleContractTerm" data-v="24" ${dis}>24 months<small>save 30% on launch</small></button>
+      </div></div>
+      ${contractLaunchRadios(dis)}
+      <button type="button" class="btn primary wide" data-act="submitContractForm" ${ready && !busy ? '' : 'disabled'}>Continue →</button>
+      ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
+      <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
+  }
+  if (step === 'growth') {
+    const ready = contractFormReady();
+    const order = [0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11];
+    const ex = S.contractTier === 'confidence_partner'
+      ? 'Example (<b>Confidence Partner</b>, $3,000 benchmark):<br>$4,225 net → $3,000 × 5% + $1,225 × 45% = <b>$577.25</b>'
+      : 'Example (<b>Aligned Growth</b>, $3,000 benchmark):<br>$4,225 net → $3,000 × 10% + $1,225 × 35% = <b>$728.75</b>';
+    const bm = order.map((i) => {
+      const m = BM_MONTHS[i];
+      const val = S.contractBenchmarks[m] != null && S.contractBenchmarks[m] !== '' ? S.contractBenchmarks[m] : '';
+      return `<div class="bmf"><label>${BM_LABELS[i]}</label><div class="bmi"><span aria-hidden="true">$</span><input inputmode="decimal" placeholder="0" value="${esc(String(val))}" data-act="setContractBenchmark" data-month="${m}" ${dis}></div></div>`;
+    }).join('');
+    return `<div class="cf"><p class="fh">Growth Partnership details</p><p class="fm">Pre-filled from the lead profile where available</p>${contractClientBlock(l)}
+      <div class="fg"><span class="fl">Fee tier<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractTier === 'aligned_growth' ? 'on' : ''}" data-act="toggleContractTier" data-v="aligned_growth" ${dis}>Aligned Growth<small>10% / 35%</small></button>
+        <button type="button" class="pill ${S.contractTier === 'confidence_partner' ? 'on' : ''}" data-act="toggleContractTier" data-v="confidence_partner" ${dis}>Confidence Partner<small>5% / 45%</small></button>
+      </div><div class="ex">${ex}</div></div>
+      <div class="fg"><span class="fl">Monthly benchmarks<em>*</em></span><p class="fm" style="margin-bottom:8px">Average net revenue for each month</p>
+      <div class="bm">${bm}</div>
+      <div class="tot"><span>Annual benchmark total</span><b>${esc(fmtMoney(contractBmTotal()))}</b></div></div>
+      ${contractLaunchRadios(dis)}
+      <button type="button" class="btn primary wide" data-act="submitContractForm" ${ready && !busy ? '' : 'disabled'}>Continue →</button>
+      ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
+      <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
+  }
+  if (step === 'review_blank') {
+    const email = String(l.email || '').trim() || '—';
+    return `<div class="cf"><p class="fh">Send blank contract for review?</p>
+      <dl class="sum"><div><dt>Contract</dt><dd>${esc(typeLabel(S.contractType))} Agreement</dd></div><div><dt>To</dt><dd>${esc(email)}</dd></div></dl>
+      <p class="fm">Fields will be blank — walk through it together on the call. Send the filled version after.</p>
+      <button type="button" class="btn primary wide" data-act="submitBlankContract" ${dis}>${busy ? 'Sending…' : 'Send blank →'}</button>
+      <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
+  }
+  if (step === 'review') {
+    const email = String(l.email || '').trim() || '—';
+    const name = String(l.full_name || l.name || '—').trim();
+    const prop = String(l.property_address || l.address || '—').trim();
+    const rows = S.contractType === 'growth'
+      ? [['Contract', 'Growth Partnership Agreement'], ['Tier', tierLabel(S.contractTier)], ['Annual benchmark', fmtMoney(contractBmTotal())]]
+      : [['Contract', 'Standard Management Agreement'], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '24' ? '24 months' : '12 months']];
+    rows.push(['Launch', `Option ${S.contractLaunch || '—'}`], ['Client', name], ['Property', prop], ['Sending to', email]);
+    return `<div class="cf"><p class="fh">Review and send</p>
+      <dl class="sum">${rows.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl>
+      <p class="fm">These details will be stamped into the contract PDF before sending.</p>
+      <button type="button" class="btn primary wide" data-act="submitContractReview" ${dis}>${busy ? 'Sending…' : 'Send contract'}</button>
+      <button type="button" class="btn ghost" data-act="submitContractForm" data-v="back" ${dis}>← Back</button></div>`;
+  }
+  if (step === 'sending') {
+    const first = String(l.full_name || l.name || 'they').trim().split(/\s+/)[0] || 'they';
+    return `<div class="cf"><div class="sent" role="status"><b>✓ Contract sent</b><span>${esc(first)} will receive an email shortly.</span></div></div>`;
+  }
+  return '';
+}
 function saleContractBody(l) {
   const hd = callHostData();
   const email = String(l.email || '').trim() || 'this lead';
-  const phone = phoneUsable(l.phone) ? fmtPhone(l.phone) : (l.phone || '—');
   const name = String(l.full_name || l.name || 'Host').trim();
   const active = hd.activeContract || null;
-  const title = active && active.title ? active.title : 'Management agreement';
+  const title = active && active.title ? active.title : (S.contractType === 'growth' ? 'Growth Partnership' : 'Contract');
   const sentAt = active && (active.created_at || active.signed_at || active.signed_on);
   const signedAt = active && (active.signed_on || active.signed_at || active.created_at);
-  const contractsUrl = hd.contractsUrl || '';
   const downloadUrl = hd.contractDownloadUrl || '';
-  const templates = Array.isArray(hd.templates) ? hd.templates : [];
   const busy = S.contractBusy || isBusy('contract');
   const dis = busy ? 'disabled' : '';
   const cs = String(l.contract_status || '');
 
-  if (S.contractStep === 'picker') {
-    const rows = templates.length
-      ? templates.map((t) => `<button type="button" class="tplrow" data-act="pickContractTemplate" data-id="${esc(t.id)}" ${dis}><span class="t"><b>${esc(t.label || t.filename || 'Agreement')}</b><span>${esc(templateBlurb(t.label))}</span></span><span class="sel">Select →</span></button>`).join('')
-      : `<div class="meta" style="margin-bottom:8px">No templates yet. Upload one in OPS → Settings → Contract templates.</div>`;
-    return `<div class="icard"><div class="ih">Choose a contract template</div>${rows}<button type="button" class="lnkm" data-act="cancelContractPick" ${dis}>Cancel</button></div>`;
-  }
-
-  if (S.contractStep === 'review' && S.selectedTemplate) {
-    const t = S.selectedTemplate;
-    return `<div class="icard"><div class="ih">Send contract to ${esc(name)}?</div><dl class="rdl"><dt>Template</dt><dd>${esc(t.label || t.filename || 'Agreement')}</dd><dt>To</dt><dd>${esc(email)}</dd><dt>Phone</dt><dd>${esc(phone)}</dd></dl>
-      <div class="hint" style="margin:8px 0 10px">${esc(name)} will receive an email with a link to review and sign the contract online.</div>
-      <div class="cbtns"><button type="button" class="btn primary" data-act="confirmSendContract" ${dis}>${busy ? '<i class="spin" style="width:12px;height:12px;border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Sending…' : 'Send contract'}</button><button type="button" class="btn ghost" data-act="backContractPick" ${dis}>Back</button></div></div>`;
-  }
+  if (S.contractStep) return contractFormBlock(l);
 
   if (cs === 'signed') {
     const createBtn = l.onboarding
-      ? `<div class="okbox" style="margin-top:12px"><span class="okc">${ic('check', 'xs')}</span><span><b>Onboarding unit created</b>${l.onboarding.address ? ' · ' + esc(l.onboarding.address) : ''} · <button type="button" class="lnk" data-act="openUnit" data-id="${esc(l.id)}">Open unit →</button></span></div>`
-      : `<button type="button" class="btn primary wide big" data-act="startOnboarding" ${dis}>${ic('arrow', 'sm')}Create onboarding unit</button><div class="hint">Uses the property profile: address, ownership, furnishing and permit status.</div>`;
-    return `<div class="ccardk"><div class="kt ok">✓ Contract signed</div><div class="kn">${esc(title)}</div><div class="km">Signed by ${esc(name)} · ${esc(contractDateLabel(signedAt))}</div></div>
-      <div class="klinks">${downloadUrl ? `<a href="${esc(downloadUrl)}" target="_blank" rel="noopener" class="lnk">Download PDF →</a>` : '<span class="meta">Download PDF →</span>'}<span class="dotsep">·</span>${contractsUrl ? `<a href="${esc(contractsUrl)}" target="_blank" rel="noopener" class="lnk">View</a>` : '<span class="meta">View</span>'}</div>
+      ? `<div class="okbox" style="margin-top:12px"><span class="okc">${ic('check', 'xs')}</span><span><b>Onboarding started.</b>${l.onboarding.address ? ' Unit created for ' + esc(l.onboarding.address) : ''} · <button type="button" class="lnk" data-act="openUnit" data-id="${esc(l.id)}">Open unit →</button></span></div>`
+      : `<button type="button" class="btn primary wide big" data-act="startOnboarding" ${dis}>${ic('arrow', 'sm')}Start onboarding</button><p class="hint">Creates the onboarding unit for this property.</p>`;
+    return `<div class="ccardk ok"><div class="kt ok">✓ Contract signed</div><div class="kn">${esc(title)}</div><div class="km">Signed by ${esc(name)} · ${esc(contractDateLabel(signedAt))}</div></div>
+      <div class="klinks">${downloadUrl ? `<a href="${esc(downloadUrl)}" target="_blank" rel="noopener" class="lnk">Download PDF →</a>` : '<span class="meta">Download PDF →</span>'}<span class="dotsep">·</span>${downloadUrl ? `<a href="${esc(downloadUrl)}" target="_blank" rel="noopener" class="lnk">View</a>` : '<span class="meta">View</span>'}</div>
       ${createBtn}`;
   }
 
   if (cs === 'sent') {
+    const blankNote = l.contract_is_blank
+      ? `<div class="blanknote">Blank version — sent for review<br><button type="button" class="lnk" data-act="openContractPick" ${dis}>Send filled version →</button></div>`
+      : '';
     const cancelUi = S.contractAskCancel
-      ? `<div class="askc"><b>Cancel this contract?</b><span>The signing link stops working. ${esc(name)} isn’t notified automatically.</span><div class="cbtns"><button type="button" class="btn sm redtxt" data-act="doCancelContract" ${dis}>Yes, cancel</button><button type="button" class="btn sm" data-act="keepContract" ${dis}>Keep it</button></div></div>`
-      : `<div class="klinks">${contractsUrl ? `<a href="${esc(contractsUrl)}" target="_blank" rel="noopener" class="lnk">View contract →</a>` : '<span class="meta">View contract →</span>'}<span class="dotsep">·</span><button type="button" class="lnkm" data-act="askCancelContract" ${dis}>Cancel</button></div>`;
-    return `<div class="ccardk"><div class="kt">📄 Contract sent</div><div class="kn">${esc(title)}</div><div class="km">Sent to ${esc(email)} · ${esc(contractDateLabel(sentAt))}</div><div class="kaw"><i class="cdot amber"></i>Awaiting signature</div></div>${cancelUi}`;
+      ? `<div class="askc"><b>Cancel this contract?</b><span>The signing link stops working.</span><div class="cbtns"><button type="button" class="btn sm redtxt" data-act="doCancelContract" ${dis}>Yes, cancel</button><button type="button" class="btn sm" data-act="keepContract" ${dis}>Keep it</button></div></div>`
+      : `<div class="klinks"><button type="button" class="lnk" data-act="resendContract" ${dis}>Resend email</button><span class="dotsep">·</span><button type="button" class="lnkm" data-act="askCancelContract" ${dis}>Cancel</button></div>`;
+    return `<div class="ccardk"><div class="kn">📄 ${esc(title)}</div><div class="km">Sent to ${esc(email)} · ${esc(contractDateLabel(sentAt))}</div><div class="kaw"><i class="cdot amber"></i>Awaiting signature</div></div>${blankNote}${cancelUi}`;
   }
 
   const cancelledNote = cs === 'cancelled' ? '<div class="cnote2">Contract cancelled · you can send a new one</div>' : '';
-  return `${cancelledNote}<button type="button" class="btn primary wide" data-act="openContractPick" ${dis}>Send contract →</button><div class="hint">Pick a template and send to ${esc(email)}</div>`;
+  return `${cancelledNote}<button type="button" class="btn primary wide" data-act="openContractPick" ${dis}>${busy ? 'Opening…' : 'Send contract →'}</button><p class="hint">Select a contract type and fill in the details before sending.</p>`;
 }
 function saleSectionBody(l, hl) {
-  const d = D(l), dis = isBusy('save') ? 'disabled' : '';
-  const gaps = [l.plan, l.contract_status, l.booked_by, l.closed_by].filter((x) => !x).length;
-  const showGaps = gaps && soldish(l);
-  const status = l.onboarding ? `<button class="lnk" data-act="openUnit" data-id="${esc(l.id)}">${esc(onboardingLine(l.onboarding))}${l.onboarding.address ? ' · ' + esc(l.onboarding.address) : ''} →</button>` : l.status === 'won' ? '<span class="gapchip">Not started</span>' : '<span class="meta">Starts once the lead is Won</span>';
-  const act = l.onboarding ? `<button class="btn" style="width:100%;margin-top:10px" data-act="openUnit" data-id="${esc(l.id)}">Open unit ${ic('arrow', 'sm')}</button>`
-    : l.status === 'won' && l.contract_status !== 'signed' ? `<button class="btn primary" style="width:100%;margin-top:10px" data-act="startOnboarding">${ic('plus', 'sm')}Start onboarding</button>` : '';
-  return `<div class="ks ${hl ? 'hl' : ''}">
-    <div class="two stp">
-      <div class="field"><label for="stSel">Stage</label><select id="stSel" class="input" data-sel="status" ${dis}>${LEAD_STATUSES.map((s) => opt(s, STATUS_LABEL[s] || s, l.status)).join('')}</select></div>
-      <div class="field"><label for="pathSel">Path</label><select id="pathSel" class="input" data-sel="offerPath" ${dis}>${OFFER_PATHS.map((p) => opt(p, OFFER_PATH_LABEL[p] || p, l.offer_path)).join('')}</select></div>
-    </div>
-    <div class="two">
-      <div class="field"><label for="slPlan">Plan</label><select id="slPlan" class="input ${!l.plan ? 'warn' : ''}" data-sel="plan" ${dis}>${opt('', 'Not recorded', l.plan || '')}${PLAN_OPTIONS.map((p) => opt(p, p, l.plan || '')).join('')}</select></div>
-      <div class="field"><label for="slCon">Contract</label><select id="slCon" class="input ${!l.contract_status ? 'warn' : ''}" data-sel="contractStatus" ${dis}>${CONTRACT_OPTIONS.map((c) => opt(c.value, c.label, l.contract_status || '')).join('')}</select></div>
-      <div class="field"><label for="slBk">Booked by</label><input id="slBk" class="input ${!d.booked ? 'ph' : ''}" data-k="ld.booked" data-save="bookedBy" value="${esc(d.booked)}" placeholder="Not recorded"></div>
-      <div class="field"><label for="slCl">Closed by</label><input id="slCl" class="input ${!d.closed ? 'ph' : ''}" data-k="ld.closed" data-save="closedBy" value="${esc(d.closed)}" placeholder="Not recorded"></div>
-      ${l.source === 'Referral' ? `<div class="field full"><label>Referred by</label><span class="input" style="display:flex;align-items:center">${d.referred ? esc(d.referred) : '<span class="gap">Not recorded</span>'}</span></div>` : ''}
-    </div>
-    <div class="kbody">${saleContractBody(l)}</div>
-    <dl class="kv" style="margin-top:10px"><dt>Onboarding</dt><dd>${status}</dd></dl>${act}
-    ${showGaps ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing sale details.</b> Fill these before the lead is Won. Onboarding flags any that are still empty.</span></div>` : ''}</div>`;
+  return `<div class="ks ${hl ? 'hl' : ''}"><div class="kbody">${saleContractBody(l)}</div></div>`;
 }
 function leadTopBar(l) {
   const phoneOk = phoneUsable(l.phone);
@@ -1541,13 +1699,18 @@ function profileSectionStatus(l) {
   return esc(short);
 }
 function saleSectionStatus(l) {
-  const parts = [
-    STATUS_LABEL[l.status] || l.status,
-    l.plan,
-    contractLabel(l.contract_status) || l.contract_status,
-  ].filter(Boolean);
-  if (parts.length) return esc(parts.join(' · '));
-  return '<span style="color:#c4891a">Not recorded</span>';
+  const cs = String(l.contract_status || '');
+  if (cs === 'signed') {
+    const hd = callHostData();
+    const active = hd.activeContract || null;
+    const signedAt = active && (active.signed_on || active.signed_at || active.created_at);
+    const d = signedAt ? contractDateLabel(signedAt) : '';
+    return `<span class="ss g"><i class="dot" style="background:var(--green)"></i>✓ Signed${d ? ' ' + esc(d) : ''}</span>`;
+  }
+  if (cs === 'sent') {
+    return `<span class="ss a"><i class="dot" style="background:var(--amber)"></i>Awaiting signature</span>`;
+  }
+  return `<span class="ss" style="color:var(--muted)">No contract sent</span>`;
 }
 function notesSectionStatus(l) {
   const steps = Array.isArray(l.playbook_steps) ? l.playbook_steps : [];
@@ -2192,9 +2355,7 @@ function openLead(id, opts = {}) {
     transcriptScrollTop = 0;
     S.transferState = null;
     S.prof = { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false };
-    S.contractStep = null;
-    S.selectedTemplate = null;
-    S.contractAskCancel = false;
+    resetContractForm();
     S.contractBusy = false;
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
@@ -3288,9 +3449,9 @@ const ACT = {
     renderMain();
     try {
       if (host.loadContractTemplates) await host.loadContractTemplates();
-      S.contractStep = 'picker';
-      S.selectedTemplate = null;
-      S.contractAskCancel = false;
+      resetContractForm();
+      S.contractStep = 'type';
+      S.sections.sale = true;
     } catch (e) {
       toast(errMsg(e, 'Could not load contract templates.'), 'bad');
     } finally {
@@ -3299,45 +3460,145 @@ const ACT = {
     }
   },
   cancelContractPick: () => {
-    S.contractStep = null;
-    S.selectedTemplate = null;
+    resetContractForm();
     renderMain();
   },
-  pickContractTemplate: (b) => {
-    const id = b.dataset.id;
-    const hd = callHostData();
-    const t = (hd.templates || []).find((row) => String(row.id) === String(id));
-    if (!t) return;
-    S.selectedTemplate = t;
+  selectContractType: (b) => {
+    const v = b.dataset.v || '';
+    if (v === 'back') {
+      S.contractStep = 'type';
+      S.contractPlan = '';
+      S.contractTerm = '';
+      S.contractLaunch = '';
+      S.contractTier = '';
+      S.contractBenchmarks = {};
+      renderMain();
+      return;
+    }
+    S.contractType = v;
+    S.contractStep = v;
+    renderMain();
+  },
+  selectBlankContract: (b) => {
+    S.contractType = b.dataset.v || 'standard';
+    S.contractStep = 'review_blank';
+    renderMain();
+  },
+  toggleContractPlan: (b) => { S.contractPlan = b.dataset.v || ''; renderMain(); },
+  toggleContractTerm: (b) => { S.contractTerm = b.dataset.v || ''; renderMain(); },
+  toggleContractLaunch: (b) => { S.contractLaunch = b.dataset.v || ''; renderMain(); },
+  toggleContractTier: (b) => { S.contractTier = b.dataset.v || ''; renderMain(); },
+  setContractBenchmark: (b) => {
+    const month = String(b.dataset.month || '').toLowerCase();
+    if (!month) return;
+    const raw = String(b.value || '').replace(/[^0-9.]/g, '');
+    S.contractBenchmarks = { ...S.contractBenchmarks, [month]: raw === '' ? '' : Number(raw) };
+    // Keep focus while typing — only refresh totals/disabled via soft re-render of sibling bits
+    const tot = root.querySelector('.cf .tot b');
+    if (tot) tot.textContent = fmtMoney(contractBmTotal());
+    const cont = root.querySelector('.cf [data-act="submitContractForm"]');
+    if (cont) cont.disabled = !contractFormReady() || S.contractBusy;
+    const req = root.querySelector('.cf .req');
+    if (req) req.hidden = contractFormReady();
+  },
+  submitContractForm: (b) => {
+    if (b && b.dataset.v === 'back') {
+      S.contractStep = S.contractType || 'type';
+      renderMain();
+      return;
+    }
+    if (!contractFormReady()) return;
     S.contractStep = 'review';
     renderMain();
   },
-  backContractPick: () => {
-    S.contractStep = 'picker';
-    renderMain();
-  },
-  confirmSendContract: async () => {
+  submitBlankContract: async () => {
     const l = leadById(S.leadId);
-    const t = S.selectedTemplate;
-    if (!l || !t || !host.sendContract) return;
+    if (!l || !host.sendContractWithDetails) return;
     S.contractBusy = true;
     renderMain();
     try {
-      const data = await host.sendContract(l.id, t.id);
-      S.contractStep = null;
-      S.selectedTemplate = null;
-      S.contractAskCancel = false;
+      const data = await host.sendContractWithDetails(l.id, { blank: true, type: S.contractType || 'standard' });
+      S.contractStep = 'sending';
+      mergeLead(l.id, {
+        contract_status: 'sent',
+        contract_id: data && data.contract ? data.contract.id : l.contract_id,
+        contract_is_blank: true,
+      });
       if (data && data.contract) {
         const hd = callHostData();
         hd.activeContract = data.contract;
         if (data.contracts_url) hd.contractsUrl = data.contracts_url;
       }
-      mergeLead(l.id, { contract_status: 'sent', contract_id: data && data.contract ? data.contract.id : l.contract_id });
-      toast(`Contract sent to ${l.email || 'lead'}`);
-      if (host.loadActiveContract) await host.loadActiveContract(l.id);
-      await loadThread(l.id);
+      S.contractBusy = false;
+      renderMain();
+      toast(`Blank contract sent to ${l.email || 'lead'}`);
+      setTimeout(async () => {
+        resetContractForm();
+        if (host.loadFollowups) await loadThread(l.id);
+        renderMain();
+      }, 2000);
     } catch (e) {
       toast(errMsg(e, 'Could not send contract.'), 'bad');
+      S.contractBusy = false;
+      renderMain();
+    }
+  },
+  submitContractReview: async () => {
+    const l = leadById(S.leadId);
+    if (!l || !host.sendContractWithDetails) return;
+    S.contractBusy = true;
+    renderMain();
+    try {
+      const details = {
+        blank: false,
+        type: S.contractType,
+        plan: S.contractPlan,
+        term: S.contractTerm,
+        launch: S.contractLaunch,
+        tier: S.contractTier,
+        benchmarks: S.contractType === 'growth' ? { ...S.contractBenchmarks } : undefined,
+      };
+      const data = await host.sendContractWithDetails(l.id, details);
+      S.contractStep = 'sending';
+      mergeLead(l.id, {
+        contract_status: 'sent',
+        contract_id: data && data.contract ? data.contract.id : l.contract_id,
+        contract_is_blank: false,
+        contract_plan_tier: details.plan || details.tier || '',
+        contract_term: details.term || '',
+        contract_launch_payment: details.launch || '',
+        contract_benchmarks: details.benchmarks || null,
+      });
+      if (data && data.contract) {
+        const hd = callHostData();
+        hd.activeContract = data.contract;
+        if (data.contracts_url) hd.contractsUrl = data.contracts_url;
+      }
+      S.contractBusy = false;
+      renderMain();
+      toast(`Contract sent to ${l.email || 'lead'}`);
+      setTimeout(async () => {
+        resetContractForm();
+        if (host.loadFollowups) await loadThread(l.id);
+        renderMain();
+      }, 2000);
+    } catch (e) {
+      toast(errMsg(e, 'Could not send contract.'), 'bad');
+      S.contractBusy = false;
+      renderMain();
+    }
+  },
+  resendContract: async () => {
+    const l = leadById(S.leadId);
+    if (!l || !host.resendContract) return;
+    S.contractBusy = true;
+    renderMain();
+    try {
+      await host.resendContract(l.id);
+      toast(`Email resent to ${l.email || 'lead'}`);
+      if (host.loadActiveContract) await host.loadActiveContract(l.id);
+    } catch (e) {
+      toast(errMsg(e, 'Could not resend contract.'), 'bad');
     } finally {
       S.contractBusy = false;
       renderMain();
@@ -3353,7 +3614,7 @@ const ACT = {
     try {
       await host.cancelContract(l.id);
       S.contractAskCancel = false;
-      S.contractStep = null;
+      resetContractForm();
       mergeLead(l.id, { contract_status: 'cancelled' });
       toast('Contract cancelled');
       if (host.loadActiveContract) await host.loadActiveContract(l.id);
@@ -3447,7 +3708,12 @@ function onClick(e) {
   if (row) openLead(row.dataset.open);
 }
 function onInput(e) {
-  const t = e.target, k = t.dataset && t.dataset.k;
+  const t = e.target;
+  if (t.dataset && t.dataset.month && t.dataset.act === 'setContractBenchmark') {
+    ACT.setContractBenchmark(t);
+    return;
+  }
+  const k = t.dataset && t.dataset.k;
   if (!k) return;
   if (k === 'prof.q') { void searchPlaces(t.value); return; }
   if (k === 'prof.draftName') { S.prof.draftName = t.value; return; }

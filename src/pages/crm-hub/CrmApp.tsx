@@ -225,6 +225,45 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         }
         return data;
       },
+      sendContractWithDetails: async (
+        leadId: string,
+        details: {
+          blank?: boolean;
+          type?: string;
+          plan?: string;
+          term?: string;
+          launch?: string;
+          tier?: string;
+          benchmarks?: Record<string, number>;
+        },
+      ) => {
+        const data = await call<{
+          ok?: boolean;
+          contract?: Record<string, unknown>;
+          contracts_url?: string;
+          email_sent?: boolean;
+          email_error?: string | null;
+        }>("/api/admin/leads?op=send_contract", json("POST", { leadId, ...details }));
+        if (data.contract && typeof data.contract === "object") {
+          host.data.activeContract = data.contract;
+        }
+        if (typeof data.contracts_url === "string") {
+          host.data.contractsUrl = data.contracts_url;
+        }
+        return data;
+      },
+      resendContract: async (leadId: string) => {
+        const data = await call<{
+          ok?: boolean;
+          contracts_url?: string;
+          email_sent?: boolean;
+          email_error?: string | null;
+        }>("/api/admin/leads?op=resend_contract", json("POST", { leadId }));
+        if (typeof data.contracts_url === "string") {
+          host.data.contractsUrl = data.contracts_url;
+        }
+        return data;
+      },
       cancelContract: async (leadId: string) => {
         const data = await call("/api/admin/leads?op=cancel_contract", json("POST", { leadId }));
         return data;

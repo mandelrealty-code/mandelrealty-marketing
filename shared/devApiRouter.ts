@@ -450,10 +450,33 @@ export async function handleDevApi(
       if (postOp === "send_contract") {
         try {
           const { sendCrmLeadContract } = await import("./pm/crmLeadContract.js");
-          json(res, 200, await sendCrmLeadContract({
-            leadId: String(body.leadId ?? body.id ?? "").trim(),
-            templateId: String(body.templateId ?? body.template_id ?? "").trim(),
-          }));
+          const benchmarksRaw = body.benchmarks;
+          const benchmarks =
+            benchmarksRaw && typeof benchmarksRaw === "object" && !Array.isArray(benchmarksRaw)
+              ? Object.fromEntries(
+                  Object.entries(benchmarksRaw as Record<string, unknown>).map(([k, v]) => [
+                    String(k).toLowerCase(),
+                    Number(v) || 0,
+                  ]),
+                )
+              : undefined;
+          json(
+            res,
+            200,
+            await sendCrmLeadContract({
+              leadId: String(body.leadId ?? body.id ?? "").trim(),
+              templateId: String(body.templateId ?? body.template_id ?? "").trim() || undefined,
+              details: {
+                blank: body.blank === true || body.blank === "true",
+                type: String(body.type ?? "").trim() || undefined,
+                plan: String(body.plan ?? "").trim() || undefined,
+                term: String(body.term ?? "").trim() || undefined,
+                launch: String(body.launch ?? "").trim() || undefined,
+                tier: String(body.tier ?? "").trim() || undefined,
+                benchmarks,
+              },
+            }),
+          );
         } catch (e) {
           const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
           const message =
@@ -463,6 +486,28 @@ export async function handleDevApi(
               : "") ||
             "Could not send contract.";
           console.error("[dev] send_contract", message);
+          json(res, status || 500, { error: message });
+        }
+        return true;
+      }
+      if (postOp === "resend_contract") {
+        const leadId = String(body.leadId ?? body.id ?? "").trim();
+        if (!leadId) {
+          json(res, 400, { error: "leadId is required." });
+          return true;
+        }
+        try {
+          const { resendCrmLeadContract } = await import("./pm/crmLeadContract.js");
+          json(res, 200, await resendCrmLeadContract(leadId));
+        } catch (e) {
+          const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+          const message =
+            (e instanceof Error && e.message) ||
+            (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+              ? (e as { message: string }).message
+              : "") ||
+            "Could not resend contract.";
+          console.error("[dev] resend_contract", message);
           json(res, status || 500, { error: message });
         }
         return true;

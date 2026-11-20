@@ -65,6 +65,12 @@ export type LeadRow = {
   client_id: string | null;
   /** pm_contracts.id — most recent contract sent from CRM. */
   contract_id: string | null;
+  /** Contract send form (crm_contract_details_v1). */
+  contract_plan_tier: string;
+  contract_term: string;
+  contract_launch_payment: string;
+  contract_benchmarks: Record<string, number> | null;
+  contract_is_blank: boolean;
   /** Sales-call property profile (crm_profile_v1). */
   property_address: string;
   property_place_id: string;
@@ -136,6 +142,11 @@ export type LeadCrmUpdate = {
   onboardingUnitId?: string | null;
   clientId?: string | null;
   contractId?: string | null;
+  contractPlanTier?: string | null;
+  contractTerm?: string | null;
+  contractLaunchPayment?: string | null;
+  contractBenchmarks?: Record<string, number> | null;
+  contractIsBlank?: boolean | null;
 };
 
 export type LeadProfileUpdate = {
@@ -204,6 +215,14 @@ export function mapLead(row: Record<string, unknown>): LeadRow {
     onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
     client_id: (row.client_id as string | null) ?? null,
     contract_id: row.contract_id != null && String(row.contract_id).trim() ? String(row.contract_id) : null,
+    contract_plan_tier: String(row.contract_plan_tier ?? ""),
+    contract_term: String(row.contract_term ?? ""),
+    contract_launch_payment: String(row.contract_launch_payment ?? ""),
+    contract_benchmarks:
+      row.contract_benchmarks && typeof row.contract_benchmarks === "object" && !Array.isArray(row.contract_benchmarks)
+        ? (row.contract_benchmarks as Record<string, number>)
+        : null,
+    contract_is_blank: Boolean(row.contract_is_blank),
     property_address: String(row.property_address ?? ""),
     property_place_id: String(row.property_place_id ?? ""),
     property_city: String(row.property_city ?? ""),
@@ -464,6 +483,13 @@ export async function updateLeadCrm(
   if (patch.onboardingUnitId !== undefined) update.onboarding_unit_id = patch.onboardingUnitId;
   if (patch.clientId !== undefined) update.client_id = patch.clientId || null;
   if (patch.contractId !== undefined) update.contract_id = patch.contractId || null;
+  if (patch.contractPlanTier !== undefined) update.contract_plan_tier = patch.contractPlanTier || null;
+  if (patch.contractTerm !== undefined) update.contract_term = patch.contractTerm || null;
+  if (patch.contractLaunchPayment !== undefined) {
+    update.contract_launch_payment = patch.contractLaunchPayment || null;
+  }
+  if (patch.contractBenchmarks !== undefined) update.contract_benchmarks = patch.contractBenchmarks;
+  if (patch.contractIsBlank !== undefined) update.contract_is_blank = Boolean(patch.contractIsBlank);
 
   if (Object.keys(update).length === 0) return null;
 

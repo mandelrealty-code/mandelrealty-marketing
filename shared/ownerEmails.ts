@@ -428,6 +428,54 @@ export async function sendSignedAgreementEmail(input: {
   });
 }
 
+/** Magic-link sign confirmation — signed PDF attached, no owner portal required. */
+export async function sendCrmSignedPdfEmail(input: {
+  to: string;
+  firstName: string;
+  planName: string;
+  propertyLabel?: string;
+  filename: string;
+  pdfBase64: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const apiKey = process.env.RESEND_API_KEY?.trim() || "";
+  if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
+  const from = inviteFrom();
+  const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+  const plan = input.planName.trim() || "management";
+  const prop = input.propertyLabel?.trim() || "your property";
+  const html = contractSignedClientEmail({
+    firstName: input.firstName,
+    planName: plan,
+    propertyAddress: prop,
+  });
+  const text = [
+    `Hi ${input.firstName},`,
+    "",
+    "You're all set.",
+    "",
+    `Your ${plan} agreement has been signed and is attached to this email as a PDF.`,
+    "We'll be in touch within 1 business day to get started.",
+    "",
+    "— Ryan Mandel, Mandel Realty Group",
+  ].join("\n");
+  return sendResendEmail({
+    apiKey,
+    from,
+    to: [input.to],
+    subject: `Your signed MRG agreement${input.propertyLabel?.trim() ? ` — ${input.propertyLabel.trim()}` : ""}`,
+    html,
+    text,
+    replyTo,
+    headers: deliverabilityHeaders(),
+    attachments: [
+      {
+        filename: input.filename || "MRG-agreement.pdf",
+        content: input.pdfBase64,
+      },
+    ],
+  });
+}
+
 const RYAN_PHONE = "647-381-7325";
 
 /** CRM magic-link email — one click to sign, no portal or password. */

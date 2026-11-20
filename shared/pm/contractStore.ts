@@ -492,3 +492,44 @@ export async function markContractSigned(input: {
   if (error) throw error;
   return updated as PmContract;
 }
+
+/** Ensure OPS Clients → Contracts can find this row by client_id. */
+export async function setContractClientId(
+  contractId: string,
+  clientId: string,
+): Promise<PmContract> {
+  const id = contractId.trim();
+  const cid = clientId.trim();
+  if (!id || !cid) throw new Error("contractId and clientId required.");
+  const { data, error } = await db()
+    .from("pm_contracts")
+    .update({ client_id: cid })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as PmContract;
+}
+
+/** Regenerate magic-link token (resets 7-day window). */
+export async function refreshContractSignToken(
+  contractId: string,
+  signToken: string,
+): Promise<PmContract> {
+  const id = contractId.trim();
+  const token = signToken.trim();
+  if (!id || !token) throw new Error("contractId and signToken required.");
+  const now = new Date().toISOString();
+  const { data, error } = await db()
+    .from("pm_contracts")
+    .update({
+      sign_token: token,
+      sign_token_used_at: null,
+      created_at: now,
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data as PmContract;
+}

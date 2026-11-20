@@ -5,6 +5,7 @@
  */
 
 import { randomBytes } from "crypto";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getLeadById, mapLead, updateLeadCrm, type LeadRow } from "../leadStore.js";
 import {
   adminPublicOrigin,
@@ -12,16 +13,20 @@ import {
   magicSignUrl,
   sendCrmMagicSignEmail,
   sendCrmSignedNotifyEmail,
+  sendCrmSignedPdfEmail,
 } from "../ownerEmails.js";
 import { getSupabaseAdmin } from "../supabase.js";
 import { createPmClient, getPmClient } from "./clientStore.js";
 import {
   assignAwaitingContract,
   cancelAwaitingContracts,
+  downloadContractBuffer,
   getContract,
   getContractBySignToken,
   getContractDownloadUrl,
   markContractSigned,
+  refreshContractSignToken,
+  setContractClientId,
   type PmContract,
 } from "./contractStore.js";
 import {
@@ -33,6 +38,31 @@ import {
 import type { PmClient } from "./types.js";
 
 const SIGN_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type ContractSendDetails = {
+  blank?: boolean;
+  type?: string;
+  plan?: string;
+  term?: string;
+  launch?: string;
+  tier?: string;
+  benchmarks?: Record<string, number>;
+};
+
+export type ContractDetails = {
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  propertyAddress: string;
+  cityProvince: string;
+  postalCode: string;
+  plan?: string;
+  term?: string;
+  launch?: string;
+  tier?: string;
+  type?: string;
+  benchmarks?: Record<string, number>;
+};
 
 function splitName(full: string): { first: string; last: string; name: string } {
   const parts = full.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
@@ -118,9 +148,133 @@ export async function getCrmLeadContractStatus(leadId: string): Promise<{
   return { contract, contracts_url, download_url };
 }
 
+async function resolveTemplateForType(
+  type: string | undefined,
+  templateId: string | undefined,
+): Promise<ContractTemplate> {
+  if (templateId?.trim()) {
+    const t = await getContractTemplate(templateId.trim());
+    if (t && !t.archived) return t;
+    throw Object.assign(new Error("Contract template not found."), { status: 404 });
+  }
+  const all = await listContractTemplates(false);
+  const active = all.filter((t) => !t.archived);
+  const kind = (type || "").toLowerCase();
+  let hit: ContractTemplate | undefined;
+  if (kind === "growth") {
+    hit = active.find((t) => /growth/i.test(t.label || t.filename || ""));
+  } else if (kind === "standard") {
+    hit = active.find(
+      (t) =>
+        /standard|management/i.test(t.label || t.filename || "") &&
+        !/growth/i.test(t.label || t.filename || ""),
+    );
+  }
+  hit = hit || active[0];
+  if (!hit) {
+    throw Object.assign(
+      new Error("No contract templates yet. Upload one in OPS → Settings → Contract templates."),
+      { status: 404 },
+    );
+  }
+  return hit;
+}
+
+/** Pre-fill contract PDF fields before sending (positions are approximate — see TODOs). */
+export async function stampContractDetails(
+  buffer: Buffer,
+  details: ContractDetails,
+): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.load(buffer);
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const pages = pdfDoc.getPages();
+  const page = pages[0];
+  if (!page) return buffer;
+  const { height } = page.getSize();
+
+  const drawField = (
+    target: (typeof pages)[0],
+    x: number,
+    y: number,
+    text: string,
+    size = 10,
+  ) => {
+    const clean = String(text || "").trim();
+    if (!clean) return;
+    target.drawText(clean.slice(0, 120), {
+      x,
+      y: height - y,
+      size,
+      font: helvetica,
+      color: rgb(0, 0, 0),
+    });
+  };
+
+  // TODO: verify x,y by inspecting PDF (page 1 party / property block)
+  drawField(page, 72, 185, details.clientName);
+  drawField(page, 72, 200, details.clientPhone);
+  drawField(page, 72, 215, details.clientEmail);
+  drawField(page, 320, 185, details.propertyAddress);
+  drawField(page, 320, 200, details.cityProvince);
+  drawField(page, 320, 215, details.postalCode);
+  // TODO: verify date on "This Agreement is made on ___"
+  drawField(page, 290, 160, new Date().toLocaleDateString("en-CA"));
+
+  const kind = (details.type || "").toLowerCase();
+  if (kind === "standard" || details.plan) {
+    // TODO: verify checkbox positions for plan / term / launch
+    if (details.plan === "full_service" || details.plan === "full") {
+      drawField(page, 72, 295, "✓", 12);
+    } else if (details.plan) {
+      drawField(page, 72, 280, "✓", 12);
+    }
+    if (details.term === "24") drawField(page, 72, 335, "✓", 12);
+    else if (details.term === "12") drawField(page, 72, 320, "✓", 12);
+    // TODO: map A/B/C/D to exact y positions
+    const launchY: Record<string, number> = { A: 360, B: 375, C: 390, D: 405 };
+    const ly = launchY[String(details.launch || "").toUpperCase()];
+    if (ly) drawField(page, 72, ly, "✓", 12);
+  }
+
+  if (kind === "growth" || details.tier) {
+    // TODO: verify growth tier checkbox positions
+    if (details.tier === "confidence_partner" || details.tier === "cp") {
+      drawField(page, 72, 415, "✓", 12);
+    } else if (details.tier) {
+      drawField(page, 72, 400, "✓", 12);
+    }
+    const bm = details.benchmarks || {};
+    if (pages[1] && Object.keys(bm).length) {
+      const p2 = pages[1];
+      const { height: h2 } = p2.getSize();
+      const months = [
+        "jan", "feb", "mar", "apr", "may", "jun",
+        "jul", "aug", "sep", "oct", "nov", "dec",
+      ];
+      months.forEach((m, i) => {
+        // TODO: calculate x,y from table layout on page 2
+        const col = i % 3;
+        const row = Math.floor(i / 3);
+        const val = Number(bm[m] || 0);
+        if (!val) return;
+        p2.drawText(`$${val.toLocaleString("en-CA")}`, {
+          x: 150 + col * 150,
+          y: h2 - (120 + row * 20),
+          size: 9,
+          font: helvetica,
+          color: rgb(0, 0, 0),
+        });
+      });
+    }
+  }
+
+  return Buffer.from(await pdfDoc.save());
+}
+
 export async function sendCrmLeadContract(input: {
   leadId: string;
-  templateId: string;
+  templateId?: string;
+  details?: ContractSendDetails;
 }): Promise<{
   ok: true;
   contract: PmContract;
@@ -129,9 +283,11 @@ export async function sendCrmLeadContract(input: {
   contracts_url: string;
 }> {
   const leadId = input.leadId.trim();
-  const templateId = input.templateId.trim();
   if (!leadId) throw Object.assign(new Error("leadId is required."), { status: 400 });
-  if (!templateId) throw Object.assign(new Error("templateId is required."), { status: 400 });
+
+  const details = input.details || {};
+  const blank = Boolean(details.blank);
+  const template = await resolveTemplateForType(details.type, input.templateId);
 
   const lead = await getLeadById(leadId);
   if (!lead) throw Object.assign(new Error("Lead not found."), { status: 404 });
@@ -146,7 +302,9 @@ export async function sendCrmLeadContract(input: {
   const displayName = String(lead.full_name || lead.name || "").trim() || email;
   const { name, first } = splitName(displayName);
   const propertyLabel = String(lead.property_address || lead.address || "").trim();
-  const planName = String(lead.plan || "").trim() || "management";
+  const planName = String(lead.plan || "").trim() || template.label || "management";
+  const city = String(lead.property_city || "").trim();
+  const addrParts = propertyLabel.split(",").map((p) => p.trim()).filter(Boolean);
 
   let client: PmClient | null = null;
   if (lead.client_id) {
@@ -169,12 +327,27 @@ export async function sendCrmLeadContract(input: {
     await updateLeadCrm(leadId, { clientId: client.id });
   }
 
-  const template = await getContractTemplate(templateId);
-  if (!template || template.archived) {
-    throw Object.assign(new Error("Contract template not found."), { status: 404 });
+  const pdf = await downloadTemplateBuffer(template.id);
+  let buffer = pdf.buffer;
+  if (!blank) {
+    buffer = await stampContractDetails(buffer, {
+      clientName: displayName,
+      clientPhone: String(lead.phone || "").trim(),
+      clientEmail: email,
+      propertyAddress: addrParts[0] || propertyLabel || "",
+      cityProvince: city || addrParts.slice(1, -1).join(", ") || addrParts[1] || "",
+      postalCode: /[A-Z]\d[A-Z]\s?\d[A-Z]\d/i.test(propertyLabel)
+        ? (propertyLabel.match(/[A-Z]\d[A-Z]\s?\d[A-Z]\d/i) || [""])[0]
+        : addrParts[addrParts.length - 1] || "",
+      plan: details.plan,
+      term: details.term,
+      launch: details.launch,
+      tier: details.tier,
+      type: details.type,
+      benchmarks: details.benchmarks,
+    });
   }
 
-  const pdf = await downloadTemplateBuffer(templateId);
   const signToken = newSignToken();
   let contract;
   try {
@@ -184,7 +357,7 @@ export async function sendCrmLeadContract(input: {
       title: template.label || pdf.label,
       filename: template.filename || pdf.filename,
       mime: template.mime || pdf.mime || "application/pdf",
-      buffer: pdf.buffer,
+      buffer,
       sourceBuffer: pdf.buffer,
       template_id: template.id,
       sign_fields: template.sign_fields ?? [],
@@ -215,15 +388,25 @@ export async function sendCrmLeadContract(input: {
     signUrl,
   });
 
+  const planTier =
+    details.plan ||
+    details.tier ||
+    (details.type === "growth" ? "aligned_growth" : details.type === "standard" ? "standard" : null);
+
   const updated = await updateLeadCrm(leadId, {
     contractStatus: "sent",
     contractId: contract.id,
     clientId: client.id,
+    contractPlanTier: planTier,
+    contractTerm: details.term || null,
+    contractLaunchPayment: details.launch || null,
+    contractBenchmarks: details.benchmarks || null,
+    contractIsBlank: blank,
   });
   if (!updated) {
     throw Object.assign(
       new Error(
-        "Contract was created but the lead could not be updated. Run supabase/crm_contract_v1.sql in Supabase, then retry.",
+        "Contract was created but the lead could not be updated. Run supabase/crm_contract_v1.sql and supabase/crm_contract_details_v1.sql in Supabase, then retry.",
       ),
       { status: 500 },
     );
@@ -235,6 +418,60 @@ export async function sendCrmLeadContract(input: {
     email_sent: mail.ok,
     email_error: mail.ok ? null : mail.message || "Email failed",
     contracts_url: signUrl,
+  };
+}
+
+export async function resendCrmLeadContract(leadId: string): Promise<{
+  ok: true;
+  contracts_url: string;
+  email_sent: boolean;
+  email_error: string | null;
+}> {
+  const id = leadId.trim();
+  if (!id) throw Object.assign(new Error("leadId is required."), { status: 400 });
+  const lead = await getLeadById(id);
+  if (!lead) throw Object.assign(new Error("Lead not found."), { status: 404 });
+  const contractId = lead.contract_id?.trim() || "";
+  if (!contractId) {
+    throw Object.assign(new Error("No contract to resend on this lead."), { status: 400 });
+  }
+  let contract = await getContract(contractId);
+  if (!contract) throw Object.assign(new Error("Contract not found."), { status: 404 });
+  if (contract.sign_token_used_at || contract.status === "signed") {
+    throw Object.assign(new Error("This contract is already signed."), { status: 400 });
+  }
+  if (contract.status !== "awaiting_signature") {
+    throw Object.assign(new Error("This contract is not awaiting signature."), { status: 400 });
+  }
+
+  const created = new Date(contract.created_at).getTime();
+  let token = (contract.sign_token || "").trim();
+  if (!token || !Number.isFinite(created) || Date.now() - created > SIGN_TOKEN_TTL_MS) {
+    token = newSignToken();
+    contract = await refreshContractSignToken(contract.id, token);
+  }
+
+  const email = String(lead.email || "").trim().toLowerCase();
+  if (!email.includes("@")) {
+    throw Object.assign(new Error("Add an email on this lead before resending."), { status: 400 });
+  }
+  const displayName = String(lead.full_name || lead.name || "").trim() || email;
+  const { first } = splitName(displayName);
+  const propertyLabel = String(lead.property_address || lead.address || "").trim();
+  const signUrl = magicSignUrl(token);
+  const mail = await sendCrmMagicSignEmail({
+    to: email,
+    firstName: first || "there",
+    planName: contract.title || lead.plan || "management",
+    propertyLabel: propertyLabel || undefined,
+    signUrl,
+  });
+
+  return {
+    ok: true,
+    contracts_url: signUrl,
+    email_sent: mail.ok,
+    email_error: mail.ok ? null : mail.message || "Email failed",
   };
 }
 
@@ -337,7 +574,9 @@ export async function completeMagicSign(input: {
   const signedName = input.signed_name.trim();
   if (!signedName) return { ok: false, error: "signed_name is required." };
 
-  const signed = await markContractSigned({
+  // Stamps drawn signature onto PDF, uploads signed file to pm-contracts,
+  // sets status=signed, signed_at, signed_storage_path.
+  let signed = await markContractSigned({
     id: check.contract.id,
     signature_name: signedName,
     signature_image_base64: input.signature_data_url || null,
@@ -345,13 +584,28 @@ export async function completeMagicSign(input: {
   });
 
   const lead = await findLeadByContractId(signed.id).catch(() => null);
-  if (lead) {
-    await updateLeadCrm(lead.id, { contractStatus: "signed" });
+
+  // OPS Clients → Contracts lists by client_id — ensure the row is linked.
+  let clientId = (signed.client_id || lead?.client_id || "").trim();
+  if (!signed.client_id && clientId) {
+    signed = await setContractClientId(signed.id, clientId);
+  }
+  if (!clientId && lead?.email) {
+    const byEmail = await findClientByEmail(lead.email).catch(() => null);
+    if (byEmail) {
+      clientId = byEmail.id;
+      signed = await setContractClientId(signed.id, clientId);
+    }
   }
 
-  const client = signed.client_id
-    ? await getPmClient(signed.client_id).catch(() => null)
-    : null;
+  if (lead) {
+    await updateLeadCrm(lead.id, {
+      contractStatus: "signed",
+      ...(clientId && lead.client_id !== clientId ? { clientId } : {}),
+    });
+  }
+
+  const client = clientId ? await getPmClient(clientId).catch(() => null) : null;
   const clientName =
     (client?.name || "").trim() ||
     String(lead?.full_name || lead?.name || signedName).trim() ||
@@ -360,6 +614,26 @@ export async function completeMagicSign(input: {
     String(lead?.plan || "").trim() || signed.title || "management";
   const propertyLabel = String(lead?.property_address || lead?.address || "").trim();
   const signedOnLabel = signed.signed_on || new Date().toISOString().slice(0, 10);
+  const clientEmail =
+    (client?.email || lead?.email || "").trim().toLowerCase();
+  const first = splitName(clientName).first || signedName.split(/\s+/)[0] || "there";
+
+  // Email the client their stamped PDF (variant 2 template).
+  if (clientEmail.includes("@")) {
+    try {
+      const file = await downloadContractBuffer(signed.id);
+      await sendCrmSignedPdfEmail({
+        to: clientEmail,
+        firstName: first,
+        planName,
+        propertyLabel: propertyLabel || undefined,
+        filename: file.filename,
+        pdfBase64: file.buffer.toString("base64"),
+      });
+    } catch {
+      /* signing succeeded even if client email fails */
+    }
+  }
 
   try {
     await sendCrmSignedNotifyEmail({
@@ -370,7 +644,7 @@ export async function completeMagicSign(input: {
       crmLeadUrl: lead ? crmLeadUrl(lead.id) : `${adminPublicOrigin()}/crm`,
     });
   } catch {
-    /* signing succeeded even if notify fails */
+    /* signing succeeded even if team notify fails */
   }
 
   return { ok: true };

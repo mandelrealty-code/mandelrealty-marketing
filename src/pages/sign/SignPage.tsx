@@ -177,8 +177,8 @@ export function SignPage() {
           <div className="rounded-2xl border border-[#e8e8e3] bg-[#f2f2ef] px-5 py-8 text-center">
             <div className="text-[22px] font-semibold">✓ Signed successfully</div>
             <p className="mt-3 text-[15px] leading-relaxed text-[#3f3f46]">
-              Thank you, {state.firstName}. Your signed agreement has been sent to{" "}
-              mandelrealtyteam@gmail.com. We’ll be in touch shortly.
+              Thank you, {state.firstName}. A copy of your signed agreement is on its way to your
+              email. We’ll be in touch within 1 business day.
             </p>
           </div>
         )}
