@@ -185,11 +185,14 @@ When a lead replies to a slot offer, accept any natural language reply that indi
 
 When the lead's reply clearly indicates a preference:
 - Set confirmed_slot_start to that slot's ISO start from AVAILABLE SLOTS.
-- Confirm the specific date and time in reply_text, e.g.:
-  'Perfect — locked in for Wednesday Nov 20 at 4:00 PM. Ryan will call you then. Talk soon!'
+- Do NOT say the call is locked in yet. Ask them to confirm, e.g.:
+  'Just to confirm — I'll book you in for Wednesday Nov 20 at 4:00 PM with Ryan. Reply YES to confirm or NO to pick a different time.'
 
-Do not ask them to reply with a number. Do not re-send the slot list unless they explicitly ask.
-If they have not confirmed a slot, confirmed_slot_start must be null.
+Only after they reply YES is the booking actually created (handled by the system).
+If they reply NO, offer 2–3 AVAILABLE SLOTS again.
+Do not ask them to reply with a number. Do not re-send the slot list unless they say NO or explicitly ask.
+If they have not picked a slot, confirmed_slot_start must be null.
+Never claim the calendar invite was sent until they have replied YES.
 
 THREAD BEATS THE FORM
 - If they correct the city/property (form Ajax, they say Oshawa), drop the form city. Do not merge two properties unless they said BOTH are in play for us.
@@ -754,7 +757,7 @@ Reply for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LA
 - Answer first, then at most ONE question from unknowns.
 - No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
 - If they ask to talk/call (or include_book_link true): offer 2–3 numbered AVAILABLE SLOTS. Do not invent times.
-- If this inbound confirms a slot from AVAILABLE SLOTS, set confirmed_slot_start to that slot's start ISO and confirm it in reply_text.
+- If this inbound picks a slot from AVAILABLE SLOTS, set confirmed_slot_start to that slot's start ISO and ask them to reply YES to confirm (do not say it is locked in yet).
 - If they are not ready to sign, stay in-thread. Handle the objection from KB, then one question. include_book_link false. ready_for_contract false. stop_ai false.
 - If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
 - If Call notes exist, pick up from the call. Do not restart the intake.
@@ -765,12 +768,48 @@ ${
 }`;
 }
 
+function isAffirmativeReply(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  return /^(yes|y|yeah|yep|yup|sure|ok|okay|confirm|confirmed|sounds good|that works|book it|please do)(\b|[!.\s]|$)/i.test(
+    t,
+  );
+}
+
+function isNegativeReply(text: string): boolean {
+  const t = text.trim().toLowerCase();
+  if (!t) return false;
+  return /^(no|n|nope|nah|different|another|change|not that)(\b|[!.\s]|$)/i.test(t);
+}
+
+async function findPendingBookingConfirm(
+  leadId: string,
+): Promise<{ start: string; end: string; label: string } | null> {
+  const msgs = await listSmsForLead(leadId);
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    const meta = (m.meta || {}) as Record<string, unknown>;
+    const type = String(meta.type || "");
+    if (type === "booking_confirmed") return null;
+    if (type === "booking_pending_confirm" && meta.slot_start && meta.slot_end) {
+      return {
+        start: String(meta.slot_start),
+        end: String(meta.slot_end),
+        label: String(meta.slot_label || ""),
+      };
+    }
+  }
+  return null;
+}
+
 async function completeAiBooking(input: {
   lead: LeadRow;
   slot: { start: string; end: string; label: string };
   env: TwilioEnv;
 }): Promise<void> {
-  const { bookCalendarSlot } = await import("./crmCalendar.js");
+  const { bookCalendarSlot, sendBookingConfirmationSms } = await import(
+    "./crmCalendar.js"
+  );
   const booked = await bookCalendarSlot({
     leadId: input.lead.id,
     slot: { start: input.slot.start, end: input.slot.end },
@@ -784,28 +823,17 @@ async function completeAiBooking(input: {
     return;
   }
 
-  const to = toE164(input.lead.phone || "");
-  if (!to || !isTwilioConfigured(input.env)) return;
-
-  const email = (input.lead.email || "").trim() || "your email";
-  const confirm = `You're booked for a call with Ryan on ${booked.label}. You'll get a calendar invite at ${email}. Reply STOP to opt out.`;
-  const send = await sendTwilioSms({
-    accountSid: input.env.TWILIO_ACCOUNT_SID!,
-    authToken: input.env.TWILIO_AUTH_TOKEN!,
-    from: input.env.TWILIO_PHONE_NUMBER!,
-    to,
-    body: confirm,
-  });
-  // Calendar book already logged booking_confirmed; this is the SMS confirmation copy.
-  await logSmsMessage({
+  await sendBookingConfirmationSms({
+    leadName: input.lead.name || "",
+    leadPhone: input.lead.phone || "",
+    label: booked.label,
     leadId: input.lead.id,
-    direction: "outbound",
-    fromPhone: input.env.TWILIO_PHONE_NUMBER!,
-    toPhone: to,
-    body: confirm,
-    providerSid: send.sid ?? null,
-    meta: { ai_generated: true, booking_confirm_sms: true },
-  }).catch(() => undefined);
+  }).catch((err) =>
+    console.warn(
+      "[aiSms] booking confirm SMS failed",
+      err instanceof Error ? err.message : err,
+    ),
+  );
 }
 
 /**
@@ -970,7 +998,7 @@ async function sendAiSms(
   lead: LeadRow,
   body: string,
   env: TwilioEnv,
-  opts?: { scheduleSilence?: boolean },
+  opts?: { scheduleSilence?: boolean; meta?: Record<string, unknown> },
 ): Promise<{ ok: boolean; sid?: string; error?: string; drafted?: boolean }> {
   if (!isTwilioConfigured(env)) return { ok: false, error: "Twilio is not configured" };
   const to = toE164(lead.phone);
@@ -1009,7 +1037,7 @@ async function sendAiSms(
     toPhone: to,
     body: text,
     providerSid: send.sid ?? null,
-    meta: { ai_generated: true },
+    meta: { ai_generated: true, ...(opts?.meta || {}) },
   });
 
   if (opts?.scheduleSilence !== false) {
@@ -1251,6 +1279,51 @@ export async function sendAiReplyToInbound(input: {
     body = ensureBookLinkInvite(body);
   }
 
+  const { matchSlotFromReply, formatCalendarSlotLabel } = await import(
+    "./crmCalendar.js"
+  );
+  const pending = await findPendingBookingConfirm(lead.id);
+  let pendingSlotToLog: { start: string; end: string; label: string } | null =
+    null;
+  let bookAfterSend: { start: string; end: string; label: string } | null = null;
+
+  if (pending && isAffirmativeReply(input.inboundText)) {
+    bookAfterSend = {
+      start: pending.start,
+      end: pending.end,
+      label:
+        pending.label || formatCalendarSlotLabel(pending.start),
+    };
+    body = sanitizeCustomerSms(
+      `You're all set — I've booked you in for ${bookAfterSend.label} with Ryan. You'll get a calendar invite shortly. Talk soon!`,
+    );
+  } else if (pending && isNegativeReply(input.inboundText)) {
+    const offer = slots.slice(0, 3);
+    if (offer.length) {
+      const lines = offer
+        .map((s, i) => `${i + 1}) ${s.label}`)
+        .join("\n");
+      body = sanitizeCustomerSms(
+        `No problem — which of these works better?\n${lines}`,
+      );
+    } else {
+      body = sanitizeCustomerSms(
+        "No problem — want me to send a few more open times, or is there a day that works best for you?",
+      );
+    }
+  } else {
+    const matched =
+      (decision.confirmed_slot_start &&
+        slots.find((s) => s.start === decision.confirmed_slot_start)) ||
+      matchSlotFromReply(input.inboundText, slots);
+    if (matched && !pending) {
+      pendingSlotToLog = matched;
+      body = sanitizeCustomerSms(
+        `Just to confirm — I'll book you in for ${matched.label} with Ryan. Reply YES to confirm or NO to pick a different time.`,
+      );
+    }
+  }
+
   if (decision.stop_ai && !body.trim()) {
     await applyDecision(lead, decision);
     return {
@@ -1272,7 +1345,16 @@ export async function sendAiReplyToInbound(input: {
     return { ok: false, skipped: true, reason: blocked, error: blocked };
   }
 
-  const sent = await sendAiSms(lead, body, input.env);
+  const sent = await sendAiSms(lead, body, input.env, {
+    meta: pendingSlotToLog
+      ? {
+          type: "booking_pending_confirm",
+          slot_start: pendingSlotToLog.start,
+          slot_end: pendingSlotToLog.end,
+          slot_label: pendingSlotToLog.label,
+        }
+      : undefined,
+  });
   if (!sent.ok) {
     if (sent.error) await noteAiFailure(lead.id, sent.error);
     return { ok: false, error: sent.error };
@@ -1283,14 +1365,13 @@ export async function sendAiReplyToInbound(input: {
     await updateLeadCrm(lead.id, { status: "engaging" });
   }
 
-  // Book real calendar slot when the lead confirmed a time.
-  const { matchSlotFromReply } = await import("./crmCalendar.js");
-  const matched =
-    (decision.confirmed_slot_start &&
-      slots.find((s) => s.start === decision.confirmed_slot_start)) ||
-    matchSlotFromReply(input.inboundText, slots);
-  if (matched) {
-    await completeAiBooking({ lead, slot: matched, env: input.env }).catch((err) =>
+  // Book only after the lead replies YES to the confirmation ask.
+  if (bookAfterSend) {
+    await completeAiBooking({
+      lead,
+      slot: bookAfterSend,
+      env: input.env,
+    }).catch((err) =>
       console.warn("[aiSms] booking completion failed", err),
     );
   }

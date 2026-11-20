@@ -842,23 +842,76 @@ export async function handleDevApi(
           : {};
       const bookedBy =
         body.booked_by === "ai" || body.bookedBy === "ai" ? "ai" : "booker";
-      const { bookCalendarSlot } = await import("./crmCalendar.js");
+      const leadName = String(body.leadName ?? body.lead_name ?? "");
+      const leadPhone = String(body.leadPhone ?? body.lead_phone ?? "");
+      const leadId = String(body.leadId ?? body.lead_id ?? "");
+      const { bookCalendarSlot, sendBookingConfirmationSms } = await import(
+        "./crmCalendar.js"
+      );
       const result = await bookCalendarSlot({
-        leadId: String(body.leadId ?? body.lead_id ?? ""),
+        leadId,
         slot: {
           start: String(slotRaw.start ?? ""),
           end: String(slotRaw.end ?? ""),
         },
-        leadName: String(body.leadName ?? body.lead_name ?? ""),
+        leadName,
         leadEmail: String(body.leadEmail ?? body.lead_email ?? ""),
-        leadPhone: String(body.leadPhone ?? body.lead_phone ?? ""),
+        leadPhone,
         bookedBy,
       });
       if (!result.ok) {
         json(res, 400, { error: result.error });
         return true;
       }
-      json(res, 200, { ok: true, eventId: result.eventId, label: result.label });
+      await sendBookingConfirmationSms({
+        leadName,
+        leadPhone,
+        label: result.label,
+        leadId,
+      }).catch((err) =>
+        console.warn(
+          "[devApi] booking confirm SMS failed",
+          err instanceof Error ? err.message : err,
+        ),
+      );
+      json(res, 200, {
+        ok: true,
+        eventId: result.eventId,
+        bookingId: result.bookingId,
+        label: result.label,
+      });
+      return true;
+    }
+    if (method === "POST" && settingsOp === "reschedule_slot") {
+      const body = await readJsonBody(req);
+      const slotRaw =
+        body.newSlot && typeof body.newSlot === "object"
+          ? (body.newSlot as Record<string, unknown>)
+          : body.slot && typeof body.slot === "object"
+            ? (body.slot as Record<string, unknown>)
+            : {};
+      const { rescheduleCalendarSlot } = await import("./crmCalendar.js");
+      const result = await rescheduleCalendarSlot({
+        bookingId: String(body.bookingId ?? body.booking_id ?? ""),
+        leadId: String(body.leadId ?? body.lead_id ?? ""),
+        newSlot: {
+          start: String(slotRaw.start ?? ""),
+          end: String(slotRaw.end ?? ""),
+        },
+        leadName: String(body.leadName ?? body.lead_name ?? ""),
+        leadEmail: String(body.leadEmail ?? body.lead_email ?? ""),
+        leadPhone: String(body.leadPhone ?? body.lead_phone ?? ""),
+      });
+      if (!result.ok) {
+        json(res, 400, { error: result.error });
+        return true;
+      }
+      json(res, 200, {
+        ok: true,
+        eventId: result.eventId,
+        bookingId: result.bookingId,
+        label: result.label,
+      });
       return true;
     }
     if (method === "POST" && settingsOp === "save_pricelabs_key") {

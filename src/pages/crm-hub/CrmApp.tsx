@@ -295,6 +295,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         ),
       bookSlot: (body: Data) =>
         call("/api/admin/settings?op=book_slot", json("POST", body)),
+      rescheduleSlot: (body: Data) =>
+        call("/api/admin/settings?op=reschedule_slot", json("POST", body)),
       markRead: (id: string) => patchLead({ id, markRead: true }),
       aiNudge: (id: string, playbookSteps?: unknown[]) => patchLead({ id, aiNudge: true, ...(playbookSteps ? { playbookSteps } : {}) }),
       aiSendFirst: (id: string) => patchLead({ id, aiSendFirst: true }),

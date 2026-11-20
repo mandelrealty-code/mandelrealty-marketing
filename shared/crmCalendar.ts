@@ -311,8 +311,294 @@ export type BookSlotInput = {
 };
 
 export type BookSlotResult =
-  | { ok: true; eventId: string; label: string }
+  | { ok: true; eventId: string; label: string; bookingId: string | null }
   | { ok: false; error: string };
+
+/** Confirmation SMS after a slot is booked (booker or AI). */
+export async function sendBookingConfirmationSms(input: {
+  leadName: string;
+  leadPhone: string;
+  label: string;
+  leadId?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { toE164, isTwilioConfigured } = await import("./followUpSequences.js");
+  const { sendTwilioSms } = await import("./twilioSms.js");
+  const env = {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  };
+  if (!isTwilioConfigured(env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const to = toE164(input.leadPhone);
+  if (!to) return { ok: false, error: "Invalid phone number." };
+  const name = input.leadName.trim() || "there";
+  const body = `Hi ${name}, your call with Ryan at Mandel Realty Group is confirmed for ${input.label}. You'll also receive a calendar invite. Reply STOP to opt out.`;
+  const send = await sendTwilioSms({
+    accountSid: env.TWILIO_ACCOUNT_SID!,
+    authToken: env.TWILIO_AUTH_TOKEN!,
+    from: env.TWILIO_PHONE_NUMBER!,
+    to,
+    body,
+  });
+  if (input.leadId) {
+    try {
+      const { logSmsMessage } = await import("./smsStore.js");
+      await logSmsMessage({
+        leadId: input.leadId,
+        direction: "outbound",
+        fromPhone: env.TWILIO_PHONE_NUMBER!,
+        toPhone: to,
+        body,
+        providerSid: send.sid ?? null,
+        meta: { booking_confirm_sms: true },
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  return send.ok ? { ok: true } : { ok: false, error: send.error };
+}
+
+export async function sendRescheduleConfirmationSms(input: {
+  leadName: string;
+  leadPhone: string;
+  label: string;
+  leadId?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { toE164, isTwilioConfigured } = await import("./followUpSequences.js");
+  const { sendTwilioSms } = await import("./twilioSms.js");
+  const env = {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  };
+  if (!isTwilioConfigured(env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const to = toE164(input.leadPhone);
+  if (!to) return { ok: false, error: "Invalid phone number." };
+  const name = input.leadName.trim() || "there";
+  const body = `Hi ${name}, your call has been rescheduled to ${input.label}. Reply STOP to opt out.`;
+  const send = await sendTwilioSms({
+    accountSid: env.TWILIO_ACCOUNT_SID!,
+    authToken: env.TWILIO_AUTH_TOKEN!,
+    from: env.TWILIO_PHONE_NUMBER!,
+    to,
+    body,
+  });
+  if (input.leadId) {
+    try {
+      const { logSmsMessage } = await import("./smsStore.js");
+      await logSmsMessage({
+        leadId: input.leadId,
+        direction: "outbound",
+        fromPhone: env.TWILIO_PHONE_NUMBER!,
+        toPhone: to,
+        body,
+        providerSid: send.sid ?? null,
+        meta: { booking_reschedule_sms: true },
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  return send.ok ? { ok: true } : { ok: false, error: send.error };
+}
+
+export async function deleteCalendarEvent(
+  eventId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = eventId.trim();
+  if (!id) return { ok: false, error: "Missing calendar event id." };
+  const accessToken = await getCalendarAccessToken();
+  if (!accessToken) {
+    return {
+      ok: false,
+      error:
+        "Google Calendar is not connected. Connect Gmail in Settings → Connectors.",
+    };
+  }
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}?sendUpdates=all`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+  // 410 Gone / 404 = already deleted
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    return {
+      ok: false,
+      error: data.error?.message || "Could not delete Google Calendar event.",
+    };
+  }
+  return { ok: true };
+}
+
+export type RescheduleSlotInput = {
+  bookingId: string;
+  leadId: string;
+  newSlot: { start: string; end: string };
+  leadName: string;
+  leadEmail: string;
+  leadPhone: string;
+};
+
+export async function rescheduleCalendarSlot(
+  input: RescheduleSlotInput,
+): Promise<BookSlotResult> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, error: "Database is not configured." };
+
+  const bookingId = input.bookingId.trim();
+  if (!bookingId) return { ok: false, error: "Missing booking id." };
+
+  const { data: row, error: readErr } = await sb
+    .from("crm_bookings")
+    .select("id, lead_id, google_event_id")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (readErr || !row) {
+    return { ok: false, error: readErr?.message || "Booking not found." };
+  }
+  if (String(row.lead_id) !== String(input.leadId)) {
+    return { ok: false, error: "Booking does not match this lead." };
+  }
+
+  const oldEventId = row.google_event_id
+    ? String(row.google_event_id)
+    : "";
+  if (oldEventId) {
+    const deleted = await deleteCalendarEvent(oldEventId);
+    if (!deleted.ok) return deleted;
+  }
+
+  const start = new Date(input.newSlot.start);
+  const end = new Date(input.newSlot.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+    return { ok: false, error: "Invalid slot times." };
+  }
+
+  const accessToken = await getCalendarAccessToken();
+  if (!accessToken) {
+    return {
+      ok: false,
+      error:
+        "Google Calendar is not connected. Connect Gmail in Settings → Connectors.",
+    };
+  }
+
+  const name = input.leadName.trim() || "there";
+  const email = input.leadEmail.trim();
+  const phone = input.leadPhone.trim();
+  const label = formatCalendarSlotLabel(start.toISOString());
+
+  const attendees: { email: string }[] = [
+    { email: "mandelrealtyteam@gmail.com" },
+  ];
+  if (email && /@/.test(email)) attendees.unshift({ email });
+
+  const eventBody = {
+    summary: "Call with Ryan Mandel · Mandel Realty Group",
+    description: `Hi ${name}, looking forward to speaking with you!`,
+    start: {
+      dateTime: start.toISOString(),
+      timeZone: CALL_TZ,
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: CALL_TZ,
+    },
+    attendees,
+  };
+
+  const res = await fetch(
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(eventBody),
+    },
+  );
+  const data = (await res.json().catch(() => ({}))) as {
+    id?: string;
+    error?: { message?: string };
+  };
+  if (!res.ok || !data.id) {
+    return {
+      ok: false,
+      error: data.error?.message || "Could not create Google Calendar event.",
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error: updErr } = await sb
+    .from("crm_bookings")
+    .update({
+      slot_start: start.toISOString(),
+      slot_end: end.toISOString(),
+      google_event_id: data.id,
+      confirmation_sent_at: nowIso,
+    })
+    .eq("id", bookingId);
+  if (updErr) {
+    console.warn("[crmCalendar] crm_bookings update failed", updErr.message);
+  }
+
+  await markLeadBooked(input.leadId, {
+    callStartIso: start.toISOString(),
+    callBooking: label,
+    note: `Call rescheduled (${label}).`,
+  }).catch((err) =>
+    console.warn(
+      "[crmCalendar] markLeadBooked failed",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+
+  try {
+    const { logSmsMessage } = await import("./smsStore.js");
+    await logSmsMessage({
+      leadId: input.leadId,
+      direction: "outbound",
+      fromPhone: process.env.TWILIO_PHONE_NUMBER?.trim() || "system",
+      toPhone: phone || "lead",
+      body: label,
+      meta: {
+        type: "booking_confirmed",
+        booked_at: start.toISOString(),
+        booked_by: "booker",
+        google_event_id: data.id,
+        booking_id: bookingId,
+        rescheduled: true,
+      },
+    });
+  } catch {
+    /* non-fatal */
+  }
+
+  await sendRescheduleConfirmationSms({
+    leadName: name,
+    leadPhone: phone,
+    label,
+    leadId: input.leadId,
+  }).catch((err) =>
+    console.warn(
+      "[crmCalendar] reschedule SMS failed",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+
+  return { ok: true, eventId: data.id, label, bookingId };
+}
 
 export async function bookCalendarSlot(
   input: BookSlotInput,
@@ -331,7 +617,7 @@ export async function bookCalendarSlot(
     };
   }
 
-  const name = input.leadName.trim() || "Lead";
+  const name = input.leadName.trim() || "there";
   const email = input.leadEmail.trim();
   const phone = input.leadPhone.trim();
   const label = formatCalendarSlotLabel(start.toISOString());
@@ -342,8 +628,8 @@ export async function bookCalendarSlot(
   if (email && /@/.test(email)) attendees.unshift({ email });
 
   const eventBody = {
-    summary: `MRG Sales Call – ${name}`,
-    description: `Lead from MRG CRM.\nPhone: ${phone || "n/a"}`,
+    summary: "Call with Ryan Mandel · Mandel Realty Group",
+    description: `Hi ${name}, looking forward to speaking with you!`,
     start: {
       dateTime: start.toISOString(),
       timeZone: CALL_TZ,
@@ -378,18 +664,25 @@ export async function bookCalendarSlot(
   }
 
   const sb = getSupabaseAdmin();
+  let bookingId: string | null = null;
   if (sb) {
     const nowIso = new Date().toISOString();
-    const { error } = await sb.from("crm_bookings").insert({
-      lead_id: input.leadId,
-      slot_start: start.toISOString(),
-      slot_end: end.toISOString(),
-      google_event_id: data.id,
-      booked_by: input.bookedBy,
-      confirmation_sent_at: nowIso,
-    });
+    const { data: inserted, error } = await sb
+      .from("crm_bookings")
+      .insert({
+        lead_id: input.leadId,
+        slot_start: start.toISOString(),
+        slot_end: end.toISOString(),
+        google_event_id: data.id,
+        booked_by: input.bookedBy,
+        confirmation_sent_at: nowIso,
+      })
+      .select("id")
+      .maybeSingle();
     if (error) {
       console.warn("[crmCalendar] crm_bookings insert failed", error.message);
+    } else if (inserted?.id) {
+      bookingId = String(inserted.id);
     }
   }
 
@@ -426,6 +719,8 @@ export async function bookCalendarSlot(
         type: "booking_confirmed",
         booked_at: start.toISOString(),
         booked_by: input.bookedBy,
+        google_event_id: data.id,
+        booking_id: bookingId,
       },
     });
   } catch {
@@ -433,7 +728,7 @@ export async function bookCalendarSlot(
   }
 
   // Stage is set to "booked" (pipeline status). There is no call_booked status in LEAD_STATUSES.
-  return { ok: true, eventId: data.id, label };
+  return { ok: true, eventId: data.id, label, bookingId };
 }
 
 /** Match a natural-language reply to one of the offered slots. */
@@ -447,8 +742,7 @@ export function matchSlotFromReply(
 
   if (
     /\b(any|either|whatever|first one|works for me)\b/.test(text) ||
-    text === "1" ||
-    text === "yes"
+    text === "1"
   ) {
     return slots[0] ?? null;
   }

@@ -41,6 +41,8 @@ export const CRM_EXTRA_CSS = `
 .bkdone .w3{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-top:6px}
 .bkdone a{display:inline-block;margin-top:8px;color:var(--tealink);font-weight:600;font-size:var(--t-sm);text-decoration:none}
 .bkdone a:hover{text-decoration:underline}
+.bkdone .bkacts{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;margin-top:4px}
+.bkdone .bkacts a{margin-top:8px}
 .slots{display:flex;flex-direction:column;gap:6px;margin-top:8px}
 .slot{display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff;font:500 var(--t-sm)/1 Inter,sans-serif;color:var(--ink);text-align:left;width:100%}
 .slot:hover{background:var(--hover)}
@@ -381,7 +383,7 @@ const S = {
   set: { op: '', opDirty: false, opMsg: '', callerSel: null, nName: '', nPhone: '', nMsg: '', uCode: '', uLabel: '', uMsg: '', paste: '', preview: null, pMsg: '', pErr: '' },
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
-  book: { slots: [], pick: null, loading: false, err: '', leadId: null },
+  book: { slots: [], pick: null, loading: false, err: '', leadId: null, step: 'slots', mode: 'book', bookingId: null, googleEventId: null },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -714,7 +716,12 @@ function thread(l) {
     const mType = m.type || (m.meta && m.meta.type) || '';
     if (mType === 'booking_confirmed') {
       const when = formatBookingWhen(m.booked_at || m.body || m.created_at);
-      return `${sep}<div class="bkdone"><div class="ok">✓ Call booked</div><div class="when">${esc(when)}</div><div class="w2">30-min intro call with Ryan Mandel</div><div class="w3">Added to calendar · Confirmation sent to lead</div><a href="#" data-act="goCalendar">View in calendar →</a></div>`;
+      const eventId = (m.google_event_id || (m.meta && m.meta.google_event_id) || '').trim();
+      const bookingId = (m.booking_id || (m.meta && m.meta.booking_id) || '').trim();
+      const calHref = eventId
+        ? `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`
+        : 'https://calendar.google.com/calendar/r';
+      return `${sep}<div class="bkdone"><div class="ok">✓ Call booked</div><div class="when">${esc(when)}</div><div class="w2">30-min intro call with Ryan Mandel</div><div class="w3">Added to calendar · Confirmation sent to lead</div><div class="bkacts"><a href="${esc(calHref)}" target="_blank" rel="noopener noreferrer">View in calendar →</a><a href="#" data-act="rescheduleBooking" data-booking-id="${esc(bookingId)}" data-event-id="${esc(eventId)}">Reschedule</a></div></div>`;
     }
     if (mType === 'ai_slot_offer') {
       const t = clock(new Date(m.created_at));
@@ -755,11 +762,32 @@ function aiBlock(l) {
 function bookBlock(l) {
   const already = l.status === 'booked' || l.status === 'call_done' || l.status === 'won' || Boolean(l.call_start_iso);
   const b = S.book;
+  const rescheduling = b.mode === 'reschedule' && b.leadId === String(l.id);
   const dis = isBusy('book') || b.loading ? 'disabled' : '';
-  if (already) {
+  if (already && !rescheduling) {
     const when = l.call_booking || (l.call_start_iso ? formatBookingWhen(l.call_start_iso) : '');
     return `<div class="dsec"><h5>Book a call</h5>
       <div class="okbox">${ic('check', 'sm')}<span><b>Call booked.</b>${when ? ` ${esc(when)}` : ''}${l.booked_by ? ` · ${esc(l.booked_by)}` : ''}</span></div>
+      <button class="btn sm" style="margin-top:8px" data-act="rescheduleBooking" ${dis}>Reschedule</button>
+    </div>`;
+  }
+  const title = rescheduling ? 'Reschedule call' : 'Book a call';
+  const pick = (b.slots || []).find((s) => s.start === b.pick);
+  if (b.step === 'confirm' && pick && b.leadId === String(l.id)) {
+    const email = (l.email || '').trim() || 'their email';
+    const phone = (l.phone || '').trim() || 'their phone';
+    const confirmLabel = rescheduling
+      ? (isBusy('book') ? 'Rescheduling…' : 'Confirm reschedule')
+      : (isBusy('book') ? 'Booking…' : 'Confirm booking');
+    return `<div class="dsec"><h5>${esc(title)}</h5>
+      <div class="okbox" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span><b>${rescheduling ? 'Reschedule' : 'Book'} ${esc(pick.label)} for ${esc(l.name || 'this lead')}?</b></span>
+        <span class="meta">A calendar invite will be sent to ${esc(email)} and a confirmation text to ${esc(phone)}.</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn primary" data-act="confirmBookSlot" ${dis}>${ic('cal', 'sm')}${esc(confirmLabel)}</button>
+        <button class="btn" data-act="cancelBookConfirm" ${dis}>Cancel</button>
+      </div>
     </div>`;
   }
   let slotsHtml;
@@ -775,11 +803,10 @@ function bookBlock(l) {
     slotsHtml = `<div class="slots">${(b.slots || []).map((s) => {
       const on = b.pick === s.start;
       return `<button type="button" class="slot ${on ? 'on' : ''}" data-act="pickBookSlot" data-start="${esc(s.start)}" data-end="${esc(s.end)}" aria-pressed="${on ? 'true' : 'false'}">${esc(s.label)}<span class="ck">${ic('check', 'xs')}</span></button>`;
-    }).join('')}</div>
-    <button class="btn primary" style="width:100%;margin-top:10px" data-act="confirmBookSlot" ${(dis || !b.pick) ? 'disabled' : ''}>${ic('cal', 'sm')}${isBusy('book') ? 'Booking…' : 'Confirm booking'}</button>`;
+    }).join('')}</div>`;
   }
-  return `<div class="dsec"><h5>Book a call <button class="btn sm ghost" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}</button></h5>
-    <div class="meta">Pick an open hour on Ryan’s calendar. Confirms the lead, stops AI texts, and sends a calendar invite.</div>
+  return `<div class="dsec"><h5>${esc(title)} <button class="btn sm ghost" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}</button></h5>
+    <div class="meta">${rescheduling ? 'Pick a new open hour. We’ll update the calendar invite and text the lead.' : 'Pick an open hour on Ryan’s calendar. You’ll confirm before anything is saved.'}</div>
     ${slotsHtml}
   </div>`;
 }
@@ -981,7 +1008,7 @@ function callsPane() {
 function actionsBlock() {
   const dis = isBusy('save') ? 'disabled' : '';
   return `<div class="dsec"><h5>Actions</h5><div style="display:flex;flex-direction:column;gap:6px">
-   <button class="btn" data-act="convertClient">${ic('file', 'sm')}Create client and send contract</button><button class="btn" data-act="markBooked" ${dis}>${ic('cal', 'sm')}Mark booked</button><button class="btn dangerline" data-act="askDelete" ${dis}>${ic('trash', 'sm')}Delete contact</button></div></div>`;
+   <button class="btn" data-act="convertClient">${ic('file', 'sm')}Create client and send contract</button><button class="btn dangerline" data-act="askDelete" ${dis}>${ic('trash', 'sm')}Delete contact</button></div></div>`;
 }
 function leadPanel(l) {
   let order = ['ai', 'book', 'sale', 'stage', 'contact', 'notes', 'actions'];
@@ -1328,7 +1355,6 @@ function renderMenu() {
   const items = [];
   if (m.kind === 'row') items.push(`<button data-act="open" data-id="${esc(l.id)}">${ic('sms', 'sm')}Open</button>`);
   items.push(`<button data-act="convertClient" data-id="${esc(l.id)}">${ic('file', 'sm')}Create client and send contract</button>`);
-  items.push(`<button data-act="markBooked" data-id="${esc(l.id)}">${ic('cal', 'sm')}Mark booked</button>`);
   if (phoneUsable(l.phone)) items.push(`<button data-act="copyPhone" data-id="${esc(l.id)}">${ic('copy', 'sm')}Copy phone</button>`);
   items.push('<hr>');
   items.push(`<button class="dng" data-act="askDelete" data-id="${esc(l.id)}">${ic('trash', 'sm')}Delete contact</button>`);
@@ -1628,49 +1654,122 @@ function openLead(id, opts = {}) {
   render();
 }
 
-async function loadBookSlots(leadId = S.leadId) {
+async function loadBookSlots(leadId = S.leadId, opts = {}) {
   if (!leadId || !host.loadCalendarSlots) return;
   const id = String(leadId);
-  S.book = { ...S.book, leadId: id, loading: true, err: '', pick: null };
+  const keepMode = opts.keepMode === true;
+  S.book = {
+    ...S.book,
+    leadId: id,
+    loading: true,
+    err: '',
+    pick: null,
+    step: 'slots',
+    mode: keepMode ? (S.book.mode || 'book') : 'book',
+    bookingId: keepMode ? S.book.bookingId : null,
+    googleEventId: keepMode ? S.book.googleEventId : null,
+  };
   renderMain();
   try {
     const data = await host.loadCalendarSlots();
     if (S.book.leadId !== id) return;
     S.book = {
+      ...S.book,
       leadId: id,
       loading: false,
       err: '',
       pick: null,
+      step: 'slots',
       slots: Array.isArray(data.slots) ? data.slots : [],
     };
   } catch (e) {
     if (S.book.leadId !== id) return;
     S.book = {
+      ...S.book,
       leadId: id,
       loading: false,
       err: errMsg(e, 'Could not load calendar times.'),
       pick: null,
+      step: 'slots',
       slots: [],
     };
   }
   renderMain();
 }
 
+function latestBookingMeta(leadId) {
+  const msgs = (S.th && S.th.id === String(leadId) && S.th.messages) || [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    const mType = m.type || (m.meta && m.meta.type) || '';
+    if (mType !== 'booking_confirmed') continue;
+    return {
+      bookingId: String(m.booking_id || (m.meta && m.meta.booking_id) || '').trim(),
+      googleEventId: String(m.google_event_id || (m.meta && m.meta.google_event_id) || '').trim(),
+    };
+  }
+  return { bookingId: '', googleEventId: '' };
+}
+
+async function startReschedule(opts = {}) {
+  const l = leadById(S.leadId);
+  if (!l) return;
+  const fromCard = {
+    bookingId: String(opts.bookingId || '').trim(),
+    googleEventId: String(opts.googleEventId || '').trim(),
+  };
+  const fromThread = latestBookingMeta(l.id);
+  S.book = {
+    ...S.book,
+    leadId: String(l.id),
+    mode: 'reschedule',
+    step: 'slots',
+    pick: null,
+    bookingId: fromCard.bookingId || fromThread.bookingId || null,
+    googleEventId: fromCard.googleEventId || fromThread.googleEventId || null,
+  };
+  S.ptab = 'chat';
+  S.rtab = 'details';
+  await loadBookSlots(l.id, { keepMode: true });
+}
+
 async function confirmBookSlot() {
   const l = leadById(S.leadId);
-  if (!l || !S.book.pick || !host.bookSlot) return;
+  if (!l || !S.book.pick) return;
   const slot = (S.book.slots || []).find((s) => s.start === S.book.pick);
   if (!slot) return;
+  const reschedule = S.book.mode === 'reschedule';
+  if (reschedule) {
+    if (!host.rescheduleSlot) {
+      toast('Reschedule is not available.', 'bad');
+      return;
+    }
+    if (!S.book.bookingId) {
+      toast('Could not find the existing booking to reschedule.', 'bad');
+      return;
+    }
+  } else if (!host.bookSlot) {
+    return;
+  }
   setBusy('book', true);
   try {
-    const data = await host.bookSlot({
-      leadId: l.id,
-      slot: { start: slot.start, end: slot.end },
-      leadName: l.name || '',
-      leadEmail: l.email || '',
-      leadPhone: l.phone || '',
-      booked_by: 'booker',
-    });
+    const data = reschedule
+      ? await host.rescheduleSlot({
+          bookingId: S.book.bookingId,
+          leadId: l.id,
+          newSlot: { start: slot.start, end: slot.end },
+          leadName: l.name || '',
+          leadEmail: l.email || '',
+          leadPhone: l.phone || '',
+        })
+      : await host.bookSlot({
+          leadId: l.id,
+          slot: { start: slot.start, end: slot.end },
+          leadName: l.name || '',
+          leadEmail: l.email || '',
+          leadPhone: l.phone || '',
+          booked_by: 'booker',
+        });
     mergeLead(l.id, {
       status: 'booked',
       call_start_iso: slot.start,
@@ -1679,12 +1778,22 @@ async function confirmBookSlot() {
       ai_paused: true,
     });
     D(l).booked = 'Booker';
-    toast(data.label ? `Booked ${data.label}` : 'Call booked');
+    toast(data.label ? (reschedule ? `Rescheduled to ${data.label}` : `Booked ${data.label}`) : (reschedule ? 'Call rescheduled' : 'Call booked'));
     await loadThread(l.id);
     loadLeads();
-    S.book = { ...S.book, pick: null, slots: [] };
+    S.book = {
+      slots: [],
+      pick: null,
+      loading: false,
+      err: '',
+      leadId: null,
+      step: 'slots',
+      mode: 'book',
+      bookingId: null,
+      googleEventId: null,
+    };
   } catch (e) {
-    toast(errMsg(e, 'Could not book that time.'), 'bad');
+    toast(errMsg(e, reschedule ? 'Could not reschedule that time.' : 'Could not book that time.'), 'bad');
   } finally {
     setBusy('book', false);
   }
@@ -2388,13 +2497,22 @@ const ACT = {
   startOnboarding: () => { const l = leadById(S.leadId); if (l) startOnboarding(l); },
   openUnit: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.onboarding) host.openOnboardingUnit && host.openOnboardingUnit(l.onboarding.unitId); },
   convertClient: (b) => { const l = leadById(b.dataset.id || S.leadId); S.menu = null; renderMenu(); if (l && host.convertLeadToOpsClient) host.convertLeadToOpsClient({ id: l.id, name: l.name, email: l.email, phone: l.phone }); },
-  markBooked: (b) => { const id = b.dataset.id || S.leadId; S.menu = null; renderMenu(); if (id) markBooked(id); },
-  reloadBookSlots: () => { void loadBookSlots(S.leadId); },
+  reloadBookSlots: () => { void loadBookSlots(S.leadId, { keepMode: S.book.mode === 'reschedule' }); },
   pickBookSlot: (b) => {
-    S.book = { ...S.book, pick: b.dataset.start || null };
+    S.book = { ...S.book, pick: b.dataset.start || null, step: 'confirm' };
+    renderMain();
+  },
+  cancelBookConfirm: () => {
+    S.book = { ...S.book, pick: null, step: 'slots' };
     renderMain();
   },
   confirmBookSlot: () => { void confirmBookSlot(); },
+  rescheduleBooking: (b) => {
+    void startReschedule({
+      bookingId: b.dataset.bookingId || '',
+      googleEventId: b.dataset.eventId || '',
+    });
+  },
   askDelete: (b) => askDelete(b.dataset.id || S.leadId),
   kEdit: (b) => kOpen(b.dataset.id),
   kAddPaste: () => kAddPaste(),
@@ -2418,7 +2536,6 @@ const ACT = {
   wmDel: (b) => { S.wm.askDel = b.dataset.id; renderMain(); },
   wmKeep: () => { S.wm.askDel = null; renderMain(); },
   wmDelYes: (b) => deleteWelcomeTpl(b.dataset.id),
-  goCalendar: () => { if (host.go) host.go('ops', { opsTab: 'month' }); },
   logout: () => { if (host.logout) Promise.resolve(host.logout()).catch((e) => toast(errMsg(e, 'Log out failed'), 'bad')); },
 };
 
