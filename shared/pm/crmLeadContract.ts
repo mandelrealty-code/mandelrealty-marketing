@@ -176,18 +176,35 @@ export async function sendCrmLeadContract(input: {
 
   const pdf = await downloadTemplateBuffer(templateId);
   const signToken = newSignToken();
-  const contract = await assignAwaitingContract({
-    client_id: client.id,
-    property_id: null,
-    title: template.label || pdf.label,
-    filename: template.filename || pdf.filename,
-    mime: template.mime || pdf.mime || "application/pdf",
-    buffer: pdf.buffer,
-    sourceBuffer: pdf.buffer,
-    template_id: template.id,
-    sign_fields: template.sign_fields ?? [],
-    sign_token: signToken,
-  });
+  let contract;
+  try {
+    contract = await assignAwaitingContract({
+      client_id: client.id,
+      property_id: null,
+      title: template.label || pdf.label,
+      filename: template.filename || pdf.filename,
+      mime: template.mime || pdf.mime || "application/pdf",
+      buffer: pdf.buffer,
+      sourceBuffer: pdf.buffer,
+      template_id: template.id,
+      sign_fields: template.sign_fields ?? [],
+      sign_token: signToken,
+    });
+  } catch (e) {
+    const msg =
+      (e instanceof Error && e.message) ||
+      (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+        ? (e as { message: string }).message
+        : "") ||
+      "Could not create contract.";
+    if (/sign_token/i.test(msg) && /does not exist|Could not find|schema cache/i.test(msg)) {
+      throw Object.assign(
+        new Error("Magic signing needs a DB column. Run supabase/crm_sign_token_v1.sql in Supabase, then retry."),
+        { status: 500 },
+      );
+    }
+    throw Object.assign(new Error(msg), { status: 500 });
+  }
 
   const signUrl = magicSignUrl(signToken);
   const mail = await sendCrmMagicSignEmail({
@@ -198,11 +215,19 @@ export async function sendCrmLeadContract(input: {
     signUrl,
   });
 
-  await updateLeadCrm(leadId, {
+  const updated = await updateLeadCrm(leadId, {
     contractStatus: "sent",
     contractId: contract.id,
     clientId: client.id,
   });
+  if (!updated) {
+    throw Object.assign(
+      new Error(
+        "Contract was created but the lead could not be updated. Run supabase/crm_contract_v1.sql in Supabase, then retry.",
+      ),
+      { status: 500 },
+    );
+  }
 
   return {
     ok: true,

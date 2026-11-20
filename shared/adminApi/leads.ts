@@ -237,9 +237,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       } catch (e) {
         const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
-        return res.status(status || 500).json({
-          error: e instanceof Error ? e.message : "Could not send contract.",
-        });
+        const message =
+          (e instanceof Error && e.message) ||
+          (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+            ? (e as { message: string }).message
+            : "") ||
+          "Could not send contract.";
+        console.error("[leads] send_contract", message);
+        return res.status(status || 500).json({ error: message });
       }
     }
 
@@ -252,9 +257,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json(result);
       } catch (e) {
         const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
-        return res.status(status || 500).json({
-          error: e instanceof Error ? e.message : "Could not cancel contract.",
-        });
+        const message =
+          (e instanceof Error && e.message) ||
+          (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+            ? (e as { message: string }).message
+            : "") ||
+          "Could not cancel contract.";
+        console.error("[leads] cancel_contract", message);
+        return res.status(status || 500).json({ error: message });
       }
     }
 

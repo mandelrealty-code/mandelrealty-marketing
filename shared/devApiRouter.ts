@@ -456,9 +456,14 @@ export async function handleDevApi(
           }));
         } catch (e) {
           const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
-          json(res, status || 500, {
-            error: e instanceof Error ? e.message : "Could not send contract.",
-          });
+          const message =
+            (e instanceof Error && e.message) ||
+            (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+              ? (e as { message: string }).message
+              : "") ||
+            "Could not send contract.";
+          console.error("[dev] send_contract", message);
+          json(res, status || 500, { error: message });
         }
         return true;
       }
@@ -473,9 +478,14 @@ export async function handleDevApi(
           json(res, 200, await cancelCrmLeadContract(leadId));
         } catch (e) {
           const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
-          json(res, status || 500, {
-            error: e instanceof Error ? e.message : "Could not cancel contract.",
-          });
+          const message =
+            (e instanceof Error && e.message) ||
+            (typeof e === "object" && e && "message" in e && typeof (e as { message: unknown }).message === "string"
+              ? (e as { message: string }).message
+              : "") ||
+            "Could not cancel contract.";
+          console.error("[dev] cancel_contract", message);
+          json(res, status || 500, { error: message });
         }
         return true;
       }

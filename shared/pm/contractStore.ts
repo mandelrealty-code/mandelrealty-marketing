@@ -105,7 +105,13 @@ export async function createContract(input: {
     .insert(insert)
     .select("*")
     .single();
-  if (error) throw error;
+  if (error) {
+    const msg = error.message || "Could not create contract.";
+    if (/sign_token/i.test(msg) && /does not exist|Could not find|schema cache/i.test(msg)) {
+      throw new Error("Magic signing needs a DB column. Run supabase/crm_sign_token_v1.sql in Supabase, then retry.");
+    }
+    throw new Error(msg);
+  }
 
   const contract = row as PmContract;
   const safeName = input.filename.replace(/[^\w.-]+/g, "_") || "contract.pdf";
