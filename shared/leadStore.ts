@@ -152,8 +152,14 @@ export type LeadProfileUpdate = {
 };
 
 const SALE_COLUMNS = ["plan", "booked_by", "closed_by", "contract_status", "referred_by", "onboarding_unit_id"];
-const saleColumnMissing = (message: string) => SALE_COLUMNS.filter((c) => new RegExp(c, "i").test(message));
+/** Only treat as missing columns when Postgres says the column is absent — not check-constraint failures. */
+const saleColumnMissing = (message: string) => {
+  if (!/does not exist|Could not find/i.test(message)) return [];
+  return SALE_COLUMNS.filter((c) => new RegExp(`\\b${c}\\b`, "i").test(message));
+};
 export const SALE_COLUMNS_NOTE = "Run supabase/onboarding_v4.sql in Supabase, then retry.";
+export const CONTRACT_STATUS_NOTE =
+  "Run supabase/crm_contract_status_v1.sql in Supabase, then retry.";
 
 export function mapLead(row: Record<string, unknown>): LeadRow {
   return {
@@ -471,6 +477,14 @@ export async function updateLeadCrm(
   if (error) {
     if (saleColumnMissing(error.message).some((c) => update[c] !== undefined)) {
       throw new Error("The CRM is missing the sale columns. " + SALE_COLUMNS_NOTE);
+    }
+    if (
+      update.contract_status !== undefined &&
+      /leads_contract_status_check|check constraint.*contract_status/i.test(error.message)
+    ) {
+      throw new Error(
+        `Contract status "${String(update.contract_status)}" is not allowed yet. ${CONTRACT_STATUS_NOTE}`,
+      );
     }
     const missing =
       /call_notes|playbook_steps|ai_send_mode/i.test(error.message) &&

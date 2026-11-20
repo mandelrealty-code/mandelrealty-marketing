@@ -29,7 +29,8 @@ ALTER TABLE leads
 ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_contract_status_check;
 ALTER TABLE leads
   ADD CONSTRAINT leads_contract_status_check
-  CHECK (contract_status IS NULL OR contract_status IN ('signed', 'sent', 'not_sent'));
+  CHECK (contract_status IS NULL OR contract_status IN ('signed', 'sent', 'not_sent', 'cancelled'));
+-- If v4 already ran without cancelled, also run crm_contract_status_v1.sql.
 
 -- The onboarding fee can be charged, waived (with a reason) or still to be confirmed.
 ALTER TABLE onboarding_units DROP CONSTRAINT IF EXISTS onboarding_units_fee_status_check;

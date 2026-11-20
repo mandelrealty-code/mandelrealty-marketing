@@ -14,6 +14,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { OwnerApp } from "./pages/owner/OwnerApp";
 import { TeamApp } from "./pages/team/TeamApp";
 import { PublicSopHub } from "./pages/sop/PublicSopHub";
+import { SignPage } from "./pages/sign/SignPage";
 
 function isAdminHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
@@ -46,6 +47,9 @@ export default function App() {
   // Admin subdomain only — never expose inbox on the marketing site.
   // Preview tokens let operators open /owner/{slug} on admin to see the host UI.
   if (adminHost) {
+    if (path === "/sign") {
+      return <SignPage />;
+    }
     const preview = new URLSearchParams(window.location.search).get("preview");
     if ((path === "/owner" || path.startsWith("/owner/")) && preview) {
       return <OwnerApp />;

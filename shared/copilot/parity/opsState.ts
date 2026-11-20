@@ -174,6 +174,7 @@ export function opsCreateContract(input: {
   template_id?: string | null;
   sign_fields?: SignField[];
   sourceBuffer?: Buffer;
+  sign_token?: string | null;
 }): PmContract {
   const id = randomUUID();
   const contract: PmContract = {
@@ -192,6 +193,8 @@ export function opsCreateContract(input: {
     note: input.note ?? "",
     template_id: input.template_id || null,
     sign_fields: (input.sign_fields ?? []).map((field) => ({ ...field })),
+    sign_token: input.sign_token || null,
+    sign_token_used_at: null,
   };
   contracts.push({
     contract,

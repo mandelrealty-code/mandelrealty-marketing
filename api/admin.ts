@@ -8,6 +8,7 @@ import handleOutlook from "../shared/adminApi/outlook.js";
 import handlePm from "../shared/adminApi/pm.js";
 import handleSession from "../shared/adminApi/session.js";
 import handleSettings from "../shared/adminApi/settings.js";
+import handleSign from "../shared/adminApi/sign.js";
 import { rejectIfNotAdminHost } from "../shared/adminHost.js";
 
 /** Hobby allows 5 minutes. Opening the live browser needs more than a minute. */
@@ -34,6 +35,7 @@ function sectionOf(req: VercelRequest): string {
   if (url.includes("/pm") || url.includes("section=pm")) return "pm";
   if (url.includes("copilot")) return "copilot";
   if (url.includes("leads")) return "leads";
+  if (url.includes("/sign") || url.includes("section=sign")) return "sign";
 
   // Clients app hits /api/admin/pm?resource=… — after rewrite section=pm is preferred
   const resource = req.query.resource;
@@ -65,6 +67,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handleOutlook(req, res);
     case "ops_hub":
       return handleOpsHubWebhook(req, res);
+    case "sign":
+      return handleSign(req, res);
     default:
       return res.status(404).json({ error: "Unknown admin section." });
   }

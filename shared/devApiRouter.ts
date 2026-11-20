@@ -158,6 +158,12 @@ export async function handleDevApi(
     if (v && !process.env[k]) process.env[k] = v;
   }
 
+  // Magic signing link (public — token is auth)
+  if (url === "/api/sign" || (url === "/api/admin" && new URL(req.url ?? "/", "http://localhost").searchParams.get("section") === "sign")) {
+    const { default: handleSign } = await import("./adminApi/sign.js");
+    return runVercelAdminHandler(req, res, "sign", handleSign);
+  }
+
   // Clients PM API (also /api/admin?section=pm via rewrite shape)
   {
     const full = req.url ?? "";

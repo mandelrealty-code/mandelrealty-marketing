@@ -20,6 +20,25 @@ export function ownerPortalUrl(slug: string, path = ""): string {
   return `${publicSiteOrigin()}/owner/${clean}${suffix}`;
 }
 
+/** Admin app origin for CRM magic signing links (never a Vercel preview URL). */
+export function adminPublicOrigin(): string {
+  const fromEnv = (
+    process.env.ADMIN_PUBLIC_URL?.trim() ||
+    process.env.PUBLIC_ADMIN_URL?.trim() ||
+    ""
+  ).replace(/\/+$/, "");
+  if (fromEnv && !/vercel\.app$/i.test(fromEnv)) return fromEnv;
+  return "https://admin.mandelrealtygroup.com";
+}
+
+export function magicSignUrl(token: string): string {
+  return `${adminPublicOrigin()}/sign?token=${encodeURIComponent(token.trim())}`;
+}
+
+export function crmLeadUrl(leadId: string): string {
+  return `${adminPublicOrigin()}/crm/lead/${encodeURIComponent(leadId.trim())}`;
+}
+
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -412,5 +431,115 @@ export async function sendSignedAgreementEmail(input: {
         content: input.pdfBase64,
       },
     ],
+  });
+}
+
+const RYAN_PHONE = "647-381-7325";
+
+/** CRM magic-link email — one click to sign, no portal or password. */
+export async function sendCrmMagicSignEmail(input: {
+  to: string;
+  firstName: string;
+  planName: string;
+  propertyLabel?: string;
+  signUrl: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  if (parityEnabled()) {
+    captureCommit("contract", input.to);
+    return { ok: true };
+  }
+  const apiKey = process.env.RESEND_API_KEY?.trim() || "";
+  if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
+  const from = inviteFrom();
+  const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
+  const first = input.firstName.trim() || "there";
+  const plan = input.planName.trim() || "management";
+  const prop = input.propertyLabel?.trim() || "your property";
+  const html = emailShell(`
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.25;color:#f5f5f5;padding-bottom:14px;">
+      Hi ${esc(first)},
+    </div>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
+      Your <strong style="color:#f5f5f5;font-weight:600">${esc(plan)}</strong> management agreement for
+      <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong> is ready to review and sign.
+    </p>
+    ${goldButton(input.signUrl, "Sign my agreement →")}
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0 0 12px;">
+      This link is private — please don’t share it. It expires in 7 days.
+    </p>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
+      Questions? Reply to this email or call Ryan at ${esc(RYAN_PHONE)}.
+    </p>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:18px 0 0;">
+      — Mandel Realty Group
+    </p>
+  `);
+  const text = [
+    `Hi ${first},`,
+    "",
+    `Your ${plan} management agreement for ${prop} is ready to review and sign.`,
+    "",
+    `Sign my agreement → ${input.signUrl}`,
+    "",
+    "This link is private — please don't share it. It expires in 7 days.",
+    "",
+    `Questions? Reply to this email or call Ryan at ${RYAN_PHONE}.`,
+    "",
+    "— Mandel Realty Group",
+  ].join("\n");
+  return sendResendEmail({
+    apiKey,
+    from,
+    to: [input.to],
+    subject: "Your MRG management agreement is ready",
+    html,
+    text,
+    replyTo,
+    headers: deliverabilityHeaders(),
+  });
+}
+
+/** Notify the MRG inbox when a CRM magic-link contract is signed. */
+export async function sendCrmSignedNotifyEmail(input: {
+  clientName: string;
+  planName: string;
+  propertyLabel?: string;
+  signedOnLabel: string;
+  crmLeadUrl: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  if (parityEnabled()) {
+    captureCommit("contract_signed_notify", input.clientName);
+    return { ok: true };
+  }
+  const apiKey = process.env.RESEND_API_KEY?.trim() || "";
+  if (!apiKey) return { ok: false, message: "RESEND_API_KEY not configured." };
+  const from = inviteFrom();
+  const to = process.env.MRG_TEAM_INBOX?.trim() || "mandelrealtyteam@gmail.com";
+  const name = input.clientName.trim() || "A client";
+  const plan = input.planName.trim() || "management";
+  const prop = input.propertyLabel?.trim() || "their property";
+  const html = emailShell(`
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;line-height:1.3;color:#f5f5f5;padding-bottom:12px;">
+      ${esc(name)} signed
+    </div>
+    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
+      ${esc(name)} signed their <strong style="color:#f5f5f5;font-weight:600">${esc(plan)}</strong> agreement for
+      <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong> on ${esc(input.signedOnLabel)}.
+    </p>
+    ${goldButton(input.crmLeadUrl, "View in CRM →")}
+  `);
+  const text = [
+    `${name} signed their ${plan} agreement for ${prop} on ${input.signedOnLabel}.`,
+    "",
+    `View in CRM → ${input.crmLeadUrl}`,
+  ].join("\n");
+  return sendResendEmail({
+    apiKey,
+    from,
+    to: [to],
+    subject: `✓ ${name} signed the ${plan} agreement`,
+    html,
+    text,
+    headers: deliverabilityHeaders(),
   });
 }

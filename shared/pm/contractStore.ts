@@ -36,6 +36,9 @@ export type PmContract = {
   signed_storage_path?: string;
   signed_at?: string | null;
   sign_fields?: import("./signFields.js").SignField[];
+  /** One-time CRM magic-link token (null for OPS portal contracts). */
+  sign_token?: string | null;
+  sign_token_used_at?: string | null;
 };
 
 export async function listContracts(input: {
@@ -68,6 +71,8 @@ export async function createContract(input: {
   sign_fields?: SignField[];
   /** Unstamped PDF so later edits can re-place fields without double-stamping MRG signatures. */
   sourceBuffer?: Buffer;
+  /** CRM magic-link token only — leave unset for OPS portal invites. */
+  sign_token?: string | null;
 }): Promise<PmContract> {
   const parityOn = opsContracts();
   if (parityOn) return opsCreateContract(input);
@@ -78,23 +83,26 @@ export async function createContract(input: {
   if (!input.buffer.length) throw new Error("Empty file.");
   if (input.buffer.length > 10_000_000) throw new Error("File too large (max 10MB).");
 
+  const insert: Record<string, unknown> = {
+    client_id: input.client_id || null,
+    property_id: input.property_id || null,
+    title,
+    filename: input.filename.trim() || "contract.pdf",
+    mime: input.mime || "application/pdf",
+    signed_on: input.signed_on || null,
+    effective_from: input.effective_from || null,
+    effective_to: input.effective_to || null,
+    status: input.status || "signed",
+    note: (input.note ?? "").trim(),
+    template_id: input.template_id || null,
+    sign_fields: normalizeSignFields(input.sign_fields),
+    storage_path: "",
+  };
+  if (input.sign_token) insert.sign_token = input.sign_token;
+
   const { data: row, error } = await db()
     .from("pm_contracts")
-    .insert({
-      client_id: input.client_id || null,
-      property_id: input.property_id || null,
-      title,
-      filename: input.filename.trim() || "contract.pdf",
-      mime: input.mime || "application/pdf",
-      signed_on: input.signed_on || null,
-      effective_from: input.effective_from || null,
-      effective_to: input.effective_to || null,
-      status: input.status || "signed",
-      note: (input.note ?? "").trim(),
-      template_id: input.template_id || null,
-      sign_fields: normalizeSignFields(input.sign_fields),
-      storage_path: "",
-    })
+    .insert(insert)
     .select("*")
     .single();
   if (error) throw error;
@@ -329,6 +337,7 @@ export async function assignAwaitingContract(input: {
   template_id?: string | null;
   sign_fields?: SignField[];
   sourceBuffer?: Buffer;
+  sign_token?: string | null;
 }): Promise<PmContract> {
   await cancelAwaitingContracts(input.client_id, "Superseded by newer invite");
 
@@ -343,7 +352,24 @@ export async function assignAwaitingContract(input: {
     template_id: input.template_id || null,
     sign_fields: input.sign_fields,
     sourceBuffer: input.sourceBuffer,
+    sign_token: input.sign_token || null,
   });
+}
+
+export async function getContractBySignToken(token: string): Promise<PmContract | null> {
+  const clean = token.trim();
+  if (!clean) return null;
+  if (opsContracts()) {
+    const all = opsContracts() || [];
+    return all.find((c) => c.sign_token === clean) || null;
+  }
+  const { data, error } = await db()
+    .from("pm_contracts")
+    .select("*")
+    .eq("sign_token", clean)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as PmContract | null) ?? null;
 }
 
 export async function getAwaitingContractForClient(
@@ -379,6 +405,8 @@ export async function markContractSigned(input: {
   signature_name: string;
   signature_image_base64?: string | null;
   fields?: SignField[];
+  /** When true, consume the CRM magic-link token (OPS portal leaves this unset). */
+  consumeSignToken?: boolean;
 }): Promise<PmContract> {
   const name = input.signature_name.trim();
   if (!name) throw new Error("Typed legal name is required.");
@@ -436,17 +464,22 @@ export async function markContractSigned(input: {
   if (upErr) throw new Error(`Signed PDF save failed: ${upErr.message}`);
 
   const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    status: "signed",
+    signed_on: today,
+    signed_at: now,
+    signature_name: name,
+    signature_image_path: signatureImagePath,
+    signed_storage_path: signedPath,
+    note: input.consumeSignToken
+      ? `Signed via magic link by ${name}`
+      : `Signed in owner portal by ${name}`,
+  };
+  if (input.consumeSignToken) patch.sign_token_used_at = now;
+
   const { data: updated, error } = await db()
     .from("pm_contracts")
-    .update({
-      status: "signed",
-      signed_on: today,
-      signed_at: now,
-      signature_name: name,
-      signature_image_path: signatureImagePath,
-      signed_storage_path: signedPath,
-      note: `Signed in owner portal by ${name}`,
-    })
+    .update(patch)
     .eq("id", contract.id)
     .select("*")
     .single();

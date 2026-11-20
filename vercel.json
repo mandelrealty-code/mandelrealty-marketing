@@ -123,6 +123,10 @@
       "destination": "/api/admin?section=ops_hub"
     },
     {
+      "source": "/api/sign",
+      "destination": "/api/admin?section=sign"
+    },
+    {
       "source": "/robots.txt",
       "has": [{ "type": "host", "value": "admin.mandelrealtygroup.com" }],
       "destination": "/admin-robots.txt"
