@@ -5,7 +5,7 @@
  */
 
 import { randomBytes } from "crypto";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFPage } from "pdf-lib";
 import { getLeadById, mapLead, updateLeadCrm, type LeadRow } from "../leadStore.js";
 import {
   adminPublicOrigin,
@@ -45,23 +45,30 @@ export type ContractSendDetails = {
   plan?: string;
   term?: string;
   launch?: string;
+  launchPayment?: string;
   tier?: string;
   benchmarks?: Record<string, number>;
+  propertySize?: string;
 };
 
-export type ContractDetails = {
+export type ContractStampKind = "standard" | "growth" | "essentials";
+
+export type ContractStampDetails = {
   clientName: string;
   clientPhone: string;
   clientEmail: string;
   propertyAddress: string;
   cityProvince: string;
   postalCode: string;
+  clientInitials: string;
   plan?: string;
-  term?: string;
-  launch?: string;
   tier?: string;
-  type?: string;
+  term?: string;
+  launchPayment?: string;
   benchmarks?: Record<string, number>;
+  propertySize?: string;
+  /** e.g. "November 20, 2026" */
+  signedDate: string;
 };
 
 function splitName(full: string): { first: string; last: string; name: string } {
@@ -163,11 +170,13 @@ async function resolveTemplateForType(
   let hit: ContractTemplate | undefined;
   if (kind === "growth") {
     hit = active.find((t) => /growth/i.test(t.label || t.filename || ""));
+  } else if (kind === "essentials") {
+    hit = active.find((t) => /essential/i.test(t.label || t.filename || ""));
   } else if (kind === "standard") {
     hit = active.find(
       (t) =>
         /standard|management/i.test(t.label || t.filename || "") &&
-        !/growth/i.test(t.label || t.filename || ""),
+        !/growth|essential/i.test(t.label || t.filename || ""),
     );
   }
   hit = hit || active[0];
@@ -180,91 +189,184 @@ async function resolveTemplateForType(
   return hit;
 }
 
-/** Pre-fill contract PDF fields before sending (positions are approximate — see TODOs). */
+function resolveContractStampKind(
+  type: string | undefined,
+  template: ContractTemplate,
+): ContractStampKind {
+  const blob = `${type || ""} ${template.label || ""} ${template.filename || ""}`.toLowerCase();
+  if (/growth/.test(blob) || type === "growth") return "growth";
+  if (/essential/.test(blob) || type === "essentials") return "essentials";
+  return "standard";
+}
+
+function clientInitialsFromName(full: string): string {
+  const parts = full.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!parts.length) return "";
+  const a = (parts[0][0] || "").toUpperCase();
+  const b = parts.length > 1 ? (parts[parts.length - 1][0] || "").toUpperCase() : "";
+  return b ? `${a}.${b}.` : `${a}.`;
+}
+
+function formatContractSignedDate(d = new Date()): string {
+  return d.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "America/Toronto",
+  });
+}
+
+function parsePropertyParts(
+  propertyLabel: string,
+  cityHint: string,
+): { street: string; cityProvince: string; postalCode: string } {
+  const postalMatch = propertyLabel.match(/[A-Z]\d[A-Z]\s?\d[A-Z]\d/i);
+  const postalCode = postalMatch ? postalMatch[0].toUpperCase().replace(/\s+/, " ") : "";
+  const withoutPostal = postalCode
+    ? propertyLabel.replace(postalMatch![0], "").replace(/,\s*,/g, ",").replace(/,\s*$/, "").trim()
+    : propertyLabel;
+  const parts = withoutPostal.split(",").map((p) => p.trim()).filter(Boolean);
+  const street = parts[0] || propertyLabel || "";
+  const cityProvince =
+    cityHint.trim() ||
+    (parts.length > 1 ? parts.slice(1).join(", ") : parts[1] || "");
+  return { street, cityProvince, postalCode };
+}
+
+/**
+ * Pre-fill contract PDF fields. Coordinates are PDF points from the BOTTOM LEFT
+ * (standard PDF space). Page size is 612×792 for all MRG contracts.
+ */
 export async function stampContractDetails(
   buffer: Buffer,
-  details: ContractDetails,
+  contractType: ContractStampKind,
+  details: ContractStampDetails,
 ): Promise<Buffer> {
   const pdfDoc = await PDFDocument.load(buffer);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pages = pdfDoc.getPages();
-  const page = pages[0];
-  if (!page) return buffer;
-  const { height } = page.getSize();
 
-  const drawField = (
-    target: (typeof pages)[0],
-    x: number,
-    y: number,
-    text: string,
-    size = 10,
-  ) => {
+  const drawText = (page: PDFPage, x: number, pdfY: number, text: string, size = 10) => {
     const clean = String(text || "").trim();
     if (!clean) return;
-    target.drawText(clean.slice(0, 120), {
+    page.drawText(clean.slice(0, 140), {
       x,
-      y: height - y,
+      y: pdfY,
       size,
-      font: helvetica,
+      font,
       color: rgb(0, 0, 0),
     });
   };
 
-  // TODO: verify x,y by inspecting PDF (page 1 party / property block)
-  drawField(page, 72, 185, details.clientName);
-  drawField(page, 72, 200, details.clientPhone);
-  drawField(page, 72, 215, details.clientEmail);
-  drawField(page, 320, 185, details.propertyAddress);
-  drawField(page, 320, 200, details.cityProvince);
-  drawField(page, 320, 215, details.postalCode);
-  // TODO: verify date on "This Agreement is made on ___"
-  drawField(page, 290, 160, new Date().toLocaleDateString("en-CA"));
+  const page1 = pages[0];
+  if (!page1) return buffer;
 
-  const kind = (details.type || "").toLowerCase();
-  if (kind === "standard" || details.plan) {
-    // TODO: verify checkbox positions for plan / term / launch
+  if (contractType === "standard") {
+    // MRG_Management_Agreement_FINAL_1.pdf — 5 pages
+    drawText(page1, 240, 648, details.signedDate, 10);
+    drawText(page1, 101, 585, details.clientName, 10);
+    drawText(page1, 101, 569, details.clientPhone, 10);
+    drawText(page1, 101, 552, details.clientEmail, 10);
+    drawText(page1, 364, 585, details.propertyAddress, 10);
+    drawText(page1, 344, 569, details.cityProvince, 10);
+    drawText(page1, 353, 552, details.postalCode, 10);
+
     if (details.plan === "full_service" || details.plan === "full") {
-      drawField(page, 72, 295, "✓", 12);
-    } else if (details.plan) {
-      drawField(page, 72, 280, "✓", 12);
+      drawText(page1, 101, 129, "✓", 11);
+    } else if (details.plan === "standard" || details.plan) {
+      drawText(page1, 101, 208, "✓", 11);
     }
-    if (details.term === "24") drawField(page, 72, 335, "✓", 12);
-    else if (details.term === "12") drawField(page, 72, 320, "✓", 12);
-    // TODO: map A/B/C/D to exact y positions
-    const launchY: Record<string, number> = { A: 360, B: 375, C: 390, D: 405 };
-    const ly = launchY[String(details.launch || "").toUpperCase()];
-    if (ly) drawField(page, 72, ly, "✓", 12);
-  }
 
-  if (kind === "growth" || details.tier) {
-    // TODO: verify growth tier checkbox positions
-    if (details.tier === "confidence_partner" || details.tier === "cp") {
-      drawField(page, 72, 415, "✓", 12);
-    } else if (details.tier) {
-      drawField(page, 72, 400, "✓", 12);
+    if (details.term === "24") {
+      drawText(page1, 240, 440, "24-month term", 10);
+      drawText(page1, 59, 408, "☑", 11);
+    } else if (details.term === "12" || details.term) {
+      drawText(page1, 240, 440, "12-month term", 10);
     }
-    const bm = details.benchmarks || {};
-    if (pages[1] && Object.keys(bm).length) {
-      const p2 = pages[1];
-      const { height: h2 } = p2.getSize();
-      const months = [
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
+
+    const page5 = pages[4];
+    if (page5) {
+      const paymentY: Record<string, number> = { A: 755, B: 736, C: 716, D: 666 };
+      const pay = String(details.launchPayment || "").toUpperCase();
+      if (paymentY[pay] != null) drawText(page5, 59, paymentY[pay], "☑", 11);
+      drawText(page5, 86, 552, details.clientInitials, 10);
+    }
+  } else if (contractType === "growth") {
+    // MRG_Growth_Partnership_Agreement_FINAL — 4 pages
+    drawText(page1, 188, 626, details.signedDate, 10);
+    drawText(page1, 100, 562, details.clientName, 10);
+    drawText(page1, 362, 562, details.propertyAddress, 10);
+    drawText(page1, 100, 545, details.clientPhone, 10);
+    drawText(page1, 390, 545, details.cityProvince, 10);
+    drawText(page1, 100, 529, details.clientEmail, 10);
+    drawText(page1, 390, 529, details.postalCode, 10);
+
+    if (details.tier === "confidence_partner" || details.tier === "cp") {
+      drawText(page1, 65, 342, "☑", 11);
+    } else if (details.tier === "aligned_growth" || details.tier === "ag" || details.tier) {
+      drawText(page1, 65, 364, "☑", 11);
+    }
+
+    const page2 = pages[1];
+    if (page2 && details.benchmarks) {
+      const months: string[][] = [
+        ["jan", "feb", "mar", "apr"],
+        ["may", "jun", "jul", "aug"],
+        ["sep", "oct", "nov", "dec"],
       ];
-      months.forEach((m, i) => {
-        // TODO: calculate x,y from table layout on page 2
-        const col = i % 3;
-        const row = Math.floor(i / 3);
-        const val = Number(bm[m] || 0);
-        if (!val) return;
-        p2.drawText(`$${val.toLocaleString("en-CA")}`, {
-          x: 150 + col * 150,
-          y: h2 - (120 + row * 20),
-          size: 9,
-          font: helvetica,
-          color: rgb(0, 0, 0),
+      const rowY = [683, 661, 639, 616];
+      const cols = [
+        { label: 64, value: 130 },
+        { label: 229, value: 295 },
+        { label: 388, value: 460 },
+      ];
+      months.forEach((colMonths, colIdx) => {
+        colMonths.forEach((month, rowIdx) => {
+          const y = rowY[rowIdx];
+          const monthLabel = month.charAt(0).toUpperCase() + month.slice(1);
+          drawText(page2, cols[colIdx].label, y, monthLabel, 9);
+          const val = Number(details.benchmarks?.[month] || 0);
+          drawText(page2, cols[colIdx].value, y, `$${val.toLocaleString("en-CA")}`, 9);
         });
       });
+    }
+
+    const page4 = pages[3];
+    if (page4) {
+      if (details.propertySize) {
+        const sizeY: Record<string, number> = {
+          "1br": 547,
+          studio: 547,
+          "2br": 525,
+          "3br": 502,
+          "4br": 480,
+          "5br": 458,
+        };
+        const key = String(details.propertySize).toLowerCase();
+        drawText(page4, 60, sizeY[key] || 547, "☑", 11);
+      }
+      drawText(page4, 58, 207, details.clientInitials, 10);
+    }
+  } else if (contractType === "essentials") {
+    // MRG_Managed_Essentials_Agreement_FINAL — 2 pages
+    drawText(page1, 240, 648, details.signedDate, 10);
+    drawText(page1, 101, 585, details.clientName, 10);
+    drawText(page1, 101, 569, details.clientPhone, 10);
+    drawText(page1, 101, 552, details.clientEmail, 10);
+    drawText(page1, 364, 585, details.propertyAddress, 10);
+    drawText(page1, 344, 569, details.cityProvince, 10);
+    drawText(page1, 353, 552, details.postalCode, 10);
+
+    if (details.plan === "message_optimize" || details.plan === "optimize") {
+      drawText(page1, 101, 298, "☑", 11);
+    } else if (details.plan === "message_book" || details.plan) {
+      drawText(page1, 101, 418, "☑", 11);
+    }
+    drawText(page1, 101, 88, details.signedDate, 10);
+
+    const page2 = pages[1];
+    if (page2 && details.term === "12") {
+      drawText(page2, 59, 755, "☑", 11);
     }
   }
 
@@ -304,7 +406,9 @@ export async function sendCrmLeadContract(input: {
   const propertyLabel = String(lead.property_address || lead.address || "").trim();
   const planName = String(lead.plan || "").trim() || template.label || "management";
   const city = String(lead.property_city || "").trim();
-  const addrParts = propertyLabel.split(",").map((p) => p.trim()).filter(Boolean);
+  const addr = parsePropertyParts(propertyLabel, city);
+  const stampKind = resolveContractStampKind(details.type, template);
+  const launchPayment = String(details.launchPayment || details.launch || "").trim();
 
   let client: PmClient | null = null;
   if (lead.client_id) {
@@ -330,21 +434,21 @@ export async function sendCrmLeadContract(input: {
   const pdf = await downloadTemplateBuffer(template.id);
   let buffer = pdf.buffer;
   if (!blank) {
-    buffer = await stampContractDetails(buffer, {
+    buffer = await stampContractDetails(buffer, stampKind, {
       clientName: displayName,
       clientPhone: String(lead.phone || "").trim(),
       clientEmail: email,
-      propertyAddress: addrParts[0] || propertyLabel || "",
-      cityProvince: city || addrParts.slice(1, -1).join(", ") || addrParts[1] || "",
-      postalCode: /[A-Z]\d[A-Z]\s?\d[A-Z]\d/i.test(propertyLabel)
-        ? (propertyLabel.match(/[A-Z]\d[A-Z]\s?\d[A-Z]\d/i) || [""])[0]
-        : addrParts[addrParts.length - 1] || "",
+      propertyAddress: addr.street,
+      cityProvince: addr.cityProvince,
+      postalCode: addr.postalCode,
+      clientInitials: clientInitialsFromName(displayName),
       plan: details.plan,
-      term: details.term,
-      launch: details.launch,
       tier: details.tier,
-      type: details.type,
+      term: details.term,
+      launchPayment: launchPayment || undefined,
       benchmarks: details.benchmarks,
+      propertySize: details.propertySize,
+      signedDate: formatContractSignedDate(),
     });
   }
 
