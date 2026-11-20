@@ -114,6 +114,8 @@ export const CRM_EXTRA_CSS = `
 .ccardk .kn{font-size:16px;font-weight:650;margin:3px 0 2px}
 .ccardk .km{font-size:var(--t-xs);color:var(--muted);font-weight:500}
 .kaw{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:var(--t-xs);font-weight:600;color:var(--amberink)}
+.kaw.review{color:#9a9590;font-weight:600}
+.ccardk.review{border-left-color:#cfcfc8}
 .klinks{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:var(--t-sm)}
 .klinks .lnk{font-size:var(--t-sm)}
 .klinks .sp{flex:1}
@@ -128,6 +130,8 @@ export const CRM_EXTRA_CSS = `
 .cf .tc .ico{width:40px;height:40px;border-radius:10px;background:var(--panel);display:grid;place-items:center;color:var(--ink);flex:none}
 .cf .tc .t{flex:1;min-width:0}.cf .tc b{display:block;font-size:15px;color:var(--ink);font-weight:650}
 .cf .tc .t span{font-size:13px;color:var(--muted)}
+.cf .tc .ar{font-size:13px;font-weight:600;color:var(--tealink);white-space:nowrap;flex:none}
+.cf .tcard{margin-bottom:4px}
 .cf .blanklnk{display:block;width:100%;margin:0 0 10px;min-height:36px;border:0;background:none;font-size:13px;color:var(--muted);cursor:pointer;text-align:center}
 .cf .blanklnk:hover{color:var(--ink);text-decoration:underline}
 .cf .ro{background:var(--panel);border-radius:10px;padding:10px 12px;margin-bottom:14px}
@@ -309,6 +313,11 @@ export const CRM_EXTRA_CSS = `
 .topbar-btns{display:flex;gap:8px;margin-top:10px}
 .topbar-btns .btn{flex:1}
 .topbar-hint{font-size:12px;color:#9a9590;margin-top:6px}
+.contactblk .crowf{margin:0 0 8px}
+.contactblk .crowf:last-of-type{margin-bottom:0}
+.contactblk .clab{font-size:11px;font-weight:600;color:#9a9590;margin-bottom:2px;letter-spacing:.2px}
+.contactblk .cval{flex:1;min-width:0;font-size:13px;color:var(--ink);overflow-wrap:anywhere}
+.contactblk .phedit{margin-top:2px}
 .bkt{display:flex;justify-content:flex-end;margin:-2px 0 6px}
 .bkt .lnkm{display:inline-flex;align-items:center;gap:4px}
 .secnote{font-size:11px;color:var(--muted);font-weight:500;margin-bottom:4px}
@@ -565,6 +574,7 @@ const S = {
   sms: '',
   draftEdit: null,
   phoneEdit: null,
+  contactEdit: null,
   busy: {},
   fupDone: {},
   preCall: {},
@@ -585,6 +595,8 @@ const S = {
   prof: { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false },
   contractStep: null,
   selectedTemplate: null,
+  selectedTemplateId: '',
+  contractTemplatesLoading: false,
   contractAskCancel: false,
   contractBusy: false,
   contractType: '',
@@ -789,7 +801,9 @@ function subLine(l) {
     if (m.direction === 'outbound') return clipWords((m.meta && m.meta.ai_generated ? 'AI: ' : 'You: ') + body, 78);
     return clipWords(body, 78);
   }
-  return clipWords(l.address || STATUS_JOURNEY[l.status] || l.email || 'No messages yet', 78);
+  const addr = String(l.address || '').trim();
+  const addrOk = addr && !/^not\s*provided$/i.test(addr) ? addr : '';
+  return clipWords(addrOk || STATUS_JOURNEY[l.status] || l.email || 'No messages yet', 78);
 }
 const reasonsHTML = (l) => { const r = l.needs_you.map(reasonChip); if (isBookedThisWeek(l)) r.push(bookedPill()); return r.join(''); };
 const lastIso = (l) => l.last_activity_at || (l.last_sms && l.last_sms.created_at) || l.created_at;
@@ -1160,7 +1174,27 @@ function resetContractForm() {
   S.contractTier = '';
   S.contractBenchmarks = {};
   S.selectedTemplate = null;
+  S.selectedTemplateId = '';
+  S.contractTemplatesLoading = false;
   S.contractAskCancel = false;
+}
+function deriveContractTypeFromLabel(label) {
+  const s = String(label || '');
+  // Essentials before Management: "Managed" must not match via "Management"
+  if (/essential/i.test(s) || /\bmanaged\b/i.test(s)) return 'essentials';
+  if (/growth|partnership/i.test(s)) return 'growth';
+  if (/standard|management/i.test(s)) return 'standard';
+  return 'standard';
+}
+function contractTypeDescription(type, label) {
+  if (type === 'growth') return 'Performance-based · 12 months';
+  if (type === 'essentials') return 'Flat monthly fee · Cancel anytime';
+  if (type === 'standard') return '20% or 25% · 12 or 24 months';
+  return String(label || 'Contract');
+}
+function contractTemplatesList() {
+  const hd = callHostData();
+  return Array.isArray(hd.templates) ? hd.templates : [];
 }
 const BM_MONTHS = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const BM_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1190,11 +1224,14 @@ function contractFormReady() {
   if (S.contractType === 'growth') {
     return Boolean(S.contractTier && S.contractLaunch && BM_MONTHS.every((m) => Number(S.contractBenchmarks[m]) > 0));
   }
+  if (S.contractType === 'essentials') return Boolean(S.contractPlan && S.contractTerm);
   return false;
 }
 function planLabel(v) {
   if (v === 'full_service' || v === 'full') return 'Full Service · 25%';
   if (v === 'standard') return 'Standard · 20%';
+  if (v === 'message_book') return 'Message & Book';
+  if (v === 'message_optimize') return 'Message & Optimize';
   return v || '—';
 }
 function tierLabel(v) {
@@ -1203,7 +1240,29 @@ function tierLabel(v) {
   return v || '—';
 }
 function typeLabel(v) {
-  return v === 'growth' ? 'Growth Partnership' : 'Standard Management';
+  if (v === 'growth') return 'Growth Partnership';
+  if (v === 'essentials') return 'Managed Essentials';
+  return 'Standard Management';
+}
+function contractTypeCardsHtml(dis) {
+  const templates = contractTemplatesList();
+  if (S.contractTemplatesLoading || (!templates.length && S.contractBusy)) {
+    return `<p class="fm" style="margin:12px 0">Loading templates…</p>`;
+  }
+  if (!templates.length) {
+    return `<p class="fm" style="margin:12px 0">No contract templates found. Upload templates in Settings → Contract Templates.</p>`;
+  }
+  return templates.map((t) => {
+    const id = String(t.id || '');
+    const label = String(t.label || t.filename || 'Contract').trim() || 'Contract';
+    const type = deriveContractTypeFromLabel(label);
+    const desc = contractTypeDescription(type, label);
+    const ico = type === 'growth' ? 'chart' : 'file';
+    return `<div class="tcard">
+      <button type="button" class="tc" data-act="selectContractType" data-v="${esc(type)}" data-id="${esc(id)}" ${dis}><span class="ico">${ic(ico, 'sm')}</span><span class="t"><b>${esc(label)}</b><span>${esc(desc)}</span></span><span class="ar">Select →</span></button>
+      <button type="button" class="blanklnk" data-act="selectBlankContract" data-v="${esc(type)}" data-id="${esc(id)}" ${dis}>Send blank ↗</button>
+    </div>`;
+  }).join('');
 }
 function contractFormBlock(l) {
   const busy = S.contractBusy || isBusy('contract');
@@ -1211,10 +1270,7 @@ function contractFormBlock(l) {
   const step = S.contractStep;
   if (step === 'type') {
     return `<div class="cf"><p class="fh">Choose a contract</p>
-      <button type="button" class="tc" data-act="selectContractType" data-v="standard" ${dis}><span class="ico">${ic('file', 'sm')}</span><span class="t"><b>Standard Management</b><span>20% or 25% · 12 or 24 months</span></span><span class="ar">${ic('arrow', 'sm')}</span></button>
-      <button type="button" class="blanklnk" data-act="selectBlankContract" data-v="standard" ${dis}>Send blank for review ↗</button>
-      <button type="button" class="tc" data-act="selectContractType" data-v="growth" ${dis}><span class="ico">${ic('chart', 'sm')}</span><span class="t"><b>Growth Partnership</b><span>Performance-based · 12 months</span></span><span class="ar">${ic('arrow', 'sm')}</span></button>
-      <button type="button" class="blanklnk" data-act="selectBlankContract" data-v="growth" ${dis}>Send blank for review ↗</button>
+      ${contractTypeCardsHtml(dis)}
       <button type="button" class="btn ghost" data-act="cancelContractPick" ${dis}>Cancel</button></div>`;
   }
   if (step === 'standard') {
@@ -1257,10 +1313,27 @@ function contractFormBlock(l) {
       ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
       <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
   }
+  if (step === 'essentials') {
+    const ready = contractFormReady();
+    return `<div class="cf"><p class="fh">Managed Essentials details</p><p class="fm">Pre-filled from the lead profile where available</p>${contractClientBlock(l)}
+      <div class="fg"><span class="fl">Plan<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractPlan === 'message_book' ? 'on' : ''}" data-act="toggleContractPlan" data-v="message_book" ${dis}>Message & Book</button>
+        <button type="button" class="pill ${S.contractPlan === 'message_optimize' ? 'on' : ''}" data-act="toggleContractPlan" data-v="message_optimize" ${dis}>Message & Optimize</button>
+      </div></div>
+      <div class="fg"><span class="fl">Term<em>*</em></span><div class="pills" role="radiogroup">
+        <button type="button" class="pill ${S.contractTerm === 'monthly' ? 'on' : ''}" data-act="toggleContractTerm" data-v="monthly" ${dis}>Monthly<small>cancel anytime</small></button>
+        <button type="button" class="pill ${S.contractTerm === '12' ? 'on' : ''}" data-act="toggleContractTerm" data-v="12" ${dis}>12-month commitment</button>
+      </div></div>
+      <button type="button" class="btn primary wide" data-act="submitContractForm" ${ready && !busy ? '' : 'disabled'}>Continue →</button>
+      ${ready ? '' : '<p class="req">Fill in the required fields to continue.</p>'}
+      <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
+  }
   if (step === 'review_blank') {
     const email = String(l.email || '').trim() || '—';
+    const tpl = contractTemplatesList().find((t) => String(t.id) === String(S.selectedTemplateId));
+    const title = tpl && tpl.label ? tpl.label : `${typeLabel(S.contractType)} Agreement`;
     return `<div class="cf"><p class="fh">Send blank contract for review?</p>
-      <dl class="sum"><div><dt>Contract</dt><dd>${esc(typeLabel(S.contractType))} Agreement</dd></div><div><dt>To</dt><dd>${esc(email)}</dd></div></dl>
+      <dl class="sum"><div><dt>Contract</dt><dd>${esc(title)}</dd></div><div><dt>To</dt><dd>${esc(email)}</dd></div></dl>
       <p class="fm">Fields will be blank — walk through it together on the call. Send the filled version after.</p>
       <button type="button" class="btn primary wide" data-act="submitBlankContract" ${dis}>${busy ? 'Sending…' : 'Send blank →'}</button>
       <button type="button" class="btn ghost" data-act="selectContractType" data-v="back" ${dis}>← Back</button></div>`;
@@ -1269,10 +1342,17 @@ function contractFormBlock(l) {
     const email = String(l.email || '').trim() || '—';
     const name = String(l.full_name || l.name || '—').trim();
     const prop = String(l.property_address || l.address || '—').trim();
-    const rows = S.contractType === 'growth'
-      ? [['Contract', 'Growth Partnership Agreement'], ['Tier', tierLabel(S.contractTier)], ['Annual benchmark', fmtMoney(contractBmTotal())]]
-      : [['Contract', 'Standard Management Agreement'], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '24' ? '24 months' : '12 months']];
-    rows.push(['Launch', `Option ${S.contractLaunch || '—'}`], ['Client', name], ['Property', prop], ['Sending to', email]);
+    const tpl = contractTemplatesList().find((t) => String(t.id) === String(S.selectedTemplateId));
+    const contractTitle = tpl && tpl.label ? tpl.label : `${typeLabel(S.contractType)} Agreement`;
+    let rows;
+    if (S.contractType === 'growth') {
+      rows = [['Contract', contractTitle], ['Tier', tierLabel(S.contractTier)], ['Annual benchmark', fmtMoney(contractBmTotal())], ['Launch', `Option ${S.contractLaunch || '—'}`]];
+    } else if (S.contractType === 'essentials') {
+      rows = [['Contract', contractTitle], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '12' ? '12-month commitment' : 'Monthly']];
+    } else {
+      rows = [['Contract', contractTitle], ['Plan', planLabel(S.contractPlan)], ['Term', S.contractTerm === '24' ? '24 months' : '12 months'], ['Launch', `Option ${S.contractLaunch || '—'}`]];
+    }
+    rows.push(['Client', name], ['Property', prop], ['Sending to', email]);
     return `<div class="cf"><p class="fh">Review and send</p>
       <dl class="sum">${rows.map(([a, b]) => `<div><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('')}</dl>
       <p class="fm">These details will be stamped into the contract PDF before sending.</p>
@@ -1310,13 +1390,17 @@ function saleContractBody(l) {
   }
 
   if (cs === 'sent') {
-    const blankNote = l.contract_is_blank
+    const isBlank = Boolean(l.contract_is_blank);
+    const blankNote = isBlank
       ? `<div class="blanknote">Blank version — sent for review<br><button type="button" class="lnk" data-act="openContractPick" ${dis}>Send filled version →</button></div>`
       : '';
+    const statusLine = isBlank
+      ? `<div class="kaw review">Review copy</div><div class="km" style="margin-top:4px">Sent for review — not yet awaiting signature</div>`
+      : `<div class="kaw"><i class="cdot amber"></i>Awaiting signature</div>`;
     const cancelUi = S.contractAskCancel
       ? `<div class="askc"><b>Cancel this contract?</b><span>The signing link stops working.</span><div class="cbtns"><button type="button" class="btn sm redtxt" data-act="doCancelContract" ${dis}>Yes, cancel</button><button type="button" class="btn sm" data-act="keepContract" ${dis}>Keep it</button></div></div>`
       : `<div class="klinks"><button type="button" class="lnk" data-act="resendContract" ${dis}>Resend email</button><span class="dotsep">·</span><button type="button" class="lnkm" data-act="askCancelContract" ${dis}>Cancel</button></div>`;
-    return `<div class="ccardk"><div class="kn">📄 ${esc(title)}</div><div class="km">Sent to ${esc(email)} · ${esc(contractDateLabel(sentAt))}</div><div class="kaw"><i class="cdot amber"></i>Awaiting signature</div></div>${blankNote}${cancelUi}`;
+    return `<div class="ccardk${isBlank ? ' review' : ''}"><div class="kn">📄 ${esc(title)}</div><div class="km">Sent to ${esc(email)} · ${esc(contractDateLabel(sentAt))}</div>${statusLine}</div>${blankNote}${cancelUi}`;
   }
 
   const cancelledNote = cs === 'cancelled' ? '<div class="cnote2">Contract cancelled · you can send a new one</div>' : '';
@@ -1325,17 +1409,37 @@ function saleContractBody(l) {
 function saleSectionBody(l, hl) {
   return `<div class="ks ${hl ? 'hl' : ''}"><div class="kbody">${saleContractBody(l)}</div></div>`;
 }
-function leadTopBar(l) {
+function contactFieldRow(label, field, displayHtml, emptyLabel, inputType = 'text') {
+  const edit = S.contactEdit;
+  const editing = edit && edit.field === field;
+  const busy = isBusy('save') ? 'disabled' : '';
+  if (editing) {
+    const typeAttr = inputType === 'tel' ? 'type="tel" inputmode="tel"' : inputType === 'email' ? 'type="email"' : 'type="text"';
+    return `<div class="crowf"><div class="clab">${esc(label)}</div><div class="phedit"><input class="input focus" ${typeAttr} data-k="contactEdit.value" value="${esc(edit.value)}" placeholder="${esc(emptyLabel)}" aria-label="${esc(label)}"><button class="btn sm primary" data-act="saveContactField" ${busy}>Save</button><button class="btn sm ghost" data-act="cancelContactField">Cancel</button></div></div>`;
+  }
+  return `<div class="crowf"><div class="clab">${esc(label)}</div><div class="vrow">${displayHtml}<button type="button" class="iconbtn pen" data-act="editContactField" data-v="${esc(field)}" title="Edit ${esc(label)}" aria-label="Edit ${esc(label)}">${ic('edit', 'xs')}</button></div></div>`;
+}
+function contactBlock(l) {
   const phoneOk = phoneUsable(l.phone);
   const op = ringingPhone();
-  let phone;
-  if (S.phoneEdit != null) {
-    phone = `<div class="phedit"><input class="input focus" type="tel" inputmode="tel" data-k="phoneEdit" value="${esc(S.phoneEdit)}" placeholder="Phone number" aria-label="Phone number"><button class="btn sm primary" data-act="savePhone" ${isBusy('save') ? 'disabled' : ''}>Save</button><button class="btn sm ghost" data-act="cancelPhone">Cancel</button></div>`;
-  } else if (phoneOk) {
-    phone = `<span class="phv"><span class="topbar-phone">${esc(fmtPhone(l.phone))}</span><button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button><button class="iconbtn" data-act="editPhone" title="Edit" aria-label="Edit phone">${ic('edit', 'xs')}</button></span>`;
+  const nameVal = String(l.name || '').trim();
+  const emailVal = String(l.email || '').trim();
+  const addrVal = String(l.address || '').trim();
+  const nameHtml = nameVal
+    ? `<span class="cval">${esc(nameVal)}</span>`
+    : `<span class="meta">No name</span>`;
+  let phoneHtml;
+  if (phoneOk) {
+    phoneHtml = `<span class="phv"><span class="topbar-phone">${esc(fmtPhone(l.phone))}</span><button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button></span>`;
   } else {
-    phone = `<span class="meta">No phone number</span> <button class="btn sm" data-act="editPhone">Add</button>`;
+    phoneHtml = `<span class="meta">No phone number</span>`;
   }
+  const emailHtml = emailVal
+    ? `<span class="cval">${esc(emailVal)}</span>`
+    : `<span class="meta">No email</span>`;
+  const addrHtml = addrVal
+    ? `<span class="cval">${esc(addrVal)}</span>`
+    : `<span class="meta">No address</span>`;
   const canCall = phoneOk && Boolean(op) && !isBusy('call');
   const preDone = Boolean(S.preCall[l.id]) || S.th.messages.some((m) => m.direction === 'outbound' && ((m.meta && m.meta.pre_call === true) || /calling you in a minute from this number/i.test(m.body || '')));
   const callBtns = phoneOk
@@ -1345,14 +1449,19 @@ function leadTopBar(l) {
       </div>
       <div class="topbar-hint">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'Calls are recorded · AI texts lead first'}</div>`
     : '<div class="topbar-hint">No phone number</div>';
-  return `<div class="topbar">
-    <div>${phone}</div>
-    <div class="topbar-email">${l.email ? esc(l.email) : 'No email'}</div>
+  return `<div class="topbar contactblk">
+    ${contactFieldRow('Name', 'name', nameHtml, 'Name')}
+    ${contactFieldRow('Phone', 'phone', phoneHtml, 'Phone number', 'tel')}
+    ${contactFieldRow('Email', 'email', emailHtml, 'Email', 'email')}
+    ${contactFieldRow('Address', 'address', addrHtml, 'Contact address')}
     ${callBtns}
     ${S.callMsg ? `<div class="okbox">${ic('phone', 'sm')}<span>${esc(S.callMsg)}</span></div>` : ''}
     ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Choose whose phone rings first in Settings.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
     ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Caller is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
   </div>`;
+}
+function leadTopBar(l) {
+  return contactBlock(l);
 }
 
 const OWNERSHIP_OPTS = [
@@ -1708,6 +1817,9 @@ function saleSectionStatus(l) {
     return `<span class="ss g"><i class="dot" style="background:var(--green)"></i>✓ Signed${d ? ' ' + esc(d) : ''}</span>`;
   }
   if (cs === 'sent') {
+    if (l.contract_is_blank) {
+      return `<span class="ss" style="color:#9a9590">Sent for review</span>`;
+    }
     return `<span class="ss a"><i class="dot" style="background:var(--amber)"></i>Awaiting signature</span>`;
   }
   return `<span class="ss" style="color:var(--muted)">No contract sent</span>`;
@@ -2347,6 +2459,7 @@ function openLead(id, opts = {}) {
     S.rtab = 'details';
     S.sections = { book: false, profile: false, sale: false, notes: false, ai: false };
     S.phoneEdit = null;
+    S.contactEdit = null;
     S.draftEdit = null;
     S.callMsg = '';
     S.callNotesEdit = false;
@@ -2704,7 +2817,7 @@ async function runSave(field, value) {
 async function sendSms() {
   const l = leadById(S.leadId); if (!l || isBusy('sms')) return;
   const text = S.sms.trim(); if (!text) return;
-  if (!phoneUsable(l.phone)) { toast('Add a valid phone number for this lead first.', 'bad'); S.ptab = 'details'; S.phoneEdit = ''; renderMain(); return; }
+  if (!phoneUsable(l.phone)) { toast('Add a valid phone number for this lead first.', 'bad'); S.ptab = 'details'; S.contactEdit = { field: 'phone', value: '' }; renderMain(); return; }
   setBusy('sms', true);
   try {
     const data = await host.sendSms(l.id, text);
@@ -3286,9 +3399,42 @@ const ACT = {
   draftEdit: () => { if (S.th.draft) { S.draftEdit = { id: S.th.draft.id, text: S.th.draft.body }; renderMain(); const t = root.querySelector('[data-k="draftEdit.text"]'); if (t) t.focus(); } },
   draftCancel: () => { S.draftEdit = null; renderMain(); },
   sendSms: () => sendSms(),
-  editPhone: () => { const l = leadById(S.leadId); S.phoneEdit = l && phoneUsable(l.phone) ? fmtPhone(l.phone) : ''; S.ptab = 'details'; renderMain(); const t = root.querySelector('[data-k="phoneEdit"]'); if (t) t.focus(); },
-  cancelPhone: () => { S.phoneEdit = null; renderMain(); },
-  savePhone: async () => { const v = String(S.phoneEdit || '').trim(); if (!v) { toast('Enter a phone number.', 'bad'); return; } const data = await patchLead({ phone: v }, 'Phone saved'); if (data) { S.phoneEdit = null; renderMain(); } },
+  editPhone: () => { ACT.editContactField({ dataset: { v: 'phone' } }); },
+  cancelPhone: () => { ACT.cancelContactField(); },
+  savePhone: async () => { if (S.contactEdit && S.contactEdit.field === 'phone') return ACT.saveContactField(); },
+  editContactField: (b) => {
+    const field = String(b.dataset.v || '').trim();
+    const l = leadById(S.leadId);
+    if (!l || !['name', 'phone', 'email', 'address'].includes(field)) return;
+    let value = '';
+    if (field === 'name') value = String(l.name || '');
+    else if (field === 'phone') value = phoneUsable(l.phone) ? fmtPhone(l.phone) : '';
+    else if (field === 'email') value = String(l.email || '');
+    else if (field === 'address') value = String(l.address || '');
+    S.contactEdit = { field, value };
+    S.phoneEdit = field === 'phone' ? value : null;
+    S.ptab = 'details';
+    renderMain();
+    const t = root.querySelector('[data-k="contactEdit.value"]');
+    if (t) t.focus();
+  },
+  cancelContactField: () => { S.contactEdit = null; S.phoneEdit = null; renderMain(); },
+  saveContactField: async () => {
+    const edit = S.contactEdit;
+    if (!edit) return;
+    const field = edit.field;
+    const v = String(edit.value || '').trim();
+    if (field === 'name' && !v) { toast('Enter a name.', 'bad'); return; }
+    if (field === 'phone' && !v) { toast('Enter a phone number.', 'bad'); return; }
+    if (field === 'email' && v && !v.includes('@')) { toast('Enter a valid email.', 'bad'); return; }
+    const body = field === 'name' ? { name: v }
+      : field === 'phone' ? { phone: v }
+      : field === 'email' ? { email: v }
+      : { address: v };
+    const labels = { name: 'Name saved', phone: 'Phone saved', email: 'Email saved', address: 'Address saved' };
+    const data = await patchLead(body, labels[field] || 'Saved');
+    if (data) { S.contactEdit = null; S.phoneEdit = null; renderMain(); }
+  },
   profEdit: (b) => {
     const field = b.dataset.v;
     const l = leadById(S.leadId);
@@ -3445,18 +3591,32 @@ const ACT = {
       toast('Add an email on this lead before sending a contract.', 'bad');
       return;
     }
+    resetContractForm();
+    S.contractStep = 'type';
+    S.sections.sale = true;
     S.contractBusy = true;
+    S.contractTemplatesLoading = true;
     renderMain();
     try {
       if (host.loadContractTemplates) await host.loadContractTemplates();
-      resetContractForm();
-      S.contractStep = 'type';
-      S.sections.sale = true;
     } catch (e) {
       toast(errMsg(e, 'Could not load contract templates.'), 'bad');
     } finally {
       S.contractBusy = false;
+      S.contractTemplatesLoading = false;
       renderMain();
+      if (!contractTemplatesList().length && host.loadContractTemplates) {
+        S.contractTemplatesLoading = true;
+        renderMain();
+        try {
+          await host.loadContractTemplates();
+        } catch {
+          /* already toasted on first try */
+        } finally {
+          S.contractTemplatesLoading = false;
+          renderMain();
+        }
+      }
     }
   },
   cancelContractPick: () => {
@@ -3475,12 +3635,18 @@ const ACT = {
       renderMain();
       return;
     }
+    const tid = String(b.dataset.id || '').trim();
     S.contractType = v;
+    S.selectedTemplateId = tid;
+    S.selectedTemplate = contractTemplatesList().find((t) => String(t.id) === tid) || null;
     S.contractStep = v;
     renderMain();
   },
   selectBlankContract: (b) => {
+    const tid = String(b.dataset.id || '').trim();
     S.contractType = b.dataset.v || 'standard';
+    S.selectedTemplateId = tid;
+    S.selectedTemplate = contractTemplatesList().find((t) => String(t.id) === tid) || null;
     S.contractStep = 'review_blank';
     renderMain();
   },
@@ -3517,7 +3683,11 @@ const ACT = {
     S.contractBusy = true;
     renderMain();
     try {
-      const data = await host.sendContractWithDetails(l.id, { blank: true, type: S.contractType || 'standard' });
+      const data = await host.sendContractWithDetails(l.id, {
+        blank: true,
+        type: S.contractType || 'standard',
+        templateId: S.selectedTemplateId || undefined,
+      });
       S.contractStep = 'sending';
       mergeLead(l.id, {
         contract_status: 'sent',
@@ -3552,6 +3722,7 @@ const ACT = {
       const details = {
         blank: false,
         type: S.contractType,
+        templateId: S.selectedTemplateId || undefined,
         plan: S.contractPlan,
         term: S.contractTerm,
         launch: S.contractLaunch,
@@ -3718,6 +3889,13 @@ function onInput(e) {
   if (k === 'prof.q') { void searchPlaces(t.value); return; }
   if (k === 'prof.draftName') { S.prof.draftName = t.value; return; }
   if (k === 'prof.occNote') return;
+  if (k === 'contactEdit.value') {
+    if (S.contactEdit) {
+      S.contactEdit = { ...S.contactEdit, value: t.value };
+      if (S.contactEdit.field === 'phone') S.phoneEdit = t.value;
+    }
+    return;
+  }
   setPath(k, t.value);
   if (k === 'f.q') { clearTimeout(qT); qT = setTimeout(() => loadLeads(), 250); return; }
   if (k === 'sms') {
@@ -3779,7 +3957,7 @@ function onKey(e) {
   if (e.key === 'Escape') {
     if (S.menu) { S.menu = null; renderMenu(); return; }
     if (S.modal) { closeModal(); return; }
-    if (S.phoneEdit != null) { S.phoneEdit = null; renderMain(); return; }
+    if (S.contactEdit != null || S.phoneEdit != null) { S.contactEdit = null; S.phoneEdit = null; renderMain(); return; }
     if (S.prof.edit) { S.prof = { ...S.prof, edit: null, q: '', predictions: [], draftName: '' }; renderMain(); return; }
   }
   if (t.dataset && t.dataset.k === 'prof.q') {
@@ -3802,6 +3980,7 @@ function onKey(e) {
   }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && S.th.draft && S.leadId && !isBusy('save')) { e.preventDefault(); draftAct('approve'); return; }
   if (t.dataset && t.dataset.k === 'sms' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendSms(); return; }
+  if (t.dataset && t.dataset.k === 'contactEdit.value' && e.key === 'Enter') { e.preventDefault(); ACT.saveContactField(); return; }
   if (t.dataset && t.dataset.k === 'phoneEdit' && e.key === 'Enter') { e.preventDefault(); ACT.savePhone(); return; }
   if (e.key === 'Enter' && t.matches && t.matches('[data-open]')) { e.preventDefault(); openLead(t.dataset.open); }
 }

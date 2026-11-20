@@ -233,6 +233,18 @@ function parsePropertyParts(
   return { street, cityProvince, postalCode };
 }
 
+/** Always a string — never undefined/null/"Not provided". */
+function propertyLabelForEmail(lead: {
+  property_address?: string | null;
+  address?: string | null;
+} | null | undefined): string {
+  const raw = String(lead?.property_address || lead?.address || "").trim();
+  if (!raw || /^not\s*provided$/i.test(raw) || raw === "—" || raw === "-") {
+    return "your property";
+  }
+  return raw;
+}
+
 /**
  * Pre-fill contract PDF fields. Coordinates are PDF points from the BOTTOM LEFT
  * (standard PDF space). Page size is 612×792 for all MRG contracts.
@@ -247,7 +259,11 @@ export async function stampContractDetails(
   const pages = pdfDoc.getPages();
 
   const drawText = (page: PDFPage, x: number, pdfY: number, text: string, size = 10) => {
-    const clean = String(text || "").trim();
+    // Helvetica is WinAnsi — no ✓/☑. Map those to ASCII "x"; skip empty boxes.
+    const clean = String(text || "")
+      .replace(/[✓✔☑☒]/g, "x")
+      .replace(/[☐□]/g, "")
+      .trim();
     if (!clean) return;
     page.drawText(clean.slice(0, 140), {
       x,
@@ -272,14 +288,14 @@ export async function stampContractDetails(
     drawText(page1, 353, 552, details.postalCode, 10);
 
     if (details.plan === "full_service" || details.plan === "full") {
-      drawText(page1, 101, 129, "✓", 11);
+      drawText(page1, 101, 129, "x", 11);
     } else if (details.plan === "standard" || details.plan) {
-      drawText(page1, 101, 208, "✓", 11);
+      drawText(page1, 101, 208, "x", 11);
     }
 
     if (details.term === "24") {
       drawText(page1, 240, 440, "24-month term", 10);
-      drawText(page1, 59, 408, "☑", 11);
+      drawText(page1, 59, 408, "x", 11);
     } else if (details.term === "12" || details.term) {
       drawText(page1, 240, 440, "12-month term", 10);
     }
@@ -288,7 +304,7 @@ export async function stampContractDetails(
     if (page5) {
       const paymentY: Record<string, number> = { A: 755, B: 736, C: 716, D: 666 };
       const pay = String(details.launchPayment || "").toUpperCase();
-      if (paymentY[pay] != null) drawText(page5, 59, paymentY[pay], "☑", 11);
+      if (paymentY[pay] != null) drawText(page5, 59, paymentY[pay], "x", 11);
       drawText(page5, 86, 552, details.clientInitials, 10);
     }
   } else if (contractType === "growth") {
@@ -302,9 +318,9 @@ export async function stampContractDetails(
     drawText(page1, 390, 529, details.postalCode, 10);
 
     if (details.tier === "confidence_partner" || details.tier === "cp") {
-      drawText(page1, 65, 342, "☑", 11);
+      drawText(page1, 65, 342, "x", 11);
     } else if (details.tier === "aligned_growth" || details.tier === "ag" || details.tier) {
-      drawText(page1, 65, 364, "☑", 11);
+      drawText(page1, 65, 364, "x", 11);
     }
 
     const page2 = pages[1];
@@ -343,7 +359,7 @@ export async function stampContractDetails(
           "5br": 458,
         };
         const key = String(details.propertySize).toLowerCase();
-        drawText(page4, 60, sizeY[key] || 547, "☑", 11);
+        drawText(page4, 60, sizeY[key] || 547, "x", 11);
       }
       drawText(page4, 58, 207, details.clientInitials, 10);
     }
@@ -358,15 +374,15 @@ export async function stampContractDetails(
     drawText(page1, 353, 552, details.postalCode, 10);
 
     if (details.plan === "message_optimize" || details.plan === "optimize") {
-      drawText(page1, 101, 298, "☑", 11);
+      drawText(page1, 101, 298, "x", 11);
     } else if (details.plan === "message_book" || details.plan) {
-      drawText(page1, 101, 418, "☑", 11);
+      drawText(page1, 101, 418, "x", 11);
     }
     drawText(page1, 101, 88, details.signedDate, 10);
 
     const page2 = pages[1];
     if (page2 && details.term === "12") {
-      drawText(page2, 59, 755, "☑", 11);
+      drawText(page2, 59, 755, "x", 11);
     }
   }
 
@@ -403,10 +419,13 @@ export async function sendCrmLeadContract(input: {
 
   const displayName = String(lead.full_name || lead.name || "").trim() || email;
   const { name, first } = splitName(displayName);
-  const propertyLabel = String(lead.property_address || lead.address || "").trim();
+  const propertyLabel = propertyLabelForEmail(lead);
   const planName = String(lead.plan || "").trim() || template.label || "management";
   const city = String(lead.property_city || "").trim();
-  const addr = parsePropertyParts(propertyLabel, city);
+  const addr = parsePropertyParts(
+    propertyLabel === "your property" ? "" : propertyLabel,
+    city,
+  );
   const stampKind = resolveContractStampKind(details.type, template);
   const launchPayment = String(details.launchPayment || details.launch || "").trim();
 
@@ -488,7 +507,7 @@ export async function sendCrmLeadContract(input: {
     to: email,
     firstName: first || "there",
     planName: template.label || planName,
-    propertyLabel: propertyLabel || undefined,
+    propertyLabel: propertyLabel,
     signUrl,
   });
 
@@ -561,13 +580,13 @@ export async function resendCrmLeadContract(leadId: string): Promise<{
   }
   const displayName = String(lead.full_name || lead.name || "").trim() || email;
   const { first } = splitName(displayName);
-  const propertyLabel = String(lead.property_address || lead.address || "").trim();
+  const propertyLabel = propertyLabelForEmail(lead);
   const signUrl = magicSignUrl(token);
   const mail = await sendCrmMagicSignEmail({
     to: email,
     firstName: first || "there",
     planName: contract.title || lead.plan || "management",
-    propertyLabel: propertyLabel || undefined,
+    propertyLabel,
     signUrl,
   });
 
@@ -641,7 +660,7 @@ export async function loadMagicSignPayload(token: string): Promise<
     "Client";
   const planName =
     String(lead?.plan || "").trim() || check.contract.title || "Management agreement";
-  const propertyLabel = String(lead?.property_address || lead?.address || "").trim();
+  const propertyLabel = propertyLabelForEmail(lead);
 
   let pdf_url: string | null = null;
   try {
@@ -716,7 +735,7 @@ export async function completeMagicSign(input: {
     "A client";
   const planName =
     String(lead?.plan || "").trim() || signed.title || "management";
-  const propertyLabel = String(lead?.property_address || lead?.address || "").trim();
+  const propertyLabel = propertyLabelForEmail(lead);
   const signedOnLabel = signed.signed_on || new Date().toISOString().slice(0, 10);
   const clientEmail =
     (client?.email || lead?.email || "").trim().toLowerCase();
@@ -730,7 +749,7 @@ export async function completeMagicSign(input: {
         to: clientEmail,
         firstName: first,
         planName,
-        propertyLabel: propertyLabel || undefined,
+        propertyLabel,
         filename: file.filename,
         pdfBase64: file.buffer.toString("base64"),
       });
@@ -743,7 +762,7 @@ export async function completeMagicSign(input: {
     await sendCrmSignedNotifyEmail({
       clientName,
       planName,
-      propertyLabel: propertyLabel || undefined,
+      propertyLabel,
       signedOnLabel,
       crmLeadUrl: lead ? crmLeadUrl(lead.id) : `${adminPublicOrigin()}/crm`,
     });

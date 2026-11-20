@@ -230,6 +230,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         details: {
           blank?: boolean;
           type?: string;
+          templateId?: string;
           plan?: string;
           term?: string;
           launch?: string;

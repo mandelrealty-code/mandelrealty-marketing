@@ -496,7 +496,11 @@ export async function sendCrmMagicSignEmail(input: {
   const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
   const first = input.firstName.trim() || "there";
   const plan = input.planName.trim() || "management";
-  const prop = input.propertyLabel?.trim() || "your property";
+  const rawProp = String(input.propertyLabel ?? "").trim();
+  const prop =
+    !rawProp || /^not\s*provided$/i.test(rawProp) || rawProp === "—" || rawProp === "-"
+      ? "your property"
+      : rawProp;
   const html = contractSignLinkEmail({
     firstName: first,
     planName: plan,

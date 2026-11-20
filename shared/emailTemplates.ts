@@ -61,7 +61,12 @@ export function contractSignLinkEmail(data: {
 }): string {
   const first = esc(data.firstName.trim() || "there");
   const plan = esc(data.planName.trim() || "management");
-  const prop = esc(data.propertyAddress.trim() || "your property");
+  const rawProp = String(data.propertyAddress ?? "").trim();
+  const propLabel =
+    !rawProp || /^not\s*provided$/i.test(rawProp) || rawProp === "—" || rawProp === "-"
+      ? "your property"
+      : rawProp;
+  const prop = esc(propLabel);
   return emailShell(`
 <h1 style="margin:0 0 16px;font-size:24px;font-weight:700;color:#1a1a1a;line-height:1.3;">Hi ${first},</h1>
 <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#3a3a3a;">Your <strong style="color:#c9a84c">${plan}</strong> management agreement for <strong style="color:#1a1a1a">${prop}</strong> is ready to review and sign.</p>

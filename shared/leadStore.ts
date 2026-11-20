@@ -130,6 +130,8 @@ export type LeadCrmUpdate = {
   aiSendMode?: "draft" | "autopilot";
   playbookSteps?: import("./playbookTypes.js").PlaybookStep[];
   offerPath?: OfferPath;
+  name?: string;
+  email?: string;
   address?: string;
   listingTitle?: string;
   phone?: string;
@@ -462,6 +464,12 @@ export async function updateLeadCrm(
   }
   if (patch.offerPath !== undefined) {
     update.offer_path = patch.offerPath;
+  }
+  if (patch.name !== undefined) {
+    update.name = patch.name;
+  }
+  if (patch.email !== undefined) {
+    update.email = patch.email;
   }
   if (patch.address !== undefined) {
     update.address = patch.address;

@@ -585,6 +585,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aiSendMode?: "draft" | "autopilot";
       playbookSteps?: PlaybookStep[];
       offerPath?: OfferPath;
+      name?: string;
+      email?: string;
+      address?: string;
       phone?: string;
       hasListing?: "yes" | "no" | "unknown";
       listingTitle?: string;
@@ -596,6 +599,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "Invalid status." });
       }
       patch.status = status;
+    }
+    if (body.name !== undefined) {
+      const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
+      if (!name) return res.status(400).json({ error: "Enter a name." });
+      patch.name = name;
+    }
+    if (body.email !== undefined) {
+      const email = String(body.email ?? "").trim().toLowerCase();
+      if (email && !email.includes("@")) {
+        return res.status(400).json({ error: "Enter a valid email address." });
+      }
+      patch.email = email;
+    }
+    if (body.address !== undefined) {
+      patch.address = String(body.address ?? "").replace(/\s+/g, " ").trim();
     }
     if (body.phone !== undefined || body.phone_number !== undefined) {
       const { toE164, isNonClientCompanyPhone } = await import("../followUpSequences.js");
