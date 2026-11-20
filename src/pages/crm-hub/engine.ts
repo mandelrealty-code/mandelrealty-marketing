@@ -245,6 +245,37 @@ export const CRM_EXTRA_CSS = `
 .regsrc a{color:var(--muted);text-decoration:underline}
 .regfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;gap:8px;flex-wrap:wrap}
 @media (max-width:768px){.pseg3 button{height:36px}}
+
+/* Lead panel redesign (mrg-crm-lead-panel_1.html) */
+.details{padding:0;gap:0}
+.details .rtabs{padding:10px 16px;margin:0;border-bottom:1px solid #e8e8e3}
+.details .callsec{margin:12px 16px 0}
+.details .calls{padding:12px 16px 16px}
+.topbar{padding:12px 16px;border-bottom:1px solid #e8e8e3}
+.topbar-phone{font-weight:600;font-size:15px}
+.topbar-email{color:#9a9590;font-size:13px}
+.topbar-btns{display:flex;gap:8px;margin-top:10px}
+.topbar-btns .btn{flex:1}
+.topbar-hint{font-size:12px;color:#9a9590;margin-top:6px}
+.bkt{display:flex;justify-content:flex-end;margin:-2px 0 6px}
+.bkt .lnkm{display:inline-flex;align-items:center;gap:4px}
+.secnote{font-size:11px;color:var(--muted);font-weight:500;margin-bottom:4px}
+.stp{margin-bottom:10px}
+.airow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:10px}
+.airow>span:first-child{flex:1}
+.tsave{display:flex;justify-content:flex-end;margin-top:6px}
+.dsec-collapsible{border-bottom:1px solid #e8e8e3}
+.dsec-head{display:flex;align-items:center;width:100%;padding:0 16px;min-height:44px;background:none;border:none;cursor:pointer;text-align:left;gap:8px}
+.dsec-head:hover{background:#f9f9f7}
+.dsec-title{font-weight:600;font-size:14px;flex:1;color:var(--ink)}
+.dsec-status{font-size:12px;color:#9a9590;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dsec-chev{transition:transform 0.15s;flex-shrink:0;color:var(--muted);display:grid}
+.dsec-collapsible.open .dsec-chev{transform:rotate(180deg)}
+.dsec-body{padding:0 16px 12px}
+@media (max-width:600px){
+  .topbar-btns{flex-direction:column}
+  .dsec-head{min-height:48px}
+}
 `;
 
 export function mountCrm(root, host) {
@@ -504,6 +535,13 @@ const S = {
   selectedTemplate: null,
   contractAskCancel: false,
   contractBusy: false,
+  sections: {
+    book: true,
+    profile: false,
+    sale: false,
+    notes: true,
+    ai: false,
+  },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -803,6 +841,22 @@ function leadHeader(l) {
   const ph = phoneUsable(l.phone) ? fmtPhone(l.phone) : 'No phone';
   return `<div class="lph"><button class="iconbtn back" data-act="closeLead" aria-label="Back to contacts">${ic('back')}</button>${av(l)}<div class="t"><b>${esc(l.name || 'Unnamed lead')}</b><span>${aim(aiState(l))}<span class="meta">${esc(ph)}</span>${stageChip(l.status)}</span></div><button class="iconbtn bd" data-act="leadMenu" aria-label="More actions">${ic('more', 'sm')}</button><button class="iconbtn closex" data-act="closeLead" aria-label="Close lead">${ic('x', 'sm')}</button></div>`;
 }
+function sectionWrap(key, title, statusText, body, defaultOpen = false) {
+  const open = S.sections[key] ?? defaultOpen;
+  return `
+      <div class="dsec-collapsible ${open ? 'open' : ''}">
+        <button type="button"
+          class="dsec-head"
+          data-act="toggleSection"
+          data-key="${esc(key)}"
+          aria-expanded="${open}">
+          <span class="dsec-title">${title}</span>
+          <span class="dsec-status">${statusText}</span>
+          <span class="dsec-chev">${ic('chev', 'sm')}</span>
+        </button>
+        <div class="dsec-body">${open ? body : ''}</div>
+      </div>`;
+}
 function msgBy(m) {
   if (m.direction !== 'outbound') return null;
   const meta = m.meta || {};
@@ -880,11 +934,15 @@ function aiBlock(l) {
   const expl = st === 'live' ? (l.ai_force_on && !eff ? 'AI answers this lead only. Auto-reply is off for everyone else.' : 'AI answers this lead.')
     : st === 'paused' ? 'You took over. AI stays quiet until you resume.' : `AI is off for this chat.${!eff ? ' Auto-reply is off in Settings.' : ''}`;
   const dis = isBusy('save') ? 'disabled' : '';
-  return `<div class="dsec"><h5>AI for this chat ${aiBtn(l)}</h5>
-    <div class="setrow"><span>${aim(st)}<span class="meta" style="display:block;margin-top:2px">${expl}</span></span></div>
+  const d = D(l);
+  return `<div class="airow">${aim(st)}${aiBtn(l)}<span class="meta">${expl}</span></div>
     ${envKill() ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>CRM AI is switched off on the server.</b> The env kill switch overrides every chat.</span></div>` : ''}
-    <div style="margin-top:10px"><span class="flabel">How AI sends</span><div class="aiseg" role="radiogroup" aria-label="How AI sends"><button role="radio" aria-checked="${mode === 'autopilot'}" class="${mode === 'autopilot' ? 'on' : ''}" data-act="sendMode" data-v="autopilot" ${dis}>Autopilot</button><button role="radio" aria-checked="${mode === 'draft'}" class="${mode === 'draft' ? 'on' : ''}" data-act="sendMode" data-v="draft" ${dis}>Draft for review</button></div>
-    <div class="aiexp">${mode === 'autopilot' ? 'Autopilot sends AI replies immediately, no review.' : 'AI writes a draft. Nothing sends until you approve it.'}</div></div></div>`;
+    <span class="flabel">How AI sends</span><div class="aiseg" role="radiogroup" aria-label="How AI sends"><button role="radio" aria-checked="${mode === 'autopilot'}" class="${mode === 'autopilot' ? 'on' : ''}" data-act="sendMode" data-v="autopilot" ${dis}>Autopilot</button><button role="radio" aria-checked="${mode === 'draft'}" class="${mode === 'draft' ? 'on' : ''}" data-act="sendMode" data-v="draft" ${dis}>Draft for review</button></div>
+    <div class="aiexp">${mode === 'autopilot' ? 'Autopilot sends AI replies immediately, no review.' : 'AI writes a draft. Nothing sends until you approve it.'}</div>
+    <label class="flabel" for="tellai" style="margin-top:12px;display:block">Tell the AI</label>
+    <textarea class="input" id="tellai" style="min-height:62px" data-k="ld.notes" data-save="notes" placeholder="What the AI should know about this lead before the next text…">${esc(d.notes)}</textarea>
+    <div class="tsave"><button class="btn sm" data-act="saveNotes" ${dis}>Save</button></div>
+    <div class="hint">The AI uses this on the next SMS. Saves when you click away.</div>`;
 }
 function bookTzParts(iso) {
   const d = new Date(iso);
@@ -1019,7 +1077,7 @@ function bookBlock(l) {
     }
   }
 
-  return `<div class="dsec booksec"><h5><span>Book a call</span><button class="iconbtn" data-act="reloadBookSlots" aria-label="Reload slots" title="Reload slots" style="width:28px;height:28px" ${dis}>${ic('refresh', 'sm')}</button></h5><div class="bbody">${body}</div></div>`;
+  return `<div class="bkt"><button type="button" class="lnkm" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')} Reload slots</button></div><div class="bbody booksec">${body}</div>`;
 }
 function templateBlurb(label) {
   const s = String(label || '').toLowerCase();
@@ -1084,14 +1142,18 @@ function saleContractBody(l) {
   const cancelledNote = cs === 'cancelled' ? '<div class="cnote2">Contract cancelled · you can send a new one</div>' : '';
   return `${cancelledNote}<button type="button" class="btn primary wide" data-act="openContractPick" ${dis}>Send contract →</button><div class="hint">Pick a template and send to ${esc(email)}</div>`;
 }
-function saleBlock(l, hl) {
+function saleSectionBody(l, hl) {
   const d = D(l), dis = isBusy('save') ? 'disabled' : '';
   const gaps = [l.plan, l.contract_status, l.booked_by, l.closed_by].filter((x) => !x).length;
   const showGaps = gaps && soldish(l);
   const status = l.onboarding ? `<button class="lnk" data-act="openUnit" data-id="${esc(l.id)}">${esc(onboardingLine(l.onboarding))}${l.onboarding.address ? ' · ' + esc(l.onboarding.address) : ''} →</button>` : l.status === 'won' ? '<span class="gapchip">Not started</span>' : '<span class="meta">Starts once the lead is Won</span>';
   const act = l.onboarding ? `<button class="btn" style="width:100%;margin-top:10px" data-act="openUnit" data-id="${esc(l.id)}">Open unit ${ic('arrow', 'sm')}</button>`
     : l.status === 'won' && l.contract_status !== 'signed' ? `<button class="btn primary" style="width:100%;margin-top:10px" data-act="startOnboarding">${ic('plus', 'sm')}Start onboarding</button>` : '';
-  return `<div class="dsec ks ${hl ? 'hl' : ''}"><h5>Sale and onboarding ${showGaps ? `<span class="gapchip">${gaps} gap${gaps > 1 ? 's' : ''}</span>` : ''}</h5>
+  return `<div class="ks ${hl ? 'hl' : ''}">
+    <div class="two stp">
+      <div class="field"><label for="stSel">Stage</label><select id="stSel" class="input" data-sel="status" ${dis}>${LEAD_STATUSES.map((s) => opt(s, STATUS_LABEL[s] || s, l.status)).join('')}</select></div>
+      <div class="field"><label for="pathSel">Path</label><select id="pathSel" class="input" data-sel="offerPath" ${dis}>${OFFER_PATHS.map((p) => opt(p, OFFER_PATH_LABEL[p] || p, l.offer_path)).join('')}</select></div>
+    </div>
     <div class="two">
       <div class="field"><label for="slPlan">Plan</label><select id="slPlan" class="input ${!l.plan ? 'warn' : ''}" data-sel="plan" ${dis}>${opt('', 'Not recorded', l.plan || '')}${PLAN_OPTIONS.map((p) => opt(p, p, l.plan || '')).join('')}</select></div>
       <div class="field"><label for="slCon">Contract</label><select id="slCon" class="input ${!l.contract_status ? 'warn' : ''}" data-sel="contractStatus" ${dis}>${CONTRACT_OPTIONS.map((c) => opt(c.value, c.label, l.contract_status || '')).join('')}</select></div>
@@ -1103,42 +1165,34 @@ function saleBlock(l, hl) {
     <dl class="kv" style="margin-top:10px"><dt>Onboarding</dt><dd>${status}</dd></dl>${act}
     ${showGaps ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing sale details.</b> Fill these before the lead is Won. Onboarding flags any that are still empty.</span></div>` : ''}</div>`;
 }
-function stageBlock(l) {
-  const dis = isBusy('save') ? 'disabled' : '';
-  return `<div class="dsec"><h5>Stage and path</h5><div class="two">
-    <div class="field"><label for="stSel">Stage</label><select id="stSel" class="input" data-sel="status" ${dis}>${LEAD_STATUSES.map((s) => opt(s, STATUS_LABEL[s] || s, l.status)).join('')}</select></div>
-    <div class="field"><label for="pathSel">Path</label><select id="pathSel" class="input" data-sel="offerPath" ${dis}>${OFFER_PATHS.map((p) => opt(p, OFFER_PATH_LABEL[p] || p, l.offer_path)).join('')}</select></div></div></div>`;
-}
-const notSet = (v, w = 'Not set') => v ? esc(v) : `<span class="meta">${w}</span>`;
-function contactBlock(l) {
+function leadTopBar(l) {
   const phoneOk = phoneUsable(l.phone);
   const op = ringingPhone();
   let phone;
-  if (S.phoneEdit != null) phone = `<div class="phedit"><input class="input focus" type="tel" inputmode="tel" data-k="phoneEdit" value="${esc(S.phoneEdit)}" placeholder="Phone number" aria-label="Phone number"><button class="btn sm primary" data-act="savePhone" ${isBusy('save') ? 'disabled' : ''}>Save</button><button class="btn sm ghost" data-act="cancelPhone">Cancel</button></div>`;
-  else if (phoneOk) phone = `<span class="phv">${esc(fmtPhone(l.phone))}<button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button><button class="iconbtn" data-act="editPhone" title="Edit" aria-label="Edit phone">${ic('edit', 'xs')}</button></span>`;
-  else phone = `<span class="phv" style="gap:6px"><span class="gapchip">${ic('alert', 'xs')}Missing number</span><button class="btn sm" data-act="editPhone">Add</button></span>`;
-  const listing = l.listing_title ? esc(l.listing_title) : l.has_listing === 'yes' ? 'Has a listing' : l.has_listing === 'no' ? 'No Airbnb yet' : '<span class="meta">Not set</span>';
+  if (S.phoneEdit != null) {
+    phone = `<div class="phedit"><input class="input focus" type="tel" inputmode="tel" data-k="phoneEdit" value="${esc(S.phoneEdit)}" placeholder="Phone number" aria-label="Phone number"><button class="btn sm primary" data-act="savePhone" ${isBusy('save') ? 'disabled' : ''}>Save</button><button class="btn sm ghost" data-act="cancelPhone">Cancel</button></div>`;
+  } else if (phoneOk) {
+    phone = `<span class="phv"><span class="topbar-phone">${esc(fmtPhone(l.phone))}</span><button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button><button class="iconbtn" data-act="editPhone" title="Edit" aria-label="Edit phone">${ic('edit', 'xs')}</button></span>`;
+  } else {
+    phone = `<span class="meta">No phone number</span> <button class="btn sm" data-act="editPhone">Add</button>`;
+  }
   const canCall = phoneOk && Boolean(op) && !isBusy('call');
   const preDone = Boolean(S.preCall[l.id]) || S.th.messages.some((m) => m.direction === 'outbound' && ((m.meta && m.meta.pre_call === true) || /calling you in a minute from this number/i.test(m.body || '')));
-  const tel = phoneOk ? telHref(l.phone) : null;
-  return `<div class="dsec"><h5>Contact and property</h5>
-    <dl class="kv"><dt>Phone</dt><dd>${phone}</dd>
-      <dt>Email</dt><dd>${l.email ? `<a class="lnk" href="mailto:${esc(l.email)}">${esc(l.email)}</a>` : '<span class="meta">Not set</span>'}</dd>
-      <dt>Address</dt><dd>${notSet(l.address)}</dd>
-      <dt>Airbnb listing</dt><dd>${listing}</dd>
-      <dt>Process stage</dt><dd>${notSet(PROCESS_LABEL[l.property_stage] || l.property_stage, 'Unknown')}</dd>
-      <dt>STR allowed</dt><dd>${notSet(STR_LABEL[l.str_allowed] || l.str_allowed, 'Unknown')}</dd>
-      <dt>Permit status</dt><dd>${notSet(PERMIT_LABEL[l.permit_status] || l.permit_status, 'Unknown')}</dd>
-      <dt>Source</dt><dd>${l.source ? esc(sourceLabel(l.source)) : '<span class="meta">Not set</span>'}</dd>
-      <dt>Added</dt><dd>${notSet(shortDate(l.created_at))}</dd></dl>
-    <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-      <a class="btn ${tel ? '' : 'dis'}" style="width:100%" ${tel ? `href="${tel}"` : 'aria-disabled="true" tabindex="-1"'}>${ic('phone', 'sm')}Dial from this phone</a>
-      <button class="btn ${canCall ? 'primary' : ''}" style="width:100%" data-act="crmCall" ${canCall ? '' : 'disabled'}>${ic('rec', 'sm')}${isBusy('call') ? 'Starting…' : preDone ? 'CRM call again' : 'CRM call'}</button></div>
-    ${phoneOk && op ? `<div class="meta" style="margin-top:6px">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'CRM call texts the lead once, rings the selected phone first, then the lead. Calls are recorded.'}</div>` : ''}
+  const callBtns = phoneOk
+    ? `<div class="topbar-btns">
+        <button class="btn ${canCall ? 'primary' : ''}" data-act="crmCall" ${canCall ? '' : 'disabled'}>${ic('phone', 'sm')}${isBusy('call') ? 'Starting…' : preDone ? 'CRM Call again' : 'CRM Call'}</button>
+        <button class="btn ghost" data-act="dialCall">${ic('phone', 'sm')}Dial from phone</button>
+      </div>
+      <div class="topbar-hint">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'Calls are recorded · AI texts lead first'}</div>`
+    : '<div class="topbar-hint">No phone number</div>';
+  return `<div class="topbar">
+    <div>${phone}</div>
+    <div class="topbar-email">${l.email ? esc(l.email) : 'No email'}</div>
+    ${callBtns}
     ${S.callMsg ? `<div class="okbox">${ic('phone', 'sm')}<span>${esc(S.callMsg)}</span></div>` : ''}
     ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Choose whose phone rings first in Settings.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
     ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Caller is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
-    ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
+  </div>`;
 }
 
 const OWNERSHIP_OPTS = [
@@ -1245,7 +1299,7 @@ function profileBlock(l) {
     ? `<div class="vrow"><span class="okt">${ic('check', 'xs')}Checked${city ? ` for ${esc(city)}` : ''}</span></div>`
     : `<div class="vrow"><span class="ns">Not checked</span>${addr ? `<button type="button" class="btn sm primary" data-act="profCheckRegs" ${dis}>Check regulations →</button>` : ''}</div>${!addr ? '<div class="pn" style="margin-top:4px">Add a property address first.</div>' : ''}`;
 
-  return `<div class="dsec prof"><h5><span>Property profile</span><span class="meta" style="font-weight:500">Fill in during the sales call</span></h5>
+  return `<div class="prof"><div class="secnote">Fill in during the sales call</div>
     <div class="pf"><div class="pl">Property address</div>${addrRow}</div>
     <div class="pf"><div class="pl">Full name <span class="pn">If different from lead name</span></div>${nameRow}</div>
     <div class="pf"><div class="pl">Owns or renting</div>${pseg3(OWNERSHIP_OPTS, ownership, 'profOwnership')}</div>
@@ -1371,15 +1425,14 @@ function activeCallBlock() {
   return `<div class="callsec" id="callsec" role="status" aria-live="polite">${body}</div>`;
 }
 function notesBlock(l) {
-  const d = D(l), dis = isBusy('save') ? 'disabled' : '';
+  const dis = isBusy('save') ? 'disabled' : '';
   const steps = l.playbook_steps || [];
   const stepRow = (s) => s.status === 'done'
     ? `<li class="done"><span class="cbx on">${ic('check', 'xs')}</span><span>${esc(s.title)}</span><span class="meta">Done</span></li>`
     : s.status === 'current'
       ? `<li><span class="cbx"></span><span>${esc(s.title)}</span><button class="btn sm" data-act="pbComplete" ${dis}>Complete</button><button class="btn sm ghost" data-act="pbSkip" ${dis}>Skip</button></li>`
       : `<li><span class="cbx"></span><span>${esc(s.title)}</span><span class="meta">Up next</span></li>`;
-  return `<div class="dsec"><h5>Tell the AI <button class="btn sm" data-act="saveNotes" ${dis}>Save</button></h5><textarea class="input" style="min-height:62px" data-k="ld.notes" data-save="notes" placeholder="What the AI should know about this lead before the next text…">${esc(d.notes)}</textarea><div class="hint">The AI uses this on the next SMS. Saves when you click away.</div></div>
-   <div class="dsec"><h5>Team next</h5>${steps.length ? `<ul class="steps">${steps.map(stepRow).join('')}</ul>` : '<div class="meta">No next steps yet.</div>'}</div>`;
+  return steps.length ? `<ul class="steps tl">${steps.map(stepRow).join('')}</ul>` : '<div class="meta">No next steps yet.</div>';
 }
 function fmtBookerTime(totalSecs) {
   const s = Math.max(0, Math.floor(Number(totalSecs) || 0));
@@ -1465,21 +1518,54 @@ function callsPane() {
   const newestFirst = [...numbered].reverse();
   return `<div class="calls">${newestFirst.map(({ call, n }) => callCard(call, n)).join('')}</div>`;
 }
-function actionsBlock() {
-  const dis = isBusy('save') ? 'disabled' : '';
-  return `<div class="dsec"><h5>Actions</h5><div style="display:flex;flex-direction:column;gap:6px">
-   <button class="btn" data-act="convertClient">${ic('file', 'sm')}Create client and send contract</button><button class="btn dangerline" data-act="askDelete" ${dis}>${ic('trash', 'sm')}Delete contact</button></div></div>`;
+function bookSectionStatus(l) {
+  const booking = activeCrmBooking(l);
+  if (booking) {
+    const startIso = booking.slot_start || booking.slotStart || l.call_start_iso || '';
+    const label = booking.label || booking.call_booking || l.call_booking
+      || (startIso ? slotConfirmLabel({ start: startIso }) : '');
+    if (label) return `<span style="color:#2d6a4f">${esc(label)}</span>`;
+  }
+  if (l.call_booking || l.call_start_iso) {
+    const label = l.call_booking || (l.call_start_iso ? slotConfirmLabel({ start: l.call_start_iso }) : '');
+    if (label) return `<span style="color:#2d6a4f">${esc(label)}</span>`;
+  }
+  return 'Not booked';
+}
+function profileSectionStatus(l) {
+  const addr = String(l.property_address || '').trim();
+  if (!addr) return '<span style="color:#9a9590">Not filled in</span>';
+  const short = addr.split(',')[0].trim().slice(0, 25);
+  return esc(short);
+}
+function saleSectionStatus(l) {
+  const parts = [
+    STATUS_LABEL[l.status] || l.status,
+    l.plan,
+    contractLabel(l.contract_status) || l.contract_status,
+  ].filter(Boolean);
+  if (parts.length) return esc(parts.join(' · '));
+  return '<span style="color:#c4891a">Not recorded</span>';
+}
+function notesSectionStatus(l) {
+  const steps = Array.isArray(l.playbook_steps) ? l.playbook_steps : [];
+  const n = steps.filter((s) => s.status !== 'done').length;
+  if (n === 0) return '✓ All done';
+  return `${n} task${n > 1 ? 's' : ''}`;
 }
 function leadPanel(l) {
-  let order = ['ai', 'book', 'sale', 'stage', 'contact', 'profile', 'notes', 'actions'];
   const hl = l.status === 'won' || Boolean(l.onboarding);
-  if (hl) order = ['sale', 'book', 'ai', 'stage', 'contact', 'profile', 'notes', 'actions'];
-  else if (!phoneUsable(l.phone)) order = ['contact', 'profile', 'ai', 'book', 'stage', 'sale', 'notes', 'actions'];
-  const map = { ai: () => aiBlock(l), book: () => bookBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), profile: () => profileBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
+  const hasBooking = Boolean(activeCrmBooking(l) || callHostData().booking);
+  const sections = [
+    sectionWrap('book', 'Book a call', bookSectionStatus(l), bookBlock(l), !hasBooking),
+    sectionWrap('profile', 'Property profile', profileSectionStatus(l), profileBlock(l), false),
+    sectionWrap('sale', 'Sale & contract', saleSectionStatus(l), saleSectionBody(l, hl), false),
+    sectionWrap('notes', 'Team & AI', notesSectionStatus(l), `${notesBlock(l)}${aiBlock(l)}`, true),
+  ];
   const active = activeCallBlock();
   const nCalls = leadCallCount(l.id);
   const callsLabel = nCalls > 0 ? `Calls (${nCalls})` : 'Calls';
-  const detailsBody = `${active}${order.map((b) => map[b]()).join('')}`;
+  const detailsBody = `${active}${sections.join('')}`;
   const rightBody = S.rtab === 'calls' ? `${active}${callsPane()}` : detailsBody;
   return `<div class="card lpanel t-${S.ptab} r-${S.rtab}">${leadHeader(l)}
     <div class="plseg"><div class="pseg three" role="tablist">
@@ -1489,6 +1575,7 @@ function leadPanel(l) {
     </div></div>
     <div class="thread">${thread(l)}</div>
     <div class="details" data-scroll="details">
+      ${leadTopBar(l)}
       <div class="rtabs" role="tablist"><div class="seg">
         <button type="button" role="tab" data-act="rtab" data-v="details" class="${S.rtab === 'details' ? 'on' : ''}">Details</button>
         <button type="button" role="tab" data-act="rtab" data-v="calls" class="${S.rtab === 'calls' ? 'on' : ''}">Calls${nCalls > 0 ? ` <span class="count">${nCalls}</span>` : ''}</button>
@@ -2920,6 +3007,12 @@ const ACT = {
     else if (S.ptab === 'calls') S.ptab = 'details';
     renderMain();
   },
+  toggleSection: (b) => {
+    const key = b.dataset.key;
+    if (!key) return;
+    S.sections[key] = !S.sections[key];
+    renderMain();
+  },
   toggleCallCard: (b) => {
     const id = b.dataset.id;
     if (!id) return;
@@ -2927,6 +3020,11 @@ const ACT = {
     ui.open = !ui.open;
     if (!ui.open) { ui.edit = false; ui.tr = false; }
     renderMain();
+  },
+  dialCall: () => {
+    const l = leadById(S.leadId);
+    const tel = l && phoneUsable(l.phone) ? telHref(l.phone) : null;
+    if (tel) window.location.href = tel;
   },
   toggleCallTranscript: (b) => {
     const id = b.dataset.id;
