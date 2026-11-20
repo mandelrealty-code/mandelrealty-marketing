@@ -102,10 +102,6 @@ function clientSecret(): string {
   return process.env.GOOGLE_GMAIL_CLIENT_SECRET?.trim() ?? "";
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
 function torontoParts(d: Date): {
   y: number;
   m: number;
