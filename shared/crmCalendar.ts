@@ -727,8 +727,127 @@ export async function bookCalendarSlot(
     /* non-fatal */
   }
 
+  // Ryan’s pre-call email (same content as website booking alerts).
+  await sendCallBookedTeamEmail({
+    leadId: input.leadId,
+    leadName: name,
+    leadEmail: email,
+    leadPhone: phone,
+    slotLabel: label,
+  }).catch((err) =>
+    console.warn(
+      "[crmCalendar] booking team email failed",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+
   // Stage is set to "booked" (pipeline status). There is no call_booked status in LEAD_STATUSES.
   return { ok: true, eventId: data.id, label, bookingId };
+}
+
+async function sendCallBookedTeamEmail(input: {
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  leadPhone: string;
+  slotLabel: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return;
+
+  const {
+    BOOKING_TEAM_INBOX,
+    buildCallBookedHtml,
+    buildCallBookedSubject,
+    buildCallBookedText,
+    sendResendEmail,
+  } = await import("./auditEmails.js");
+
+  let form: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    source?: string;
+    hasListing?: "yes" | "no" | "unknown";
+    listingTitle?: string;
+    address?: string;
+    earnings?: string;
+    propertyStage?: string | null;
+    permitStatus?: string | null;
+    strAllowed?: string | null;
+    launchTimeline?: string | null;
+    marketingOptIn?: boolean;
+  } = {
+    name: input.leadName,
+    phone: input.leadPhone,
+    email: input.leadEmail,
+  };
+  let aiNotes: string | null = null;
+
+  try {
+    const { getLeadById } = await import("./leadStore.js");
+    const lead = await getLeadById(input.leadId);
+    if (lead) {
+      form = {
+        name: lead.name,
+        phone: lead.phone,
+        email: lead.email,
+        source: lead.source,
+        hasListing: lead.has_listing,
+        listingTitle: lead.listing_title,
+        address: lead.address,
+        earnings: lead.earnings,
+        propertyStage: lead.property_stage,
+        permitStatus: lead.permit_status,
+        strAllowed: lead.str_allowed,
+        launchTimeline: lead.launch_timeline,
+        marketingOptIn: lead.marketing_opt_in,
+      };
+      const callNotes = (lead.call_notes || "").trim();
+      if (callNotes) aiNotes = callNotes;
+    }
+  } catch {
+    /* use booking payload fields */
+  }
+
+  if (!aiNotes) {
+    try {
+      const { getLatestLeadCallForLead } = await import("./leadCalls.js");
+      const latest = await getLatestLeadCallForLead(input.leadId);
+      const summary = (latest?.summary || "").trim();
+      if (summary) aiNotes = summary;
+    } catch {
+      /* no calls yet */
+    }
+  }
+
+  const from =
+    process.env.RESEND_FROM?.trim() ||
+    "Mandel Realty Group <onboarding@resend.dev>";
+  const payload = {
+    leadName: input.leadName,
+    leadPhone: input.leadPhone,
+    leadEmail: input.leadEmail,
+    slotLabel: input.slotLabel,
+    leadId: input.leadId,
+    aiNotes,
+    form,
+  };
+  const result = await sendResendEmail({
+    apiKey,
+    from,
+    to: [BOOKING_TEAM_INBOX],
+    replyTo: input.leadEmail || undefined,
+    subject: buildCallBookedSubject({
+      leadName: input.leadName,
+      slotLabel: input.slotLabel,
+    }),
+    html: buildCallBookedHtml(payload),
+    text: buildCallBookedText(payload),
+  });
+  if (!result.ok) {
+    console.warn("[crmCalendar] booking team email Resend error", result.message);
+  }
 }
 
 /** Match a natural-language reply to one of the offered slots. */

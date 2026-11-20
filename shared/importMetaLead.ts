@@ -1,6 +1,7 @@
 import {
   LEAD_INBOX,
   buildLeadNotificationHtml,
+  buildLeadNotificationText,
   buildLeadSubject,
   sendResendEmail,
   type LeadEmailInput,
@@ -191,6 +192,7 @@ export async function importParsedMetaLead(
       to: [LEAD_INBOX],
       subject: buildLeadSubject(emailInput),
       html: buildLeadNotificationHtml(emailInput),
+      text: buildLeadNotificationText(emailInput),
       replyTo: parsed.email.includes("@meta-lead.local") ? undefined : parsed.email,
     });
     inboxNotified = inbox.ok;

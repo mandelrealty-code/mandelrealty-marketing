@@ -6,9 +6,12 @@ import {
 } from "./qualifierOptions.js";
 
 export const LEAD_INBOX = "info@mandelrealtygroup.com";
+/** Ryan’s booking alert inbox (call booked emails). */
+export const BOOKING_TEAM_INBOX = "mandelrealtyteam@gmail.com";
 export const PHONE_DISPLAY = "647-381-7325";
 export const PHONE_HREF = "tel:+16473817325";
 export const BOOK_A_CALL_URL = "https://calendar.app.google/RnN2GsCyVE5wuzY6A";
+export const CRM_ADMIN_ORIGIN = "https://admin.mandelrealtygroup.com";
 
 export function escapeHtml(value: string): string {
   return value
@@ -62,17 +65,119 @@ export function listingLabel(hasListing: HasListing): string {
   return "Unknown";
 }
 
-export function buildLeadSubject(input: LeadEmailInput): string {
-  const planBit = input.interestedPlan?.trim()
-    ? ` · ${input.interestedPlan.trim()}`
-    : "";
-  if (input.callStartIso || input.callBooking) {
-    const when = input.callStartIso
-      ? formatCallSlotLabel(input.callStartIso)
-      : input.callBooking;
-    return `New call — ${input.name} — ${when}${planBit}`;
+function nonEmptyField(value: unknown): string | null {
+  const s = String(value ?? "").trim();
+  if (!s) return null;
+  if (/^(—|-|n\/?a|not provided|unknown|null|undefined)$/i.test(s)) return null;
+  return s;
+}
+
+function formatLeadSource(source: string): string {
+  const s = source.trim();
+  if (!s) return "";
+  const map: Record<string, string> = {
+    meta_instant_form: "Meta Instant Form",
+    meta: "Meta",
+    website: "Website",
+    audit: "Website audit",
+    book_a_call: "Book a call",
+    "/book-a-call": "Book a call",
+  };
+  return map[s] || map[s.toLowerCase()] || s;
+}
+
+/** Form fields present on the lead — skips empty/null. Shared by new-lead + booking emails. */
+export function collectLeadFormFields(input: {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  source?: string | null;
+  hasListing?: HasListing | string | null;
+  listingTitle?: string | null;
+  address?: string | null;
+  earnings?: string | null;
+  propertyStage?: string | null;
+  permitStatus?: string | null;
+  strAllowed?: string | null;
+  launchTimeline?: string | null;
+  interestedPlan?: string | null;
+  marketingOptIn?: boolean | null;
+}): Array<{ label: string; value: string }> {
+  const rows: Array<{ label: string; value: string }> = [];
+  const add = (label: string, value: unknown) => {
+    const v = nonEmptyField(value);
+    if (v) rows.push({ label, value: v });
+  };
+
+  add("Name", input.name);
+  add("Phone", input.phone);
+  add("Email", input.email);
+  add("Source", formatLeadSource(String(input.source ?? "")));
+
+  const listing = String(input.hasListing ?? "").toLowerCase();
+  if (listing === "yes" || listing === "true") add("Has listing", "Yes");
+  else if (listing === "no" || listing === "false") add("Has listing", "No");
+
+  add("Listing title", input.listingTitle);
+  add("Property address", input.address);
+  add("Stated earnings", input.earnings);
+
+  if (input.propertyStage) {
+    add(
+      "Property stage",
+      STAGE_LABEL[input.propertyStage] || input.propertyStage,
+    );
   }
-  return `New Meta lead — ${input.name} — ${listingLabel(input.hasListing)}${planBit}`;
+  if (input.strAllowed) {
+    add(
+      "STR allowed",
+      STR_ALLOWED_LABEL[input.strAllowed] || input.strAllowed,
+    );
+  }
+  if (input.permitStatus) {
+    add("Permit", PERMIT_LABEL[input.permitStatus] || input.permitStatus);
+  }
+  if (input.launchTimeline) {
+    const timelineLabels: Record<string, string> = {
+      asap: "ASAP",
+      "1_3_months": "1–3 months",
+      later: "3+ months / just curious",
+    };
+    add(
+      "Launch timeline",
+      timelineLabels[input.launchTimeline] || input.launchTimeline,
+    );
+  }
+  add("Interested plan", input.interestedPlan);
+  if (input.marketingOptIn === true) add("Marketing", "Opted in");
+  else if (input.marketingOptIn === false) add("Marketing", "Not opted in");
+
+  return rows;
+}
+
+function plainFieldLinesHtml(
+  fields: Array<{ label: string; value: string }>,
+): string {
+  if (!fields.length) return `<p style="margin:0;color:#555;">No form details provided.</p>`;
+  return fields
+    .map(
+      (f) =>
+        `<p style="margin:0 0 6px;font-size:14px;line-height:1.45;color:#111;"><strong>${escapeHtml(f.label)}:</strong> ${escapeHtml(f.value)}</p>`,
+    )
+    .join("\n");
+}
+
+function plainFieldLinesText(
+  fields: Array<{ label: string; value: string }>,
+): string {
+  if (!fields.length) return "No form details provided.";
+  return fields.map((f) => `${f.label}: ${f.value}`).join("\n");
+}
+
+export function buildLeadSubject(input: LeadEmailInput): string {
+  const name = input.name.trim() || "Unknown";
+  const source = formatLeadSource(input.source) || "Unknown source";
+  return `New lead: ${name} · ${source}`;
 }
 
 export function buildCustomerSubject(input: LeadEmailInput): string {
@@ -82,102 +187,118 @@ export function buildCustomerSubject(input: LeadEmailInput): string {
   return "Pick a time for your free MRG call";
 }
 
+/** EMAIL 1 — new lead alert to info@. No booking header; only non-empty form fields. */
 export function buildLeadNotificationHtml(input: LeadEmailInput): string {
-  const earnings =
-    input.hasListing === "yes"
-      ? input.earnings || "Not provided"
-      : input.earnings || "—";
-  const when =
-    input.callBooking ||
-    (input.callStartIso ? formatCallSlotLabel(input.callStartIso) : "—");
-
-  const row = (label: string, value: string) =>
-    `<tr>
-      <td style="padding:10px 0;border-bottom:1px solid #243044;color:#8b9bb4;font-size:13px;width:140px;vertical-align:top;">${escapeHtml(label)}</td>
-      <td style="padding:10px 0;border-bottom:1px solid #243044;color:#f0f4fa;font-size:14px;font-weight:500;">${escapeHtml(value)}</td>
-    </tr>`;
-
-  return `
-  <div style="margin:0;padding:0;background:#080c14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#080c14;padding:24px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#111827;border:1px solid #243044;border-radius:16px;overflow:hidden;">
-            <tr>
-              <td style="padding:24px 28px 8px;color:#c9a84c;font-size:12px;letter-spacing:0.16em;text-transform:uppercase;font-weight:600;">
-                New call booking
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:4px 28px 8px;color:#f0f4fa;font-size:22px;font-weight:600;">
-                ${escapeHtml(input.name)} · ${escapeHtml(listingLabel(input.hasListing))}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 28px 16px;color:#c9a84c;font-size:18px;font-weight:600;">
-                ${escapeHtml(when)}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 28px 24px;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                  ${row("Name", input.name)}
-                  ${row("Email", input.email)}
-                  ${row("Phone (call this)", input.phone)}
-                  ${row("Has listing", listingLabel(input.hasListing))}
-                  ${
-                    input.hasListing === "yes"
-                      ? row("Listing title", input.listingTitle || "—")
-                      : ""
-                  }
-                  ${row("Property address", input.address || "—")}
-                  ${row("Stated earnings", earnings)}
-                  ${
-                    input.hasListing === "no"
-                      ? [
-                          row(
-                            "Stage",
-                            (input.propertyStage && STAGE_LABEL[input.propertyStage]) ||
-                              input.propertyStage ||
-                              "—",
-                          ),
-                          row(
-                            "STR allowed",
-                            (input.strAllowed && STR_ALLOWED_LABEL[input.strAllowed]) ||
-                              input.strAllowed ||
-                              "—",
-                          ),
-                          row(
-                            "Permit",
-                            (input.permitStatus && PERMIT_LABEL[input.permitStatus]) ||
-                              input.permitStatus ||
-                              "—",
-                          ),
-                        ].join("")
-                      : ""
-                  }
-                  ${row("Call time", when)}
-                  ${
-                    input.interestedPlan
-                      ? row("Interested plan", input.interestedPlan)
-                      : ""
-                  }
-                  ${row("Marketing", input.marketingOptIn ? "Opted in" : "Not opted in")}
-                  ${row("Source", input.source || "—")}
-                </table>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:0 28px 24px;color:#66748a;font-size:12px;">
-                Calendar invite attached (.ics) — open it to add to Google Calendar. Call the phone number above at the scheduled time.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
+  const fields = collectLeadFormFields(input);
+  return `<!DOCTYPE html>
+<html><body style="margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;">
+  <div style="max-width:560px;">
+    ${plainFieldLinesHtml(fields)}
   </div>
-  `;
+</body></html>`;
+}
+
+export function buildLeadNotificationText(input: LeadEmailInput): string {
+  return plainFieldLinesText(collectLeadFormFields(input));
+}
+
+export type CallBookedEmailInput = {
+  leadName: string;
+  leadPhone: string;
+  leadEmail?: string;
+  slotLabel: string;
+  leadId?: string | null;
+  aiNotes?: string | null;
+  form: Parameters<typeof collectLeadFormFields>[0];
+};
+
+export function buildCallBookedSubject(input: {
+  leadName: string;
+  slotLabel: string;
+}): string {
+  const name = input.leadName.trim() || "Unknown";
+  const when = input.slotLabel.trim() || "time TBD";
+  return `Call booked: ${name} · ${when}`;
+}
+
+function telHref(phone: string): string {
+  const digits = phone.replace(/[^\d+]/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("+")) return `tel:${digits}`;
+  if (digits.length === 10) return `tel:+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `tel:+${digits}`;
+  return `tel:${digits}`;
+}
+
+/** EMAIL 2 — Ryan’s pre-call brief. Plain HTML, tel: link, CRM deep link. */
+export function buildCallBookedHtml(input: CallBookedEmailInput): string {
+  const fields = collectLeadFormFields({
+    ...input.form,
+    name: input.form.name ?? input.leadName,
+    phone: input.form.phone ?? input.leadPhone,
+    email: input.form.email ?? input.leadEmail,
+  });
+  const phone = nonEmptyField(input.leadPhone) || "";
+  const tel = phone ? telHref(phone) : "";
+  const phoneHtml = phone
+    ? tel
+      ? `<a href="${escapeHtml(tel)}" style="color:#111;font-weight:600;">${escapeHtml(phone)}</a>`
+      : escapeHtml(phone)
+    : "—";
+  const notes =
+    nonEmptyField(input.aiNotes) || "No calls yet";
+  const crmUrl = input.leadId
+    ? `${CRM_ADMIN_ORIGIN}/crm/lead/${encodeURIComponent(String(input.leadId))}`
+    : "";
+
+  return `<!DOCTYPE html>
+<html><body style="margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#fff;color:#111;">
+  <div style="max-width:560px;">
+    <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666;font-weight:600;">Call details</p>
+    <p style="margin:0 0 6px;font-size:14px;line-height:1.45;"><strong>Time:</strong> ${escapeHtml(input.slotLabel)}</p>
+    <p style="margin:0 0 18px;font-size:14px;line-height:1.45;"><strong>Phone:</strong> ${phoneHtml}</p>
+
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666;font-weight:600;">What they told us</p>
+    <div style="margin:0 0 18px;">${plainFieldLinesHtml(fields)}</div>
+
+    <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666;font-weight:600;">AI notes</p>
+    <p style="margin:0 0 18px;font-size:14px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(notes)}</p>
+
+    ${
+      crmUrl
+        ? `<p style="margin:0;font-size:14px;"><a href="${escapeHtml(crmUrl)}" style="color:#111;font-weight:600;">View in CRM →</a></p>`
+        : ""
+    }
+  </div>
+</body></html>`;
+}
+
+export function buildCallBookedText(input: CallBookedEmailInput): string {
+  const fields = collectLeadFormFields({
+    ...input.form,
+    name: input.form.name ?? input.leadName,
+    phone: input.form.phone ?? input.leadPhone,
+    email: input.form.email ?? input.leadEmail,
+  });
+  const notes = nonEmptyField(input.aiNotes) || "No calls yet";
+  const lines = [
+    "CALL DETAILS",
+    `Time: ${input.slotLabel}`,
+    `Phone: ${input.leadPhone || "—"}`,
+    "",
+    "WHAT THEY TOLD US",
+    plainFieldLinesText(fields),
+    "",
+    "AI NOTES",
+    notes,
+  ];
+  if (input.leadId) {
+    lines.push(
+      "",
+      `View in CRM: ${CRM_ADMIN_ORIGIN}/crm/lead/${encodeURIComponent(String(input.leadId))}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 export function buildCustomerConfirmationHtml(input: LeadEmailInput): string {

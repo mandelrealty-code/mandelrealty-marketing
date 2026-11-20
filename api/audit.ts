@@ -1,10 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   AUDIT_UNAVAILABLE_MESSAGE,
+  BOOKING_TEAM_INBOX,
   LEAD_INBOX,
+  buildCallBookedHtml,
+  buildCallBookedSubject,
+  buildCallBookedText,
   buildCustomerConfirmationHtml,
   buildCustomerSubject,
   buildLeadNotificationHtml,
+  buildLeadNotificationText,
   buildLeadSubject,
   sendResendEmail,
   toPublicAuditError,
@@ -24,7 +29,11 @@ import {
   getCachedAirroi,
   setCachedAirroi,
 } from "../shared/airroiGuard.js";
-import { buildCallInviteIcs, isValidCallStartIso } from "../shared/callSlots.js";
+import {
+  buildCallInviteIcs,
+  formatCallSlotLabel,
+  isValidCallStartIso,
+} from "../shared/callSlots.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 import {
@@ -490,15 +499,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     content: Buffer.from(ics, "utf8").toString("base64"),
   };
 
-  const leadResult = await sendResendEmail({
-    apiKey,
-    from,
-    to: [LEAD_INBOX],
-    replyTo: lead.email,
-    subject: buildLeadSubject(lead),
-    html: buildLeadNotificationHtml(lead),
-    attachments: [icsAttachment],
-  });
+  const slotLabel =
+    lead.callBooking ||
+    (lead.callStartIso ? formatCallSlotLabel(lead.callStartIso) : "");
+  const isCallBooking = Boolean(lead.callStartIso || lead.callBooking);
+  const leadResult = isCallBooking
+    ? await sendResendEmail({
+        apiKey,
+        from,
+        to: [BOOKING_TEAM_INBOX],
+        replyTo: lead.email,
+        subject: buildCallBookedSubject({
+          leadName: lead.name,
+          slotLabel,
+        }),
+        html: buildCallBookedHtml({
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          leadEmail: lead.email,
+          slotLabel,
+          leadId: null,
+          aiNotes: null,
+          form: lead,
+        }),
+        text: buildCallBookedText({
+          leadName: lead.name,
+          leadPhone: lead.phone,
+          leadEmail: lead.email,
+          slotLabel,
+          leadId: null,
+          aiNotes: null,
+          form: lead,
+        }),
+        attachments: [icsAttachment],
+      })
+    : await sendResendEmail({
+        apiKey,
+        from,
+        to: [LEAD_INBOX],
+        replyTo: lead.email,
+        subject: buildLeadSubject(lead),
+        html: buildLeadNotificationHtml(lead),
+        text: buildLeadNotificationText(lead),
+        attachments: [icsAttachment],
+      });
 
   if (!leadResult.ok) {
     console.error("[audit] Resend lead error", leadResult.message);
