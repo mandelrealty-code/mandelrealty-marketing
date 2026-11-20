@@ -544,9 +544,16 @@ function keepFocus(fn) {
   let s0 = null, s1 = null;
   if (k) { try { s0 = a.selectionStart; s1 = a.selectionEnd; } catch { /* not a text field */ } }
   const scrolls = {};
-  root.querySelectorAll('[data-scroll]').forEach((el) => { scrolls[el.dataset.scroll] = el.scrollTop; });
+  root.querySelectorAll('[data-scroll]').forEach((el) => {
+    scrolls[el.dataset.scroll] = { top: el.scrollTop, left: el.scrollLeft };
+  });
   fn();
-  root.querySelectorAll('[data-scroll]').forEach((el) => { if (scrolls[el.dataset.scroll] != null) el.scrollTop = scrolls[el.dataset.scroll]; });
+  root.querySelectorAll('[data-scroll]').forEach((el) => {
+    const s = scrolls[el.dataset.scroll];
+    if (!s) return;
+    el.scrollTop = s.top;
+    el.scrollLeft = s.left;
+  });
   if (k) {
     const el = root.querySelector(`[data-k="${k}"]`);
     if (el && !el.disabled) { el.focus({ preventScroll: true }); try { if (s0 != null) el.setSelectionRange(s0, s1); } catch { /* select */ } }
@@ -841,16 +848,18 @@ function activeCrmBooking(l) {
 }
 
 function bookPickerHtml(l, b, days) {
-  const dayKey = b.dayKey || (days[0] && days[0].key) || null;
+  const dayKey = (b.dayKey && days.some((d) => d.key === b.dayKey))
+    ? b.dayKey
+    : ((days[0] && days[0].key) || null);
   const day = days.find((d) => d.key === dayKey) || days[0];
   const pick = day ? (day.times || []).find((s) => s.start === b.pick) : null;
   const endLabel = pick ? bookTzParts(pick.end).time : '';
   const slotLong = pick ? (pick.label || `${day.long} · ${bookTzParts(pick.start).time}`) : '';
   const busy = isBusy('book');
   return `${b.mode === 'reschedule' ? '<div class="bnote">Rescheduling — pick a new time</div>' : (b.note ? `<div class="bnote">${esc(b.note)}</div>` : '')}
-    <div class="days" role="radiogroup" aria-label="Day">${days.map((d) => {
+    <div class="days" data-scroll="bookDays" role="radiogroup" aria-label="Day">${days.map((d) => {
       const on = d.key === day.key;
-      return `<button type="button" class="dpill ${on ? 'on' : ''}" role="radio" aria-checked="${on ? 'true' : 'false'}" data-act="bookDay" data-day="${esc(d.key)}"><span>${esc(d.weekday)}</span><b>${esc(d.dayNum)}</b><span class="mo">${esc(d.month)}</span></button>`;
+      return `<button type="button" class="dpill ${on ? 'on' : ''}" role="radio" aria-checked="${on ? 'true' : 'false'}" data-act="bookDay" data-day-key="${esc(d.key)}"><span>${esc(d.weekday)}</span><b>${esc(d.dayNum)}</b><span class="mo">${esc(d.month)}</span></button>`;
     }).join('')}</div>
     <label class="sr" for="bookTimeSel">Time</label>
     <div class="selwrap"><select id="bookTimeSel" class="input ${pick ? '' : 'ph'}" data-sel="bookTime" aria-label="Time" ${busy ? 'disabled' : ''}>
@@ -1819,13 +1828,14 @@ async function loadBookSlots(leadId = S.leadId, opts = {}) {
   const id = String(leadId);
   const keepMode = opts.keepMode === true;
   const keepNote = opts.keepNote === true;
+  const keepDayKey = opts.keepDayKey !== false ? S.book.dayKey : null;
   S.book = {
     ...S.book,
     leadId: id,
     loading: true,
     err: '',
-    pick: null,
-    dayKey: null,
+    pick: keepDayKey ? S.book.pick : null,
+    dayKey: keepDayKey,
     step: 'pick',
     mode: keepMode ? (S.book.mode || 'book') : 'book',
     bookingId: keepMode ? S.book.bookingId : null,
@@ -1838,13 +1848,14 @@ async function loadBookSlots(leadId = S.leadId, opts = {}) {
     if (S.book.leadId !== id) return;
     const slots = Array.isArray(data.slots) ? data.slots : [];
     const days = bookDaysFromSlots(slots);
+    const stillValid = keepDayKey && days.some((d) => d.key === keepDayKey);
     S.book = {
       ...S.book,
       leadId: id,
       loading: false,
       err: '',
-      pick: null,
-      dayKey: days[0] ? days[0].key : null,
+      pick: stillValid ? S.book.pick : null,
+      dayKey: stillValid ? keepDayKey : (days[0] ? days[0].key : null),
       step: 'pick',
       slots,
     };
@@ -1856,7 +1867,7 @@ async function loadBookSlots(leadId = S.leadId, opts = {}) {
       loading: false,
       err: errMsg(e, 'Could not load calendar times.'),
       pick: null,
-      dayKey: null,
+      dayKey: keepDayKey,
       step: 'pick',
       slots: [],
     };
@@ -2733,8 +2744,16 @@ const ACT = {
     void loadBookSlots(S.leadId, { keepMode: S.book.mode === 'reschedule', keepNote: Boolean(S.book.note) });
   },
   bookDay: (b) => {
-    S.book = { ...S.book, dayKey: b.dataset.day || null, pick: null, step: 'pick' };
+    const dayKey = b.getAttribute('data-day-key') || b.dataset.dayKey || b.dataset.day || null;
+    S.book = { ...S.book, dayKey, pick: null, step: 'pick' };
     renderMain();
+    const on = root.querySelector(`.days .dpill.on`);
+    if (on) {
+      on.focus({ preventScroll: true });
+      if (typeof on.scrollIntoView === 'function') {
+        on.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
+      }
+    }
   },
   bookShowConfirm: () => {
     if (!S.book.pick) return;
