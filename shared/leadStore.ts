@@ -149,7 +149,7 @@ const SALE_COLUMNS = ["plan", "booked_by", "closed_by", "contract_status", "refe
 const saleColumnMissing = (message: string) => SALE_COLUMNS.filter((c) => new RegExp(c, "i").test(message));
 export const SALE_COLUMNS_NOTE = "Run supabase/onboarding_v4.sql in Supabase, then retry.";
 
-function mapLead(row: Record<string, unknown>): LeadRow {
+export function mapLead(row: Record<string, unknown>): LeadRow {
   return {
     id: String(row.id),
     created_at: String(row.created_at),

@@ -8,7 +8,7 @@ import {
   type FollowUpSequence,
 } from "./followUpSequences.js";
 import { sendTwilioSms } from "./twilioSms.js";
-import { markLeadBooked, type LeadRow } from "./leadStore.js";
+import { mapLead, markLeadBooked, type LeadRow } from "./leadStore.js";
 
 export type FollowUpRow = {
   id: string;
@@ -40,47 +40,7 @@ function mapRow(row: Record<string, unknown>): FollowUpRow {
   };
 }
 
-function mapLeadRow(row: Record<string, unknown>): LeadRow {
-  return {
-    id: String(row.id),
-    created_at: String(row.created_at),
-    name: String(row.name ?? ""),
-    email: String(row.email ?? ""),
-    phone: String(row.phone ?? ""),
-    address: String(row.address ?? ""),
-    earnings: String(row.earnings ?? ""),
-    listing_title: String(row.listing_title ?? ""),
-    has_listing: (row.has_listing as LeadRow["has_listing"]) || "unknown",
-    call_start_iso: (row.call_start_iso as string | null) ?? null,
-    call_booking: String(row.call_booking ?? ""),
-    source: String(row.source ?? ""),
-    marketing_opt_in: Boolean(row.marketing_opt_in),
-    property_stage: (row.property_stage as string | null) ?? null,
-    permit_status: (row.permit_status as string | null) ?? null,
-    str_allowed: (row.str_allowed as string | null) ?? null,
-    launch_timeline: (row.launch_timeline as string | null) ?? null,
-    status: row.status as LeadRow["status"],
-    notes: String(row.notes ?? ""),
-    call_notes: String(row.call_notes ?? ""),
-    whats_next: String(row.whats_next ?? ""),
-    notes_updated_at: (row.notes_updated_at as string | null) ?? null,
-    qualified_at: (row.qualified_at as string | null) ?? null,
-    ai_paused: Boolean(row.ai_paused),
-    ai_force_on: Boolean(row.ai_force_on),
-    ai_send_mode: row.ai_send_mode === "draft" ? "draft" : "autopilot",
-    playbook_steps: Array.isArray(row.playbook_steps)
-      ? (row.playbook_steps as LeadRow["playbook_steps"])
-      : [],
-    offer_path: (row.offer_path as LeadRow["offer_path"]) || "unknown",
-    sms_last_read_at: (row.sms_last_read_at as string | null) ?? null,
-    plan: String(row.plan ?? ""),
-    booked_by: String(row.booked_by ?? ""),
-    closed_by: String(row.closed_by ?? ""),
-    contract_status: (["signed", "sent", "not_sent"].includes(String(row.contract_status ?? "")) ? String(row.contract_status) : "") as LeadRow["contract_status"],
-    referred_by: String(row.referred_by ?? ""),
-    onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
-  };
-}
+const mapLeadRow = mapLead;
 
 /**
  * Schedule SMS steps. By default only step 1 (immediate) — later bumps are manual in CRM.
