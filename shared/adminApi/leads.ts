@@ -116,6 +116,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
+      if (op === "contract_templates") {
+        const { listCrmContractTemplates } = await import("../pm/crmLeadContract.js");
+        const templates = await listCrmContractTemplates();
+        return res.status(200).json({ templates });
+      }
+
+      if (op === "contract_status") {
+        const leadId =
+          typeof req.query.leadId === "string"
+            ? req.query.leadId.trim()
+            : typeof req.query.id === "string"
+              ? req.query.id.trim()
+              : "";
+        if (!leadId) return res.status(400).json({ error: "leadId is required." });
+        const { getCrmLeadContractStatus } = await import("../pm/crmLeadContract.js");
+        try {
+          const status = await getCrmLeadContractStatus(leadId);
+          return res.status(200).json(status);
+        } catch (e) {
+          const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+          return res.status(status || 500).json({
+            error: e instanceof Error ? e.message : "Could not load contract.",
+          });
+        }
+      }
+
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
@@ -197,6 +223,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "POST") {
     const body = readBody(req);
+
+    const postOp =
+      (typeof req.query.op === "string" ? req.query.op.trim() : "") ||
+      String(body.op ?? "").trim();
+
+    if (postOp === "send_contract") {
+      const leadId = String(body.leadId ?? body.id ?? "").trim();
+      const templateId = String(body.templateId ?? body.template_id ?? "").trim();
+      try {
+        const { sendCrmLeadContract } = await import("../pm/crmLeadContract.js");
+        const result = await sendCrmLeadContract({ leadId, templateId });
+        return res.status(200).json(result);
+      } catch (e) {
+        const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+        return res.status(status || 500).json({
+          error: e instanceof Error ? e.message : "Could not send contract.",
+        });
+      }
+    }
+
+    if (postOp === "cancel_contract") {
+      const leadId = String(body.leadId ?? body.id ?? "").trim();
+      if (!leadId) return res.status(400).json({ error: "leadId is required." });
+      try {
+        const { cancelCrmLeadContract } = await import("../pm/crmLeadContract.js");
+        const result = await cancelCrmLeadContract(leadId);
+        return res.status(200).json(result);
+      } catch (e) {
+        const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+        return res.status(status || 500).json({
+          error: e instanceof Error ? e.message : "Could not cancel contract.",
+        });
+      }
+    }
 
     // "+ Lead": a referral or walk-in typed in by a partner. It lands at New with the AI closer off, so nothing is texted
     // to the person until a partner turns it on for that lead.
@@ -493,8 +553,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.referredBy !== undefined || body.referred_by !== undefined) patch.referredBy = String(body.referredBy ?? body.referred_by ?? "").trim();
     if (body.contractStatus !== undefined || body.contract_status !== undefined) {
       const raw = String(body.contractStatus ?? body.contract_status ?? "").trim();
-      if (raw !== "" && raw !== "signed" && raw !== "sent" && raw !== "not_sent") return res.status(400).json({ error: "contractStatus must be signed, sent, not_sent or empty." });
-      patch.contractStatus = raw as "" | "signed" | "sent" | "not_sent";
+      if (raw !== "" && raw !== "signed" && raw !== "sent" && raw !== "not_sent" && raw !== "cancelled") {
+        return res.status(400).json({ error: "contractStatus must be signed, sent, not_sent, cancelled or empty." });
+      }
+      patch.contractStatus = raw as "" | "signed" | "sent" | "not_sent" | "cancelled";
     }
     if (body.notes !== undefined) patch.notes = String(body.notes);
     if (body.callNotes !== undefined) patch.callNotes = String(body.callNotes);

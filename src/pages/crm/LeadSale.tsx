@@ -13,18 +13,19 @@ export type SaleLead = {
   plan?: string;
   booked_by?: string;
   closed_by?: string;
-  contract_status?: "" | "signed" | "sent" | "not_sent";
+  contract_status?: "" | "signed" | "sent" | "not_sent" | "cancelled";
   referred_by?: string;
   source?: string;
   onboarding?: LeadOnboarding;
 };
 
 export const PLAN_OPTIONS = ["Standard", "Full Service", "Growth", "Essentials"];
-export const CONTRACT_OPTIONS: { value: "" | "signed" | "sent" | "not_sent"; label: string }[] = [
+export const CONTRACT_OPTIONS: { value: "" | "signed" | "sent" | "not_sent" | "cancelled"; label: string }[] = [
   { value: "", label: "Not recorded" },
   { value: "signed", label: "Signed" },
   { value: "sent", label: "Sent, awaiting signature" },
   { value: "not_sent", label: "Not sent" },
+  { value: "cancelled", label: "Cancelled" },
 ];
 
 const LABEL = "text-[10.5px] font-medium uppercase tracking-[0.1em] text-[#7d7873]";

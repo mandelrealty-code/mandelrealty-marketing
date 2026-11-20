@@ -378,6 +378,32 @@ export async function handleDevApi(
           json(res, 200, { ...rules, checkedAt: new Date().toISOString() });
           return true;
         }
+        if (qs.get("op") === "contract_templates") {
+          try {
+            const { listCrmContractTemplates } = await import("./pm/crmLeadContract.js");
+            json(res, 200, { templates: await listCrmContractTemplates() });
+          } catch (e) {
+            json(res, 500, { error: e instanceof Error ? e.message : "Could not load templates." });
+          }
+          return true;
+        }
+        if (qs.get("op") === "contract_status") {
+          const leadId = (qs.get("leadId") || qs.get("id") || "").trim();
+          if (!leadId) {
+            json(res, 400, { error: "leadId is required." });
+            return true;
+          }
+          try {
+            const { getCrmLeadContractStatus } = await import("./pm/crmLeadContract.js");
+            json(res, 200, await getCrmLeadContractStatus(leadId));
+          } catch (e) {
+            const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+            json(res, status || 500, {
+              error: e instanceof Error ? e.message : "Could not load contract.",
+            });
+          }
+          return true;
+        }
         const followupsFor = qs.get("followups")?.trim() || "";
         if (followupsFor) {
           const { getPendingDraft } = await import("./smsDraftStore.js");
@@ -413,6 +439,40 @@ export async function handleDevApi(
     }
     if (method === "POST") {
       const body = await readJsonBody(req);
+      const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+      const postOp = (qs.get("op") || String(body.op ?? "")).trim();
+      if (postOp === "send_contract") {
+        try {
+          const { sendCrmLeadContract } = await import("./pm/crmLeadContract.js");
+          json(res, 200, await sendCrmLeadContract({
+            leadId: String(body.leadId ?? body.id ?? "").trim(),
+            templateId: String(body.templateId ?? body.template_id ?? "").trim(),
+          }));
+        } catch (e) {
+          const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+          json(res, status || 500, {
+            error: e instanceof Error ? e.message : "Could not send contract.",
+          });
+        }
+        return true;
+      }
+      if (postOp === "cancel_contract") {
+        const leadId = String(body.leadId ?? body.id ?? "").trim();
+        if (!leadId) {
+          json(res, 400, { error: "leadId is required." });
+          return true;
+        }
+        try {
+          const { cancelCrmLeadContract } = await import("./pm/crmLeadContract.js");
+          json(res, 200, await cancelCrmLeadContract(leadId));
+        } catch (e) {
+          const status = typeof e === "object" && e && "status" in e ? Number((e as { status: number }).status) : 500;
+          json(res, status || 500, {
+            error: e instanceof Error ? e.message : "Could not cancel contract.",
+          });
+        }
+        return true;
+      }
       const paste = String(body.paste ?? "");
       if (body.parseOnly) {
         const preview = await previewMetaLeadPaste(paste);

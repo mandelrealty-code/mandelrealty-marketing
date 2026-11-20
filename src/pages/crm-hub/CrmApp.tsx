@@ -135,7 +135,11 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
           transferState?: "connecting" | "connected" | null;
         },
         booking: null as Record<string, unknown> | null,
-      strRules: null as Record<string, unknown> | null,
+        strRules: null as Record<string, unknown> | null,
+        templates: [] as Array<Record<string, unknown>>,
+        activeContract: null as Record<string, unknown> | null,
+        contractsUrl: null as string | null,
+        contractDownloadUrl: null as string | null,
       },
       vocab: {
         STATUS_LABEL,
@@ -184,6 +188,47 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         host.data.leadCallCounts = counts;
         return data;
       },
+      loadContractTemplates: async () => {
+        const data = await call<{ templates?: Array<Record<string, unknown>> }>(
+          "/api/admin/leads?op=contract_templates",
+        );
+        host.data.templates = Array.isArray(data.templates) ? data.templates : [];
+        return data;
+      },
+      loadActiveContract: async (leadId: string) => {
+        const data = await call<{
+          contract?: Record<string, unknown> | null;
+          contracts_url?: string | null;
+          download_url?: string | null;
+        }>(`/api/admin/leads?op=contract_status&leadId=${encodeURIComponent(leadId)}`);
+        host.data.activeContract =
+          data.contract && typeof data.contract === "object" ? data.contract : null;
+        host.data.contractsUrl =
+          typeof data.contracts_url === "string" ? data.contracts_url : null;
+        host.data.contractDownloadUrl =
+          typeof data.download_url === "string" ? data.download_url : null;
+        return data;
+      },
+      sendContract: async (leadId: string, templateId: string) => {
+        const data = await call<{
+          ok?: boolean;
+          contract?: Record<string, unknown>;
+          contracts_url?: string;
+          email_sent?: boolean;
+          email_error?: string | null;
+        }>("/api/admin/leads?op=send_contract", json("POST", { leadId, templateId }));
+        if (data.contract && typeof data.contract === "object") {
+          host.data.activeContract = data.contract;
+        }
+        if (typeof data.contracts_url === "string") {
+          host.data.contractsUrl = data.contracts_url;
+        }
+        return data;
+      },
+      cancelContract: async (leadId: string) => {
+        const data = await call("/api/admin/leads?op=cancel_contract", json("POST", { leadId }));
+        return data;
+      },
       loadFollowups: async (leadId: string) => {
         const data = await call(`/api/admin/leads?followups=${encodeURIComponent(leadId)}`);
         host.data.callTranscript = typeof data.callTranscript === "string" ? data.callTranscript : null;
@@ -203,6 +248,13 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
           ...host.data.leadCallCounts,
           [leadId]: callCount,
         };
+        try {
+          await host.loadActiveContract(leadId);
+        } catch {
+          host.data.activeContract = null;
+          host.data.contractsUrl = null;
+          host.data.contractDownloadUrl = null;
+        }
         const ac = data.activeCall;
         const rawTs =
           typeof data.transfer_status === "string"

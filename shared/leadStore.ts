@@ -57,10 +57,14 @@ export type LeadRow = {
   plan: string;
   booked_by: string;
   closed_by: string;
-  contract_status: "" | "signed" | "sent" | "not_sent";
+  contract_status: "" | "signed" | "sent" | "not_sent" | "cancelled";
   referred_by: string;
   /** The onboarding unit this lead became, once onboarding has started. */
   onboarding_unit_id: string | null;
+  /** pm_clients.id — set when the first contract is sent from CRM. */
+  client_id: string | null;
+  /** pm_contracts.id — most recent contract sent from CRM. */
+  contract_id: string | null;
   /** Sales-call property profile (crm_profile_v1). */
   property_address: string;
   property_place_id: string;
@@ -127,9 +131,11 @@ export type LeadCrmUpdate = {
   plan?: string;
   bookedBy?: string;
   closedBy?: string;
-  contractStatus?: "" | "signed" | "sent" | "not_sent";
+  contractStatus?: "" | "signed" | "sent" | "not_sent" | "cancelled";
   referredBy?: string;
   onboardingUnitId?: string | null;
+  clientId?: string | null;
+  contractId?: string | null;
 };
 
 export type LeadProfileUpdate = {
@@ -185,9 +191,13 @@ export function mapLead(row: Record<string, unknown>): LeadRow {
     plan: String(row.plan ?? ""),
     booked_by: String(row.booked_by ?? ""),
     closed_by: String(row.closed_by ?? ""),
-    contract_status: (["signed", "sent", "not_sent"].includes(String(row.contract_status ?? "")) ? String(row.contract_status) : "") as LeadRow["contract_status"],
+    contract_status: (["signed", "sent", "not_sent", "cancelled"].includes(String(row.contract_status ?? ""))
+      ? String(row.contract_status)
+      : "") as LeadRow["contract_status"],
     referred_by: String(row.referred_by ?? ""),
     onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
+    client_id: (row.client_id as string | null) ?? null,
+    contract_id: row.contract_id != null && String(row.contract_id).trim() ? String(row.contract_id) : null,
     property_address: String(row.property_address ?? ""),
     property_place_id: String(row.property_place_id ?? ""),
     property_city: String(row.property_city ?? ""),
@@ -446,6 +456,8 @@ export async function updateLeadCrm(
   if (patch.contractStatus !== undefined) update.contract_status = patch.contractStatus || null;
   if (patch.referredBy !== undefined) update.referred_by = patch.referredBy || null;
   if (patch.onboardingUnitId !== undefined) update.onboarding_unit_id = patch.onboardingUnitId;
+  if (patch.clientId !== undefined) update.client_id = patch.clientId || null;
+  if (patch.contractId !== undefined) update.contract_id = patch.contractId || null;
 
   if (Object.keys(update).length === 0) return null;
 

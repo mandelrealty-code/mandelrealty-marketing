@@ -91,7 +91,34 @@ export const CRM_EXTRA_CSS = `
 .askc .cbtns{margin-top:6px}
 .btn.redtxt{color:var(--redink);font-weight:600;border-color:var(--line);background:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-@media (max-width:768px){.days{flex-wrap:wrap;overflow:visible}.bookbtn,.cbtns .btn{min-height:44px}}
+/* CRM contract send (mrg-crm-contract.html) */
+.ks .two select{font-size:12px;padding-left:10px;padding-right:28px;background-position:right 8px center}
+.kbody{margin-top:12px}
+.btn.wide{width:100%}
+.btn.big{height:46px;font-size:var(--t-base);margin-top:12px}
+.icard{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff}
+.ih{font-size:var(--t-sm);font-weight:650;color:var(--ink);margin-bottom:8px}
+.tplrow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 10px;border:1px solid var(--line-2);border-radius:10px;background:#fff;margin-bottom:6px;cursor:pointer;font:inherit;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+.tplrow:hover{background:var(--hover);border-color:rgb(0 0 0 / .2)}
+.tplrow .t{flex:1;min-width:0}
+.tplrow b{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:600}
+.tplrow .t span{font-size:var(--t-xs);color:var(--muted);font-weight:500}
+.tplrow .sel{font-size:var(--t-xs);font-weight:600;color:var(--tealink);white-space:nowrap}
+.rdl{display:grid;grid-template-columns:70px 1fr;gap:4px 10px;margin:0;font-size:var(--t-sm)}
+.rdl dt{color:var(--muted);font-size:var(--t-xs);font-weight:500;padding-top:2px}
+.rdl dd{margin:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+.ccardk{border:1px solid var(--line);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;background:#fff;color:var(--ink)}
+.ccardk .kt{font-weight:700;font-size:var(--t-sm);color:var(--ink)}
+.ccardk .kt.ok{color:var(--greenink)}
+.ccardk .kn{font-size:16px;font-weight:650;margin:3px 0 2px}
+.ccardk .km{font-size:var(--t-xs);color:var(--muted);font-weight:500}
+.kaw{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:var(--t-xs);font-weight:600;color:var(--amberink)}
+.klinks{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:var(--t-sm)}
+.klinks .lnk{font-size:var(--t-sm)}
+.klinks .sp{flex:1}
+.cnote2{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-bottom:8px}
+.okbox .okc{width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;flex:none}
+@media (max-width:768px){.days{flex-wrap:wrap;overflow:visible}.bookbtn,.cbtns .btn{min-height:44px}.ks .two{grid-template-columns:1fr}.btn.wide{min-height:46px}}
 @media (max-width:767px){
   .subnav .seg{grid-template-columns:repeat(4,minmax(0,1fr))}
   .wmhead{flex-direction:column;align-items:stretch}
@@ -473,6 +500,10 @@ const S = {
   cmd: { q: '', act: 0, items: [] },
   book: { slots: [], dayKey: null, pick: null, loading: false, err: '', leadId: null, step: 'pick', mode: 'book', bookingId: null, googleEventId: null, note: '' },
   prof: { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false },
+  contractStep: null,
+  selectedTemplate: null,
+  contractAskCancel: false,
+  contractBusy: false,
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -990,14 +1021,77 @@ function bookBlock(l) {
 
   return `<div class="dsec booksec"><h5><span>Book a call</span><button class="iconbtn" data-act="reloadBookSlots" aria-label="Reload slots" title="Reload slots" style="width:28px;height:28px" ${dis}>${ic('refresh', 'sm')}</button></h5><div class="bbody">${body}</div></div>`;
 }
+function templateBlurb(label) {
+  const s = String(label || '').toLowerCase();
+  if (/growth/.test(s)) return 'Performance-based · 12-month term';
+  if (/essential/.test(s)) return 'Flat monthly fee · Limited scope';
+  if (/full\s*service|full service/.test(s) || /\bfull\b/.test(s)) return '25% + HST · Premium service';
+  if (/standard|management/.test(s)) return '20% + HST · Full management';
+  return 'Host portal · Sign online';
+}
+function contractDateLabel(iso) {
+  if (!iso) return shortDate(new Date().toISOString());
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return shortDate(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function saleContractBody(l) {
+  const hd = callHostData();
+  const email = String(l.email || '').trim() || 'this lead';
+  const phone = phoneUsable(l.phone) ? fmtPhone(l.phone) : (l.phone || '—');
+  const name = String(l.full_name || l.name || 'Host').trim();
+  const active = hd.activeContract || null;
+  const title = active && active.title ? active.title : 'Management agreement';
+  const sentAt = active && (active.created_at || active.signed_at || active.signed_on);
+  const signedAt = active && (active.signed_on || active.signed_at || active.created_at);
+  const contractsUrl = hd.contractsUrl || '';
+  const downloadUrl = hd.contractDownloadUrl || '';
+  const templates = Array.isArray(hd.templates) ? hd.templates : [];
+  const busy = S.contractBusy || isBusy('contract');
+  const dis = busy ? 'disabled' : '';
+  const cs = String(l.contract_status || '');
+
+  if (S.contractStep === 'picker') {
+    const rows = templates.length
+      ? templates.map((t) => `<button type="button" class="tplrow" data-act="pickContractTemplate" data-id="${esc(t.id)}" ${dis}><span class="t"><b>${esc(t.label || t.filename || 'Agreement')}</b><span>${esc(templateBlurb(t.label))}</span></span><span class="sel">Select →</span></button>`).join('')
+      : `<div class="meta" style="margin-bottom:8px">No templates yet. Upload one in OPS → Settings → Contract templates.</div>`;
+    return `<div class="icard"><div class="ih">Choose a contract template</div>${rows}<button type="button" class="lnkm" data-act="cancelContractPick" ${dis}>Cancel</button></div>`;
+  }
+
+  if (S.contractStep === 'review' && S.selectedTemplate) {
+    const t = S.selectedTemplate;
+    return `<div class="icard"><div class="ih">Send contract to ${esc(name)}?</div><dl class="rdl"><dt>Template</dt><dd>${esc(t.label || t.filename || 'Agreement')}</dd><dt>To</dt><dd>${esc(email)}</dd><dt>Phone</dt><dd>${esc(phone)}</dd></dl>
+      <div class="hint" style="margin:8px 0 10px">${esc(name)} will receive an email with a link to review and sign the contract online.</div>
+      <div class="cbtns"><button type="button" class="btn primary" data-act="confirmSendContract" ${dis}>${busy ? '<i class="spin" style="width:12px;height:12px;border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Sending…' : 'Send contract'}</button><button type="button" class="btn ghost" data-act="backContractPick" ${dis}>Back</button></div></div>`;
+  }
+
+  if (cs === 'signed') {
+    const createBtn = l.onboarding
+      ? `<div class="okbox" style="margin-top:12px"><span class="okc">${ic('check', 'xs')}</span><span><b>Onboarding unit created</b>${l.onboarding.address ? ' · ' + esc(l.onboarding.address) : ''} · <button type="button" class="lnk" data-act="openUnit" data-id="${esc(l.id)}">Open unit →</button></span></div>`
+      : `<button type="button" class="btn primary wide big" data-act="startOnboarding" ${dis}>${ic('arrow', 'sm')}Create onboarding unit</button><div class="hint">Uses the property profile: address, ownership, furnishing and permit status.</div>`;
+    return `<div class="ccardk"><div class="kt ok">✓ Contract signed</div><div class="kn">${esc(title)}</div><div class="km">Signed by ${esc(name)} · ${esc(contractDateLabel(signedAt))}</div></div>
+      <div class="klinks">${downloadUrl ? `<a href="${esc(downloadUrl)}" target="_blank" rel="noopener" class="lnk">Download PDF →</a>` : '<span class="meta">Download PDF →</span>'}<span class="dotsep">·</span>${contractsUrl ? `<a href="${esc(contractsUrl)}" target="_blank" rel="noopener" class="lnk">View</a>` : '<span class="meta">View</span>'}</div>
+      ${createBtn}`;
+  }
+
+  if (cs === 'sent') {
+    const cancelUi = S.contractAskCancel
+      ? `<div class="askc"><b>Cancel this contract?</b><span>The signing link stops working. ${esc(name)} isn’t notified automatically.</span><div class="cbtns"><button type="button" class="btn sm redtxt" data-act="doCancelContract" ${dis}>Yes, cancel</button><button type="button" class="btn sm" data-act="keepContract" ${dis}>Keep it</button></div></div>`
+      : `<div class="klinks">${contractsUrl ? `<a href="${esc(contractsUrl)}" target="_blank" rel="noopener" class="lnk">View contract →</a>` : '<span class="meta">View contract →</span>'}<span class="dotsep">·</span><button type="button" class="lnkm" data-act="askCancelContract" ${dis}>Cancel</button></div>`;
+    return `<div class="ccardk"><div class="kt">📄 Contract sent</div><div class="kn">${esc(title)}</div><div class="km">Sent to ${esc(email)} · ${esc(contractDateLabel(sentAt))}</div><div class="kaw"><i class="cdot amber"></i>Awaiting signature</div></div>${cancelUi}`;
+  }
+
+  const cancelledNote = cs === 'cancelled' ? '<div class="cnote2">Contract cancelled · you can send a new one</div>' : '';
+  return `${cancelledNote}<button type="button" class="btn primary wide" data-act="openContractPick" ${dis}>Send contract →</button><div class="hint">Pick a template and send to ${esc(email)}</div>`;
+}
 function saleBlock(l, hl) {
   const d = D(l), dis = isBusy('save') ? 'disabled' : '';
   const gaps = [l.plan, l.contract_status, l.booked_by, l.closed_by].filter((x) => !x).length;
   const showGaps = gaps && soldish(l);
   const status = l.onboarding ? `<button class="lnk" data-act="openUnit" data-id="${esc(l.id)}">${esc(onboardingLine(l.onboarding))}${l.onboarding.address ? ' · ' + esc(l.onboarding.address) : ''} →</button>` : l.status === 'won' ? '<span class="gapchip">Not started</span>' : '<span class="meta">Starts once the lead is Won</span>';
   const act = l.onboarding ? `<button class="btn" style="width:100%;margin-top:10px" data-act="openUnit" data-id="${esc(l.id)}">Open unit ${ic('arrow', 'sm')}</button>`
-    : l.status === 'won' ? `<button class="btn primary" style="width:100%;margin-top:10px" data-act="startOnboarding">${ic('plus', 'sm')}Start onboarding</button>` : '';
-  return `<div class="dsec ${hl ? 'hl' : ''}"><h5>Sale and onboarding ${showGaps ? `<span class="gapchip">${gaps} gap${gaps > 1 ? 's' : ''}</span>` : ''}</h5>
+    : l.status === 'won' && l.contract_status !== 'signed' ? `<button class="btn primary" style="width:100%;margin-top:10px" data-act="startOnboarding">${ic('plus', 'sm')}Start onboarding</button>` : '';
+  return `<div class="dsec ks ${hl ? 'hl' : ''}"><h5>Sale and onboarding ${showGaps ? `<span class="gapchip">${gaps} gap${gaps > 1 ? 's' : ''}</span>` : ''}</h5>
     <div class="two">
       <div class="field"><label for="slPlan">Plan</label><select id="slPlan" class="input ${!l.plan ? 'warn' : ''}" data-sel="plan" ${dis}>${opt('', 'Not recorded', l.plan || '')}${PLAN_OPTIONS.map((p) => opt(p, p, l.plan || '')).join('')}</select></div>
       <div class="field"><label for="slCon">Contract</label><select id="slCon" class="input ${!l.contract_status ? 'warn' : ''}" data-sel="contractStatus" ${dis}>${CONTRACT_OPTIONS.map((c) => opt(c.value, c.label, l.contract_status || '')).join('')}</select></div>
@@ -1005,6 +1099,7 @@ function saleBlock(l, hl) {
       <div class="field"><label for="slCl">Closed by</label><input id="slCl" class="input ${!d.closed ? 'ph' : ''}" data-k="ld.closed" data-save="closedBy" value="${esc(d.closed)}" placeholder="Not recorded"></div>
       ${l.source === 'Referral' ? `<div class="field full"><label>Referred by</label><span class="input" style="display:flex;align-items:center">${d.referred ? esc(d.referred) : '<span class="gap">Not recorded</span>'}</span></div>` : ''}
     </div>
+    <div class="kbody">${saleContractBody(l)}</div>
     <dl class="kv" style="margin-top:10px"><dt>Onboarding</dt><dd>${status}</dd></dl>${act}
     ${showGaps ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing sale details.</b> Fill these before the lead is Won. Onboarding flags any that are still empty.</span></div>` : ''}</div>`;
 }
@@ -1172,13 +1267,21 @@ function callHostData() {
       activeCall: null,
       booking: null,
       strRules: null,
+      templates: [],
+      activeContract: null,
+      contractsUrl: null,
+      contractDownloadUrl: null,
     };
   }
   if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
   if (!Array.isArray(host.data.calls)) host.data.calls = [];
+  if (!Array.isArray(host.data.templates)) host.data.templates = [];
   if (!host.data.leadCallCounts || typeof host.data.leadCallCounts !== 'object') host.data.leadCallCounts = {};
   if (host.data.booking === undefined) host.data.booking = null;
   if (host.data.strRules === undefined) host.data.strRules = null;
+  if (host.data.activeContract === undefined) host.data.activeContract = null;
+  if (host.data.contractsUrl === undefined) host.data.contractsUrl = null;
+  if (host.data.contractDownloadUrl === undefined) host.data.contractDownloadUrl = null;
   return host.data;
 }
 async function saveProfile(fields, okMsg = 'Saved to lead') {
@@ -2000,6 +2103,10 @@ function openLead(id, opts = {}) {
     transcriptScrollTop = 0;
     S.transferState = null;
     S.prof = { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false };
+    S.contractStep = null;
+    S.selectedTemplate = null;
+    S.contractAskCancel = false;
+    S.contractBusy = false;
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
     lastMsgKey = '';
@@ -2011,6 +2118,9 @@ function openLead(id, opts = {}) {
       hd.calls = [];
       hd.booking = null;
       hd.strRules = null;
+      hd.activeContract = null;
+      hd.contractsUrl = null;
+      hd.contractDownloadUrl = null;
       if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
     }
     const opened = leadById(id);
@@ -3067,6 +3177,93 @@ const ACT = {
   startOnboarding: () => { const l = leadById(S.leadId); if (l) startOnboarding(l); },
   openUnit: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.onboarding) host.openOnboardingUnit && host.openOnboardingUnit(l.onboarding.unitId); },
   convertClient: (b) => { const l = leadById(b.dataset.id || S.leadId); S.menu = null; renderMenu(); if (l && host.convertLeadToOpsClient) host.convertLeadToOpsClient({ id: l.id, name: l.name, email: l.email, phone: l.phone }); },
+  openContractPick: async () => {
+    const l = leadById(S.leadId);
+    if (!l) return;
+    if (!String(l.email || '').trim()) {
+      toast('Add an email on this lead before sending a contract.', 'bad');
+      return;
+    }
+    S.contractBusy = true;
+    renderMain();
+    try {
+      if (host.loadContractTemplates) await host.loadContractTemplates();
+      S.contractStep = 'picker';
+      S.selectedTemplate = null;
+      S.contractAskCancel = false;
+    } catch (e) {
+      toast(errMsg(e, 'Could not load contract templates.'), 'bad');
+    } finally {
+      S.contractBusy = false;
+      renderMain();
+    }
+  },
+  cancelContractPick: () => {
+    S.contractStep = null;
+    S.selectedTemplate = null;
+    renderMain();
+  },
+  pickContractTemplate: (b) => {
+    const id = b.dataset.id;
+    const hd = callHostData();
+    const t = (hd.templates || []).find((row) => String(row.id) === String(id));
+    if (!t) return;
+    S.selectedTemplate = t;
+    S.contractStep = 'review';
+    renderMain();
+  },
+  backContractPick: () => {
+    S.contractStep = 'picker';
+    renderMain();
+  },
+  confirmSendContract: async () => {
+    const l = leadById(S.leadId);
+    const t = S.selectedTemplate;
+    if (!l || !t || !host.sendContract) return;
+    S.contractBusy = true;
+    renderMain();
+    try {
+      const data = await host.sendContract(l.id, t.id);
+      S.contractStep = null;
+      S.selectedTemplate = null;
+      S.contractAskCancel = false;
+      if (data && data.contract) {
+        const hd = callHostData();
+        hd.activeContract = data.contract;
+        if (data.contracts_url) hd.contractsUrl = data.contracts_url;
+      }
+      mergeLead(l.id, { contract_status: 'sent', contract_id: data && data.contract ? data.contract.id : l.contract_id });
+      toast(`Contract sent to ${l.email || 'lead'}`);
+      if (host.loadActiveContract) await host.loadActiveContract(l.id);
+      await loadThread(l.id);
+    } catch (e) {
+      toast(errMsg(e, 'Could not send contract.'), 'bad');
+    } finally {
+      S.contractBusy = false;
+      renderMain();
+    }
+  },
+  askCancelContract: () => { S.contractAskCancel = true; renderMain(); },
+  keepContract: () => { S.contractAskCancel = false; renderMain(); },
+  doCancelContract: async () => {
+    const l = leadById(S.leadId);
+    if (!l || !host.cancelContract) return;
+    S.contractBusy = true;
+    renderMain();
+    try {
+      await host.cancelContract(l.id);
+      S.contractAskCancel = false;
+      S.contractStep = null;
+      mergeLead(l.id, { contract_status: 'cancelled' });
+      toast('Contract cancelled');
+      if (host.loadActiveContract) await host.loadActiveContract(l.id);
+    } catch (e) {
+      toast(errMsg(e, 'Could not cancel contract.'), 'bad');
+    } finally {
+      S.contractBusy = false;
+      renderMain();
+    }
+  },
   reloadBookSlots: () => {
     if (S.book.step === 'booked' || S.book.step === 'askcancel') {
       void loadThread(S.leadId);
