@@ -10,11 +10,87 @@ import { cancelLeadFollowups } from "./followUpStore.js";
 
 export const BOOKING_HOURS_START = 9;
 export const BOOKING_HOURS_END = 17;
-const SLOT_MS = 60 * 60 * 1000;
-const BUFFER_MS = 30 * 60 * 1000;
-/** Up to ~7 weekdays × business hours — AI gets the full list, presents 3. */
-const MAX_SLOTS = 30;
-const LOOKAHEAD_DAYS = 7;
+/** Default 60-min call; overridden by crm_calendar_tokens.slot_duration_minutes. */
+const DEFAULT_DURATION_MIN = 60;
+const DEFAULT_BUFFER_MIN = 30;
+/** Full open calendar for booker pills + AI matching. */
+const MAX_SLOTS = 100;
+const LOOKAHEAD_DAYS = 60;
+
+export type CalendarSlotsDebug = {
+  eventsFound: number;
+  workingHours: { start: number; end: number };
+  bufferMinutes: number;
+  daysChecked: number;
+  slotsGenerated: number;
+  firstSlot: string;
+  lastSlot: string;
+};
+
+type BookingConfig = {
+  startHour: number;
+  endHour: number;
+  bufferMinutes: number;
+  durationMinutes: number;
+};
+
+function safeHour(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(23, Math.floor(n));
+}
+
+function safeNonNeg(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.floor(n);
+}
+
+function safePositive(v: unknown, fallback: number): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+/** Hours / buffer / duration from crm_calendar_tokens (id=1), with safe defaults. */
+async function loadBookingConfig(): Promise<BookingConfig> {
+  const defaults: BookingConfig = {
+    startHour: BOOKING_HOURS_START,
+    endHour: BOOKING_HOURS_END,
+    bufferMinutes: DEFAULT_BUFFER_MIN,
+    durationMinutes: DEFAULT_DURATION_MIN,
+  };
+  const sb = getSupabaseAdmin();
+  if (!sb) return defaults;
+  const { data, error } = await sb
+    .from("crm_calendar_tokens")
+    .select(
+      "booking_hours_start, booking_hours_end, buffer_minutes, slot_duration_minutes",
+    )
+    .eq("id", 1)
+    .maybeSingle();
+  if (error || !data) {
+    if (error) {
+      console.warn(
+        "[crmCalendar] booking config read failed — using defaults",
+        error.message,
+      );
+    }
+    return defaults;
+  }
+  const startHour = safeHour(data.booking_hours_start, BOOKING_HOURS_START);
+  let endHour = safeHour(data.booking_hours_end, BOOKING_HOURS_END);
+  if (endHour <= startHour) endHour = BOOKING_HOURS_END;
+  return {
+    startHour,
+    endHour,
+    bufferMinutes: safeNonNeg(data.buffer_minutes, DEFAULT_BUFFER_MIN),
+    durationMinutes: safePositive(
+      data.slot_duration_minutes,
+      DEFAULT_DURATION_MIN,
+    ),
+  };
+}
 
 export type CalendarSlot = {
   start: string;
@@ -208,52 +284,114 @@ export async function getCalendarAccessToken(): Promise<string | null> {
 
 type BusyBlock = { start: number; end: number };
 
-async function fetchBusyBlocks(
+/** Parse YYYY-MM-DD as America/Toronto midnight (all-day Google events). */
+function torontoDateStartMs(ymd: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || !mo || !d) return null;
+  return zonedTimeToUtc(y, mo, d, 0, 0, CALL_TZ).getTime();
+}
+
+/**
+ * Event bounds as absolute UTC ms.
+ * Timed events use their ISO instants; all-day events use Toronto midnights
+ * so a "busy day" lines up with booking hours in America/Toronto.
+ */
+function eventBoundsUtcMs(item: {
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+}): BusyBlock | null {
+  if (item.start?.dateTime && item.end?.dateTime) {
+    const start = new Date(item.start.dateTime).getTime();
+    const end = new Date(item.end.dateTime).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      return null;
+    }
+    return { start, end };
+  }
+  if (item.start?.date && item.end?.date) {
+    const start = torontoDateStartMs(item.start.date);
+    const end = torontoDateStartMs(item.end.date);
+    if (start == null || end == null || end <= start) return null;
+    return { start, end };
+  }
+  return null;
+}
+
+type CalendarEventItem = {
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
+  status?: string;
+};
+
+async function fetchCalendarEvents(
   accessToken: string,
   timeMin: Date,
   timeMax: Date,
-): Promise<BusyBlock[]> {
+): Promise<CalendarEventItem[]> {
   const params = new URLSearchParams({
     timeMin: timeMin.toISOString(),
     timeMax: timeMax.toISOString(),
     singleEvents: "true",
     orderBy: "startTime",
+    maxResults: "2500",
   });
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
     { headers: { Authorization: `Bearer ${accessToken}` } },
   );
   const data = (await res.json().catch(() => ({}))) as {
-    items?: Array<{
-      start?: { dateTime?: string; date?: string };
-      end?: { dateTime?: string; date?: string };
-    }>;
+    items?: CalendarEventItem[];
     error?: { message?: string };
   };
   if (!res.ok) {
     throw new Error(data.error?.message || "Could not read Google Calendar.");
   }
-  const blocks: BusyBlock[] = [];
-  for (const item of data.items ?? []) {
-    const startRaw = item.start?.dateTime || item.start?.date;
-    const endRaw = item.end?.dateTime || item.end?.date;
-    if (!startRaw || !endRaw) continue;
-    const start = new Date(startRaw).getTime();
-    const end = new Date(endRaw).getTime();
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
-    // Buffer: 30 min before and after each event.
-    // A 9:00–10:00 event blocks 8:00–8:30 (slot
-    // ending within 30 min of event start) and
-    // blocks 10:00–10:30 (slot starting within
-    // 30 min of event end).
-    blocks.push({ start: start - BUFFER_MS, end: end + BUFFER_MS });
-  }
-  return blocks;
+  return (data.items ?? []).filter((item) => item.status !== "cancelled");
 }
 
-function overlaps(blocks: BusyBlock[], start: number, end: number): boolean {
-  // Expanded busy blocks already include ±30 min; any overlap means the slot is blocked.
-  return blocks.some((b) => start < b.end && end > b.start);
+/** True if [slotStart, slotEnd] overlaps event ± bufferMs. */
+function slotBlockedByEvents(
+  events: CalendarEventItem[],
+  slotStartMs: number,
+  slotEndMs: number,
+  bufferMs: number,
+): boolean {
+  return events.some((event) => {
+    const bounds = eventBoundsUtcMs(event);
+    if (!bounds) {
+      // Fallback matching the explicit loop (date / dateTime strings).
+      const startRaw = event.start?.dateTime || event.start?.date;
+      const endRaw = event.end?.dateTime || event.end?.date;
+      if (!startRaw || !endRaw) return false;
+      const evStart = new Date(startRaw).getTime();
+      const evEnd = new Date(endRaw).getTime();
+      if (!Number.isFinite(evStart) || !Number.isFinite(evEnd) || evEnd <= evStart) {
+        return false;
+      }
+      return slotStartMs < evEnd + bufferMs && slotEndMs > evStart - bufferMs;
+    }
+    return (
+      slotStartMs < bounds.end + bufferMs && slotEndMs > bounds.start - bufferMs
+    );
+  });
+}
+
+function torontoYmd(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: CALL_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function labelFromSlotStart(slotStart: Date): string {
+  // Same "Fri, Nov 20 · 9:00 AM" shape used elsewhere in CRM.
+  return formatCalendarSlotLabel(slotStart.toISOString());
 }
 
 /** Phone-call calendar event — no Google Meet (omit conferenceData / conferenceDataVersion). */
@@ -289,56 +427,112 @@ function buildPhoneCallEventBody(input: {
   };
 }
 
-/** Free 1-hour Toronto slots over the next 7 days (weekdays 9–17), up to 30. */
+/**
+ * Free Toronto booking slots — explicit 60-day × hourly loop.
+ * Hours / buffer / duration from crm_calendar_tokens (defaults 9–17 / 30 / 60).
+ * Slot wall-clock times use America/Toronto (DST-safe via zonedTimeToUtc).
+ */
 export async function listCalendarSlots(
-  now = new Date(),
-): Promise<{ slots: CalendarSlot[]; error?: string }> {
+  nowDate = new Date(),
+): Promise<{
+  slots: CalendarSlot[];
+  error?: string;
+  debug?: CalendarSlotsDebug;
+}> {
+  const config = await loadBookingConfig();
+  const startHour = config.startHour;
+  const endHour = config.endHour;
+  const bufferMs = config.bufferMinutes * 60_000;
+  const durationMs = config.durationMinutes * 60_000;
+  const now = nowDate.getTime();
+
+  const emptyDebug = (eventsFound = 0): CalendarSlotsDebug => ({
+    eventsFound,
+    workingHours: { start: startHour, end: endHour },
+    bufferMinutes: config.bufferMinutes,
+    daysChecked: LOOKAHEAD_DAYS,
+    slotsGenerated: 0,
+    firstSlot: "none",
+    lastSlot: "none",
+  });
+
   const accessToken = await getCalendarAccessToken();
   if (!accessToken) {
     return {
       slots: [],
       error:
         "Google Calendar is not connected. Connect Gmail in Settings → Connectors.",
+      debug: emptyDebug(0),
     };
   }
-  const timeMax = new Date(now.getTime() + LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
-  let busy: BusyBlock[];
+
+  const timeMax = new Date(now + LOOKAHEAD_DAYS * 86_400_000);
+  let events: CalendarEventItem[] = [];
   try {
-    busy = await fetchBusyBlocks(accessToken, now, timeMax);
+    events = await fetchCalendarEvents(accessToken, nowDate, timeMax);
   } catch (e) {
     return {
       slots: [],
       error: e instanceof Error ? e.message : "Could not read Google Calendar.",
+      debug: emptyDebug(0),
     };
   }
 
   const slots: CalendarSlot[] = [];
   const dayKeysSeen = new Set<string>();
 
-  for (let offset = 0; offset < LOOKAHEAD_DAYS + 1 && slots.length < MAX_SLOTS; offset++) {
-    const probe = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
-    const { y, m, day, weekday } = torontoParts(probe);
-    if (weekday === 0 || weekday === 6) continue;
-    const dayKey = `${y}-${pad(m)}-${pad(day)}`;
-    if (dayKeysSeen.has(dayKey)) continue;
-    dayKeysSeen.add(dayKey);
+  // Check 60 days ahead
+  for (let day = 0; day < LOOKAHEAD_DAYS; day++) {
+    const date = new Date(now + day * 86_400_000);
+    const torontoDate = torontoYmd(date); // "2026-11-20"
+    if (dayKeysSeen.has(torontoDate)) continue;
+    dayKeysSeen.add(torontoDate);
 
-    for (let hour = BOOKING_HOURS_START; hour < BOOKING_HOURS_END; hour++) {
-      if (slots.length >= MAX_SLOTS) break;
-      const start = zonedTimeToUtc(y, m, day, hour, 0, CALL_TZ);
-      const end = new Date(start.getTime() + SLOT_MS);
-      if (start.getTime() < now.getTime()) continue;
-      if (overlaps(busy, start.getTime(), end.getTime())) continue;
-      const startIso = start.toISOString();
+    const [yStr, mStr, dStr] = torontoDate.split("-");
+    const y = Number(yStr);
+    const m = Number(mStr);
+    const d = Number(dStr);
+    if (!y || !m || !d) continue;
+
+    for (let hour = startHour; hour < endHour; hour++) {
+      // Toronto wall clock → UTC (handles EST -05 / EDT -04; not a fixed -05:00).
+      const slotStart = zonedTimeToUtc(y, m, d, hour, 0, CALL_TZ);
+      const slotEnd = new Date(slotStart.getTime() + durationMs);
+
+      if (slotStart.getTime() <= now) continue;
+
+      const blocked = slotBlockedByEvents(
+        events,
+        slotStart.getTime(),
+        slotEnd.getTime(),
+        bufferMs,
+      );
+      if (blocked) continue;
+
+      const label = labelFromSlotStart(slotStart);
       slots.push({
-        start: startIso,
-        end: end.toISOString(),
-        label: formatCalendarSlotLabel(startIso),
+        start: slotStart.toISOString(),
+        end: slotEnd.toISOString(),
+        label,
       });
+
+      if (slots.length >= MAX_SLOTS) break;
     }
+    if (slots.length >= MAX_SLOTS) break;
   }
 
-  return { slots };
+  const debug: CalendarSlotsDebug = {
+    eventsFound: events.length,
+    workingHours: { start: startHour, end: endHour },
+    bufferMinutes: config.bufferMinutes,
+    daysChecked: LOOKAHEAD_DAYS,
+    slotsGenerated: slots.length,
+    firstSlot: slots[0]?.label ?? "none",
+    lastSlot: slots[slots.length - 1]?.label ?? "none",
+  };
+  console.info("[crmCalendar] listCalendarSlots", debug);
+
+  return { slots, debug };
 }
 
 export type BookSlotInput = {
@@ -1048,20 +1242,103 @@ const WEEKDAY_PARSE: Array<{ re: RegExp; day: number; name: string }> = [
 export type ParsedSlotWant = {
   weekday: number | null;
   weekdayName: string | null;
+  /** Specific calendar day in America/Toronto (e.g. Dec 15). */
+  calendarDate: { y: number; m: number; day: number } | null;
   hour24: number | null;
   minute: number | null;
-  /** Human phrase e.g. "Tuesday at 3:00 PM" */
+  /** Human phrase e.g. "Tuesday at 3:00 PM" or "Dec 15" */
   requestedLabel: string;
 };
 
-/** Parse day and/or time from a lead reply ("tuesday at 3", "thursday", "2pm"). */
+const MONTH_PARSE: Array<{ re: RegExp; m: number; name: string }> = [
+  { re: /\b(jan(?:uary)?)\b/i, m: 1, name: "Jan" },
+  { re: /\b(feb(?:ruary)?)\b/i, m: 2, name: "Feb" },
+  { re: /\b(mar(?:ch)?)\b/i, m: 3, name: "Mar" },
+  { re: /\b(apr(?:il)?)\b/i, m: 4, name: "Apr" },
+  { re: /\b(may)\b/i, m: 5, name: "May" },
+  { re: /\b(jun(?:e)?)\b/i, m: 6, name: "Jun" },
+  { re: /\b(jul(?:y)?)\b/i, m: 7, name: "Jul" },
+  { re: /\b(aug(?:ust)?)\b/i, m: 8, name: "Aug" },
+  { re: /\b(sep(?:t(?:ember)?)?)\b/i, m: 9, name: "Sep" },
+  { re: /\b(oct(?:ober)?)\b/i, m: 10, name: "Oct" },
+  { re: /\b(nov(?:ember)?)\b/i, m: 11, name: "Nov" },
+  { re: /\b(dec(?:ember)?)\b/i, m: 12, name: "Dec" },
+];
+
+function parseCalendarDateFromText(
+  text: string,
+  now: Date,
+): { y: number; m: number; day: number; label: string } | null {
+  const nowT = torontoParts(now);
+  // "Dec 15", "December 15th", "15 Dec"
+  for (const mo of MONTH_PARSE) {
+    const a = text.match(
+      new RegExp(`${mo.re.source}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, "i"),
+    );
+    const b = text.match(
+      new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mo.re.source}\\b`, "i"),
+    );
+    const dayRaw = a?.[1] || b?.[1];
+    if (!dayRaw) continue;
+    const day = Number(dayRaw);
+    if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+    let y = nowT.y;
+    if (mo.m < nowT.m || (mo.m === nowT.m && day < nowT.day)) y += 1;
+    return { y, m: mo.m, day, label: `${mo.name} ${day}` };
+  }
+  // "the 15th" → next occurrence of that day-of-month within lookahead
+  const ordinal = text.match(/\b(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b/i);
+  if (ordinal) {
+    const day = Number(ordinal[1]);
+    if (day >= 1 && day <= 31) {
+      for (let offset = 0; offset <= LOOKAHEAD_DAYS; offset++) {
+        const probe = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
+        const p = torontoParts(probe);
+        if (p.day === day) {
+          const monthName =
+            MONTH_PARSE.find((x) => x.m === p.m)?.name || String(p.m);
+          return { y: p.y, m: p.m, day: p.day, label: `${monthName} ${day}` };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** True when the lead is asking about a date beyond the immediate few days. */
+export function isFarFutureSlotAsk(reply: string, now = new Date()): boolean {
+  const text = reply.trim().toLowerCase();
+  if (!text) return false;
+  if (
+    /\b(\d+\s+weeks?|next month|following month|travelling|traveling|until\s+\w+|in\s+\w+\s+weeks?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  if (parseCalendarDateFromText(text, now)) return true;
+  for (const mo of MONTH_PARSE) {
+    if (mo.re.test(text)) return true;
+  }
+  return false;
+}
+
+/** Parse day and/or time from a lead reply ("tuesday at 3", "Dec 15", "2pm"). */
 export function parseSlotWant(reply: string, now = new Date()): ParsedSlotWant | null {
   const text = reply.trim().toLowerCase();
   if (!text) return null;
 
+  const cal = parseCalendarDateFromText(text, now);
   let weekday: number | null = null;
   let weekdayName: string | null = null;
-  if (/\btomorrow\b/i.test(text)) {
+  let calendarDate: ParsedSlotWant["calendarDate"] = null;
+
+  if (cal) {
+    calendarDate = { y: cal.y, m: cal.m, day: cal.day };
+    const utc = zonedTimeToUtc(cal.y, cal.m, cal.day, 12, 0, CALL_TZ);
+    weekday = torontoParts(utc).weekday;
+    weekdayName = WEEKDAY_PARSE.find((w) => w.day === weekday)?.name || null;
+  } else if (/\btomorrow\b/i.test(text)) {
     const t = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     weekday = torontoParts(t).weekday;
     weekdayName = WEEKDAY_PARSE.find((w) => w.day === weekday)?.name || "tomorrow";
@@ -1093,14 +1370,17 @@ export function parseSlotWant(reply: string, now = new Date()): ParsedSlotWant |
     // Bare "at 3" in booking hours → afternoon
     if (h >= 1 && h <= 7) h += 12;
     if (h >= 0 && h <= 23) hour24 = h;
-  } else if (bareHour && (weekday != null || /\b(time|o'?clock)\b/i.test(text))) {
+  } else if (
+    bareHour &&
+    (weekday != null || calendarDate || /\b(time|o'?clock)\b/i.test(text))
+  ) {
     let h = Number(bareHour[1]);
     minute = bareHour[2] ? Number(bareHour[2]) : 0;
     if (h >= 1 && h <= 7) h += 12;
     if (h >= BOOKING_HOURS_START && h < BOOKING_HOURS_END) hour24 = h;
   }
 
-  if (weekday == null && hour24 == null) return null;
+  if (weekday == null && hour24 == null && !calendarDate) return null;
 
   const timeBit =
     hour24 == null
@@ -1111,13 +1391,21 @@ export function parseSlotWant(reply: string, now = new Date()): ParsedSlotWant |
           const mm = String(minute).padStart(2, "0");
           return `${h12}:${mm} ${ap}`;
         })();
-  const requestedLabel = [weekdayName, timeBit ? `at ${timeBit}` : ""]
+  const dayBit = cal?.label || weekdayName || "";
+  const requestedLabel = [dayBit, timeBit ? `at ${timeBit}` : ""]
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
 
-  return { weekday, weekdayName, hour24, minute, requestedLabel };
+  return {
+    weekday,
+    weekdayName,
+    calendarDate,
+    hour24,
+    minute,
+    requestedLabel,
+  };
 }
 
 function slotTorontoParts(slot: CalendarSlot) {
@@ -1126,14 +1414,26 @@ function slotTorontoParts(slot: CalendarSlot) {
 
 function slotMatchesWant(slot: CalendarSlot, want: ParsedSlotWant): boolean {
   const p = slotTorontoParts(slot);
-  if (want.weekday != null && p.weekday !== want.weekday) return false;
+  if (want.calendarDate) {
+    if (
+      p.y !== want.calendarDate.y ||
+      p.m !== want.calendarDate.m ||
+      p.day !== want.calendarDate.day
+    ) {
+      return false;
+    }
+  } else if (want.weekday != null && p.weekday !== want.weekday) {
+    return false;
+  }
   if (want.hour24 != null) {
     if (p.hour !== want.hour24) return false;
     if (want.minute != null && want.minute !== 0 && p.minute !== want.minute) {
       return false;
     }
   }
-  return want.weekday != null || want.hour24 != null;
+  return (
+    want.calendarDate != null || want.weekday != null || want.hour24 != null
+  );
 }
 
 /** Closest open slots to a requested day/time (from the full calendar list). */
@@ -1145,7 +1445,18 @@ export function nearestSlotsToWant(
 ): CalendarSlot[] {
   if (!slots.length) return [];
   let target = now.getTime();
-  if (want.weekday != null || want.hour24 != null) {
+  if (want.calendarDate) {
+    const hour = want.hour24 ?? BOOKING_HOURS_START;
+    const minute = want.minute ?? 0;
+    target = zonedTimeToUtc(
+      want.calendarDate.y,
+      want.calendarDate.m,
+      want.calendarDate.day,
+      hour,
+      minute,
+      CALL_TZ,
+    ).getTime();
+  } else if (want.weekday != null || want.hour24 != null) {
     for (let offset = 0; offset < LOOKAHEAD_DAYS + 2; offset++) {
       const probe = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
       const p = torontoParts(probe);
@@ -1158,12 +1469,21 @@ export function nearestSlotsToWant(
       break;
     }
   }
-  // Prefer same weekday first when only day was requested and nothing exact matched.
+  // Prefer same calendar day / weekday first when only day was requested.
   const scored = slots.map((s) => {
     const t = new Date(s.start).getTime();
     const p = slotTorontoParts(s);
-    const sameDay =
-      want.weekday != null && p.weekday === want.weekday ? 0 : 1;
+    let sameDay = 1;
+    if (want.calendarDate) {
+      sameDay =
+        p.y === want.calendarDate.y &&
+        p.m === want.calendarDate.m &&
+        p.day === want.calendarDate.day
+          ? 0
+          : 1;
+    } else if (want.weekday != null && p.weekday === want.weekday) {
+      sameDay = 0;
+    }
     return { s, score: sameDay * 1e12 + Math.abs(t - target) };
   });
   scored.sort((a, b) => a.score - b.score);

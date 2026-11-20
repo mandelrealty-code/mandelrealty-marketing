@@ -170,14 +170,15 @@ CALL NOTES
 - If Call notes are present, that call already happened. Treat those notes as ground truth. Do not re-ask facts already in the notes. The next SMS should pick up from objections / next steps in the notes (e.g. they need to check the board, wait for tenants, compare fees). Follow up until the file is closed or they opt out.
 
 BOOKING SLOTS (real calendar)
-- AVAILABLE SLOTS in the user prompt is the FULL open calendar (up to ~30 times over 7 days). Search that entire list — never assume only the 3 you texted are open.
+- AVAILABLE SLOTS in the user prompt is the FULL open calendar (up to ~100 times over ~60 days). Search that entire list — never assume only the 3 you texted are open.
 - When first offering times in SMS, present ONLY 2–3 slots from the top of AVAILABLE SLOTS (numbered 1, 2, 3). Do not dump the full list into the SMS.
 - Prefer real slots in SMS (not a calendar URL) when they ask to talk / call, or when include_book_link is true.
 - Do not invent times that are not in AVAILABLE SLOTS.
-- When the lead asks for a specific day or time:
+- If the lead asks for a date more than a week away, always check: the calendar goes 60 days ahead. Never say a future date is unavailable without checking the full slot list first.
+- When the lead asks for a specific day or time (including far-out dates like "Dec 15" or "two weeks from now"):
   - Search the full available slots list above
   - If a match exists: offer that exact slot
-  - If no match exists: say so and offer the 2-3 nearest slots from the full list
+  - If no match exists: say so and offer the 2-3 nearest slots around their requested date, e.g. "I don't have Dec 15 open but I have Dec 14 · 2:00 PM or Dec 16 · 10:00 AM — would either of those work?"
   - Never say a time is unavailable if it appears in the full slots list above
 
 BOOKING SLOT REPLIES
@@ -1270,7 +1271,19 @@ export async function sendAiReplyToInbound(input: {
   const gate = await canAiTextLead(lead);
   if (!gate.ok) return { ok: false, skipped: true, reason: gate.reason };
 
-  const slots = await loadBookingSlots();
+  let slots = await loadBookingSlots();
+
+  const {
+    matchSlotFromReply,
+    formatCalendarSlotLabel,
+    resolveSlotPreference,
+    isFarFutureSlotAsk,
+  } = await import("./crmCalendar.js");
+
+  // Far-out dates ("Dec 15", "two weeks from now") → refresh the full 60-day window.
+  if (isFarFutureSlotAsk(input.inboundText)) {
+    slots = await loadBookingSlots();
+  }
 
   const claude = await callClaude({
     system: systemPrompt(),
@@ -1297,11 +1310,6 @@ export async function sendAiReplyToInbound(input: {
     body = ensureBookLinkInvite(body);
   }
 
-  const {
-    matchSlotFromReply,
-    formatCalendarSlotLabel,
-    resolveSlotPreference,
-  } = await import("./crmCalendar.js");
   const pending = await findPendingBookingConfirm(lead.id);
   let pendingSlotToLog: { start: string; end: string; label: string } | null =
     null;
@@ -1336,6 +1344,10 @@ export async function sendAiReplyToInbound(input: {
       );
     }
   } else {
+    // Match against a fresh 60-day list when they named a far-out date.
+    if (isFarFutureSlotAsk(input.inboundText)) {
+      slots = await loadBookingSlots();
+    }
     const matched =
       (decision.confirmed_slot_start &&
         slots.find((s) => s.start === decision.confirmed_slot_start)) ||
@@ -1358,11 +1370,11 @@ export async function sendAiReplyToInbound(input: {
         );
       } else if (pref.kind === "nearest") {
         const lines = pref.alternatives
-          .map((s, i) => `${i + 1}) ${s.label}`)
-          .join("\n");
+          .map((s) => s.label)
+          .join(" or ");
         const wantLabel = pref.want.requestedLabel || "that time";
         body = sanitizeCustomerSms(
-          `I don't have ${wantLabel} available, but the nearest times I have are:\n${lines}`,
+          `I don't have ${wantLabel} open but I have ${lines} — would either of those work?`,
         );
       }
     }

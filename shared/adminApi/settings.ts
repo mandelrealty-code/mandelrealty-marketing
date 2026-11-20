@@ -197,13 +197,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "GET" && op === "calendar_slots") {
-    // Up to 30 free slots over ~7 weekdays; ±30 min buffer applied in listCalendarSlots.
+    // Up to 100 free slots over 60 days (Toronto hours + buffer) via listCalendarSlots.
+    // `debug` is temporary for slot-generation testing — remove before prod deploy.
     const { listCalendarSlots } = await import("../crmCalendar.js");
     const result = await listCalendarSlots();
     if (result.error && result.slots.length === 0) {
-      return res.status(400).json({ error: result.error, slots: [] });
+      return res.status(400).json({
+        error: result.error,
+        slots: [],
+        debug: result.debug ?? null,
+      });
     }
-    return res.status(200).json({ slots: result.slots });
+    return res.status(200).json({
+      slots: result.slots,
+      debug: result.debug ?? null,
+    });
   }
 
   if (req.method === "POST" && op === "book_slot") {
