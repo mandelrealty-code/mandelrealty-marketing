@@ -1,6 +1,11 @@
 import { sendResendEmail } from "./auditEmails.js";
 import { captureCommit } from "./copilot/parity/capture.js";
 import { parityEnabled } from "./copilot/parity/flag.js";
+import {
+  contractSignLinkEmail,
+  contractSignedClientEmail,
+  contractSignedTeamEmail,
+} from "./emailTemplates.js";
 
 /** Owner-facing origin — never a Vercel preview URL (those are SSO-protected). */
 export function publicSiteOrigin(): string {
@@ -387,22 +392,11 @@ export async function sendSignedAgreementEmail(input: {
   const docs = ownerPortalUrl(input.slug, "documents");
   const prop = input.propertyLabel?.trim();
   const replyTo = process.env.RESEND_REPLY_TO?.trim() || "info@mandelrealtygroup.com";
-  const html = emailShell(`
-    <div style="font-family:Helvetica,Arial,sans-serif;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:#4ea882;padding-bottom:10px;">
-      Signed ${esc(input.signedOnLabel)}
-    </div>
-    <div style="font-family:Helvetica,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.2;color:#f5f5f5;padding-bottom:12px;">
-      Thank you, ${esc(input.firstName)} — your agreement is signed
-    </div>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
-      A copy of your management agreement${prop ? ` for ${esc(prop)}` : ""} is attached.
-      It’s also available anytime in your portal under Documents.
-    </p>
-    ${goldButton(docs, "Open Documents")}
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
-      Next: our team connects your listing. You’ll hear from us when earnings go live.
-    </p>
-  `);
+  const html = contractSignedClientEmail({
+    firstName: input.firstName,
+    planName: "management",
+    propertyAddress: prop || "your property",
+  });
 
   const text = [
     `Thank you, ${input.firstName} — your agreement is signed (${input.signedOnLabel}).`,
@@ -455,25 +449,12 @@ export async function sendCrmMagicSignEmail(input: {
   const first = input.firstName.trim() || "there";
   const plan = input.planName.trim() || "management";
   const prop = input.propertyLabel?.trim() || "your property";
-  const html = emailShell(`
-    <div style="font-family:Helvetica,Arial,sans-serif;font-size:26px;font-weight:700;line-height:1.25;color:#f5f5f5;padding-bottom:14px;">
-      Hi ${esc(first)},
-    </div>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
-      Your <strong style="color:#f5f5f5;font-weight:600">${esc(plan)}</strong> management agreement for
-      <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong> is ready to review and sign.
-    </p>
-    ${goldButton(input.signUrl, "Sign my agreement →")}
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0 0 12px;">
-      This link is private — please don’t share it. It expires in 7 days.
-    </p>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:0;">
-      Questions? Reply to this email or call Ryan at ${esc(RYAN_PHONE)}.
-    </p>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:13px;line-height:1.65;color:#8a8580;margin:18px 0 0;">
-      — Mandel Realty Group
-    </p>
-  `);
+  const html = contractSignLinkEmail({
+    firstName: first,
+    planName: plan,
+    propertyAddress: prop,
+    signUrl: input.signUrl,
+  });
   const text = [
     `Hi ${first},`,
     "",
@@ -518,16 +499,13 @@ export async function sendCrmSignedNotifyEmail(input: {
   const name = input.clientName.trim() || "A client";
   const plan = input.planName.trim() || "management";
   const prop = input.propertyLabel?.trim() || "their property";
-  const html = emailShell(`
-    <div style="font-family:Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;line-height:1.3;color:#f5f5f5;padding-bottom:12px;">
-      ${esc(name)} signed
-    </div>
-    <p style="font-family:Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#b4aea8;margin:0 0 20px;">
-      ${esc(name)} signed their <strong style="color:#f5f5f5;font-weight:600">${esc(plan)}</strong> agreement for
-      <strong style="color:#f5f5f5;font-weight:600">${esc(prop)}</strong> on ${esc(input.signedOnLabel)}.
-    </p>
-    ${goldButton(input.crmLeadUrl, "View in CRM →")}
-  `);
+  const html = contractSignedTeamEmail({
+    clientName: name,
+    planName: plan,
+    propertyAddress: prop,
+    signedDate: input.signedOnLabel,
+    crmUrl: input.crmLeadUrl,
+  });
   const text = [
     `${name} signed their ${plan} agreement for ${prop} on ${input.signedOnLabel}.`,
     "",

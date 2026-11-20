@@ -1,11 +1,12 @@
 import {
+  CRM_ADMIN_ORIGIN,
   LEAD_INBOX,
-  buildLeadNotificationHtml,
   buildLeadNotificationText,
   buildLeadSubject,
   sendResendEmail,
   type LeadEmailInput,
 } from "./auditEmails.js";
+import { newLeadEmail } from "./emailTemplates.js";
 import { inferAdAngle } from "./adAngle.js";
 import { sendAiFirstSms } from "./aiSmsAgent.js";
 import { isTwilioConfigured } from "./followUpSequences.js";
@@ -186,12 +187,28 @@ export async function importParsedMetaLead(
   let aiSkipped: string | undefined;
 
   if (apiKey) {
+    const leadDate = new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+    }).format(new Date());
+    const sourceLabel =
+      emailInput.source === "meta_instant_form"
+        ? "Meta Instant Form"
+        : emailInput.source || "Meta";
     const inbox = await sendResendEmail({
       apiKey,
       from,
       to: [LEAD_INBOX],
       subject: buildLeadSubject(emailInput),
-      html: buildLeadNotificationHtml(emailInput),
+      html: newLeadEmail({
+        leadName: emailInput.name,
+        source: sourceLabel,
+        date: leadDate,
+        phone: emailInput.phone,
+        email: emailInput.email,
+        address: emailInput.address || undefined,
+        crmUrl: `${CRM_ADMIN_ORIGIN}/crm/lead/${encodeURIComponent(leadId)}`,
+      }),
       text: buildLeadNotificationText(emailInput),
       replyTo: parsed.email.includes("@meta-lead.local") ? undefined : parsed.email,
     });

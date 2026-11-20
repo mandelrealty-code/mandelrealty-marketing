@@ -269,18 +269,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // "+ Lead": a referral or walk-in typed in by a partner. It lands at New with the AI closer off, so nothing is texted
-    // to the person until a partner turns it on for that lead.
+    // to the person until a partner turns it on for that lead. Operators still get the new-lead alert SMS (same as Meta paste).
     if (body.createLead === true) {
       const name = String(body.name ?? "").replace(/\s+/g, " ").trim();
       if (!name) return res.status(400).json({ error: "Name is required." });
       const source = String(body.source ?? "").trim();
       if (!(LEAD_SOURCES as readonly string[]).includes(source)) return res.status(400).json({ error: "Choose a lead source." });
       const referredBy = source === "Referral" ? String(body.referredBy ?? body.referred_by ?? "").trim() : "";
+      const phone = String(body.phone ?? "").trim();
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const address = String(body.address ?? "").replace(/\s+/g, " ").trim();
       const id = await insertLead({
         name,
-        email: String(body.email ?? "").trim().toLowerCase(),
-        phone: String(body.phone ?? "").trim(),
-        address: String(body.address ?? "").replace(/\s+/g, " ").trim(),
+        email,
+        phone,
+        address,
         earnings: "",
         hasListing: "unknown",
         callStartIso: "",
@@ -295,6 +298,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!id) return res.status(500).json({ error: "Could not create the lead." });
       const { getLeadById } = await import("../leadStore.js");
       const lead = await getLeadById(id);
+      const { notifyOperatorsNewLead } = await import("../leadNotifySms.js");
+      await notifyOperatorsNewLead(
+        {
+          leadId: id,
+          name,
+          phone,
+          email,
+          city: address,
+          hasListing: "unknown",
+          propertyStage: null,
+          offerPath: "unknown",
+          source,
+        },
+        {
+          TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+          TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+          TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+        },
+      ).catch(() => undefined);
       return res.status(200).json({ ok: true, lead: lead ? { ...lead, onboarding: null } : { id } });
     }
 

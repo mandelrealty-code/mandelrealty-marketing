@@ -1095,11 +1095,12 @@ async function sendCallBookedTeamEmail(input: {
 
   const {
     BOOKING_TEAM_INBOX,
-    buildCallBookedHtml,
+    CRM_ADMIN_ORIGIN,
     buildCallBookedSubject,
     buildCallBookedText,
     sendResendEmail,
   } = await import("./auditEmails.js");
+  const { callBookedTeamEmail } = await import("./emailTemplates.js");
 
   let form: {
     name?: string;
@@ -1115,12 +1116,14 @@ async function sendCallBookedTeamEmail(input: {
     strAllowed?: string | null;
     launchTimeline?: string | null;
     marketingOptIn?: boolean;
+    interestedPlan?: string | null;
   } = {
     name: input.leadName,
     phone: input.leadPhone,
     email: input.leadEmail,
   };
   let aiNotes: string | null = null;
+  let plan: string | undefined;
 
   try {
     const { getLeadById } = await import("./leadStore.js");
@@ -1143,6 +1146,7 @@ async function sendCallBookedTeamEmail(input: {
       };
       const callNotes = (lead.call_notes || "").trim();
       if (callNotes) aiNotes = callNotes;
+      plan = String((lead as { plan?: string }).plan || "").trim() || undefined;
     }
   } catch {
     /* use booking payload fields */
@@ -1171,6 +1175,7 @@ async function sendCallBookedTeamEmail(input: {
     aiNotes,
     form,
   };
+  const crmUrl = `${CRM_ADMIN_ORIGIN}/crm/lead/${encodeURIComponent(input.leadId)}`;
   const result = await sendResendEmail({
     apiKey,
     from,
@@ -1180,7 +1185,14 @@ async function sendCallBookedTeamEmail(input: {
       leadName: input.leadName,
       slotLabel: input.slotLabel,
     }),
-    html: buildCallBookedHtml(payload),
+    html: callBookedTeamEmail({
+      leadName: input.leadName,
+      slot: input.slotLabel,
+      phone: input.leadPhone,
+      property: form.address || undefined,
+      plan,
+      crmUrl,
+    }),
     text: buildCallBookedText(payload),
   });
   if (!result.ok) {

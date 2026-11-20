@@ -2,13 +2,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import {
   AUDIT_UNAVAILABLE_MESSAGE,
   BOOKING_TEAM_INBOX,
+  CRM_ADMIN_ORIGIN,
   LEAD_INBOX,
-  buildCallBookedHtml,
   buildCallBookedSubject,
   buildCallBookedText,
-  buildCustomerConfirmationHtml,
   buildCustomerSubject,
-  buildLeadNotificationHtml,
   buildLeadNotificationText,
   buildLeadSubject,
   sendResendEmail,
@@ -30,10 +28,18 @@ import {
   setCachedAirroi,
 } from "../shared/airroiGuard.js";
 import {
+  CALL_DURATION_MIN,
   buildCallInviteIcs,
+  formatCallDayLabel,
   formatCallSlotLabel,
+  formatCallTimeLabel,
   isValidCallStartIso,
 } from "../shared/callSlots.js";
+import {
+  callBookedTeamEmail,
+  callBookingConfirmationEmail,
+  newLeadEmail,
+} from "../shared/emailTemplates.js";
 import { getBookedStartIsos, tryReserveCallSlot } from "../shared/bookingStore.js";
 import { parseLeadRequestBody } from "../shared/parseLeadRequest.js";
 import {
@@ -503,6 +509,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     lead.callBooking ||
     (lead.callStartIso ? formatCallSlotLabel(lead.callStartIso) : "");
   const isCallBooking = Boolean(lead.callStartIso || lead.callBooking);
+  const crmHome = `${CRM_ADMIN_ORIGIN}/crm`;
+  const leadDate = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date());
   const leadResult = isCallBooking
     ? await sendResendEmail({
         apiKey,
@@ -513,14 +524,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           leadName: lead.name,
           slotLabel,
         }),
-        html: buildCallBookedHtml({
+        html: callBookedTeamEmail({
           leadName: lead.name,
-          leadPhone: lead.phone,
-          leadEmail: lead.email,
-          slotLabel,
-          leadId: null,
-          aiNotes: null,
-          form: lead,
+          slot: slotLabel,
+          phone: lead.phone,
+          property: lead.address || undefined,
+          plan: lead.interestedPlan || undefined,
+          crmUrl: crmHome,
         }),
         text: buildCallBookedText({
           leadName: lead.name,
@@ -539,7 +549,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         to: [LEAD_INBOX],
         replyTo: lead.email,
         subject: buildLeadSubject(lead),
-        html: buildLeadNotificationHtml(lead),
+        html: newLeadEmail({
+          leadName: lead.name,
+          source: lead.source || "Website",
+          date: leadDate,
+          phone: lead.phone,
+          email: lead.email,
+          address: lead.address || undefined,
+          crmUrl: crmHome,
+        }),
         text: buildLeadNotificationText(lead),
         attachments: [icsAttachment],
       });
@@ -549,13 +567,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: toPublicAuditError(leadResult.message) });
   }
 
+  const dayLabel = lead.callStartIso
+    ? formatCallDayLabel(lead.callStartIso)
+    : slotLabel || "the time you picked";
+  const timeLabel = lead.callStartIso
+    ? `${formatCallTimeLabel(lead.callStartIso)} (${CALL_DURATION_MIN} min · Toronto)`
+    : slotLabel || "We’ll confirm the time";
+  const firstName = lead.name.trim().split(/\s+/)[0] || "there";
   const customerResult = await sendResendEmail({
     apiKey,
     from,
     to: [lead.email],
     replyTo: LEAD_INBOX,
     subject: buildCustomerSubject(lead),
-    html: buildCustomerConfirmationHtml(lead),
+    html: callBookingConfirmationEmail({
+      firstName,
+      dayLabel,
+      timeLabel,
+      phone: lead.phone,
+    }),
     attachments: [icsAttachment],
   });
 
