@@ -247,8 +247,10 @@ export const CRM_EXTRA_CSS = `
 @media (max-width:768px){.pseg3 button{height:36px}}
 
 /* Lead panel redesign (mrg-crm-lead-panel_1.html) */
-.details{padding:0;gap:0}
-.details .rtabs{padding:10px 16px;margin:0;border-bottom:1px solid #e8e8e3}
+.details{padding:0;gap:0;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.details .topbar,.details .rtabs{flex:none}
+.details .rtabs{padding:10px 16px;margin:0;border-bottom:1px solid #e8e8e3;position:relative;top:auto;z-index:1}
+.psecs{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .details .callsec{margin:12px 16px 0}
 .details .calls{padding:12px 16px 16px}
 .topbar{padding:12px 16px;border-bottom:1px solid #e8e8e3}
@@ -536,10 +538,10 @@ const S = {
   contractAskCancel: false,
   contractBusy: false,
   sections: {
-    book: true,
+    book: false,
     profile: false,
     sale: false,
-    notes: true,
+    notes: false,
     ai: false,
   },
 };
@@ -1555,12 +1557,11 @@ function notesSectionStatus(l) {
 }
 function leadPanel(l) {
   const hl = l.status === 'won' || Boolean(l.onboarding);
-  const hasBooking = Boolean(activeCrmBooking(l) || callHostData().booking);
   const sections = [
-    sectionWrap('book', 'Book a call', bookSectionStatus(l), bookBlock(l), !hasBooking),
+    sectionWrap('book', 'Book a call', bookSectionStatus(l), bookBlock(l), false),
     sectionWrap('profile', 'Property profile', profileSectionStatus(l), profileBlock(l), false),
     sectionWrap('sale', 'Sale & contract', saleSectionStatus(l), saleSectionBody(l, hl), false),
-    sectionWrap('notes', 'Team & AI', notesSectionStatus(l), `${notesBlock(l)}${aiBlock(l)}`, true),
+    sectionWrap('notes', 'Team & AI', notesSectionStatus(l), `${notesBlock(l)}${aiBlock(l)}`, false),
   ];
   const active = activeCallBlock();
   const nCalls = leadCallCount(l.id);
@@ -1574,13 +1575,13 @@ function leadPanel(l) {
       <button role="tab" data-act="ptab" data-v="calls" class="${S.ptab === 'calls' ? 'on' : ''}">${esc(callsLabel)}</button>
     </div></div>
     <div class="thread">${thread(l)}</div>
-    <div class="details" data-scroll="details">
+    <div class="details">
       ${leadTopBar(l)}
       <div class="rtabs" role="tablist"><div class="seg">
         <button type="button" role="tab" data-act="rtab" data-v="details" class="${S.rtab === 'details' ? 'on' : ''}">Details</button>
         <button type="button" role="tab" data-act="rtab" data-v="calls" class="${S.rtab === 'calls' ? 'on' : ''}">Calls${nCalls > 0 ? ` <span class="count">${nCalls}</span>` : ''}</button>
       </div></div>
-      ${rightBody}
+      <div class="psecs" data-scroll="details">${rightBody}</div>
     </div></div>`;
 }
 function leadView() {
@@ -2181,6 +2182,7 @@ function openLead(id, opts = {}) {
   if (!same) {
     S.ptab = 'chat';
     S.rtab = 'details';
+    S.sections = { book: false, profile: false, sale: false, notes: false, ai: false };
     S.phoneEdit = null;
     S.draftEdit = null;
     S.callMsg = '';
