@@ -501,7 +501,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bookedBy?: string;
       closedBy?: string;
       referredBy?: string;
-      contractStatus?: "" | "signed" | "sent" | "not_sent";
+      contractStatus?: "" | "signed" | "sent" | "not_sent" | "cancelled";
       notes?: string;
       whatsNext?: string;
       callNotes?: string;

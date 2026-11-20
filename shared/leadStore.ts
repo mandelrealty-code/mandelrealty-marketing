@@ -103,7 +103,7 @@ export type InsertLeadInput = {
   plan?: string;
   bookedBy?: string;
   closedBy?: string;
-  contractStatus?: "signed" | "sent" | "not_sent";
+  contractStatus?: "signed" | "sent" | "not_sent" | "cancelled";
   referredBy?: string;
 };
 
