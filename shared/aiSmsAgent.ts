@@ -170,27 +170,39 @@ CALL NOTES
 - If Call notes are present, that call already happened. Treat those notes as ground truth. Do not re-ask facts already in the notes. The next SMS should pick up from objections / next steps in the notes (e.g. they need to check the board, wait for tenants, compare fees). Follow up until the file is closed or they opt out.
 
 BOOKING SLOTS (real calendar)
-- When AVAILABLE SLOTS are listed in the user prompt, those are the ONLY times you may offer. Number them 1, 2, 3…
-- Prefer offering 2–3 slots in SMS (not a calendar URL) when they ask to talk / call, or when include_book_link is true.
+- AVAILABLE SLOTS in the user prompt is the FULL open calendar (up to ~30 times over 7 days). Search that entire list — never assume only the 3 you texted are open.
+- When first offering times in SMS, present ONLY 2–3 slots from the top of AVAILABLE SLOTS (numbered 1, 2, 3). Do not dump the full list into the SMS.
+- Prefer real slots in SMS (not a calendar URL) when they ask to talk / call, or when include_book_link is true.
 - Do not invent times that are not in AVAILABLE SLOTS.
+- When the lead asks for a specific day or time:
+  - Search the full available slots list above
+  - If a match exists: offer that exact slot
+  - If no match exists: say so and offer the 2-3 nearest slots from the full list
+  - Never say a time is unavailable if it appears in the full slots list above
 
 BOOKING SLOT REPLIES
-When a lead replies to a slot offer, accept any natural language reply that indicates a time preference. Examples that should all work:
-- '1' or '2' or '3' (the numbered option)
-- 'Wednesday at 2' or 'Wednesday 2pm'
-- '4pm' or '4' (when only two options were given)
-- 'tomorrow at 4' or 'the 4pm one'
-- 'second one' or 'last option'
-- 'any of them' or 'whatever works' (pick the first slot)
+When a lead replies about timing, search the FULL AVAILABLE SLOTS list (not only the 3 you showed).
+Examples that should all work:
+- '1' or '2' or '3' (the numbered options you presented)
+- 'Wednesday at 2' or 'Wednesday 2pm' or 'do you have Tuesday at 3'
+- 'what about Thursday' / 'any Friday mornings'
+- '4pm' / 'tomorrow at 4' / 'second one' / 'any of them'
 
-When the lead's reply clearly indicates a preference:
+If they ask for a specific day and/or time:
+- If that slot exists in AVAILABLE SLOTS: set confirmed_slot_start to its start ISO and reply like
+  'Yes, I have Tuesday, Nov 25 · 3:00 PM — does that work for you?'
+- If it does NOT exist: do NOT say the calendar is closed. Reply with 2–3 nearest alternatives from AVAILABLE SLOTS, e.g.
+  'I don't have Tuesday at 3 available, but the nearest times I have are: …'
+  Leave confirmed_slot_start null when offering alternatives.
+
+When they clearly pick a time (or say the offered time works):
 - Set confirmed_slot_start to that slot's ISO start from AVAILABLE SLOTS.
 - Do NOT say the call is locked in yet. Ask them to confirm, e.g.:
   'Just to confirm — I'll book you in for Wednesday Nov 20 at 4:00 PM with Ryan. Reply YES to confirm or NO to pick a different time.'
 
 Only after they reply YES is the booking actually created (handled by the system).
-If they reply NO, offer 2–3 AVAILABLE SLOTS again.
-Do not ask them to reply with a number. Do not re-send the slot list unless they say NO or explicitly ask.
+If they reply NO, offer 2–3 different AVAILABLE SLOTS again (still from the full list).
+Do not ask them to reply with a number. Do not re-send the slot list unless they say NO, ask for another day, or the time they want is unavailable.
 If they have not picked a slot, confirmed_slot_start must be null.
 Never claim the calendar invite was sent until they have replied YES.
 
@@ -243,7 +255,7 @@ STYLE
 LINKS / BOOKING CTA
 - Prefer real AVAILABLE SLOTS (numbered) over any calendar URL when offering a call.
 - include_book_link true only if they asked to talk/call, or messy legal needs a human. Default FALSE.
-- When include_book_link is true AND AVAILABLE SLOTS exist: offer 2–3 numbered times from that list. Do not send ${BOOK_A_CALL_URL}.
+- When include_book_link is true AND AVAILABLE SLOTS exist: offer 2–3 numbered times from the FULL list (usually the first 2–3). Do not send ${BOOK_A_CALL_URL}.
 - Only if AVAILABLE SLOTS is empty may you use the book-a-call URL: ${BOOK_A_CALL_URL}
 - Never send guide / intro-to-airbnb landing URLs.
 
@@ -587,6 +599,8 @@ async function callClaude(input: {
   }
 }
 
+const PRESENT_SLOT_COUNT = 3;
+
 function formatAvailableSlotsBlock(
   slots: { start: string; end: string; label: string }[],
 ): string {
@@ -594,10 +608,13 @@ function formatAvailableSlotsBlock(
     return "AVAILABLE SLOTS: (none right now — do not invent times; include_book_link may use the calendar URL only if they insist on a call)";
   }
   const lines = slots
-    .slice(0, 8)
     .map((s, i) => `${i + 1}. ${s.label} | start=${s.start} | end=${s.end}`)
     .join("\n");
-  return `AVAILABLE SLOTS (offer only these; use start= as confirmed_slot_start when they pick one):\n${lines}`;
+  const preview = slots
+    .slice(0, PRESENT_SLOT_COUNT)
+    .map((s, i) => `${i + 1}) ${s.label}`)
+    .join(" · ");
+  return `AVAILABLE SLOTS — FULL open calendar (${slots.length} times). Search this entire list when they ask for a day/time. In SMS, present only the first ${PRESENT_SLOT_COUNT} unless they asked for a specific day/time (suggested first offer: ${preview}). Use start= as confirmed_slot_start when they pick one. Never invent times outside this list.\n${lines}`;
 }
 
 async function loadBookingSlots(): Promise<
@@ -756,8 +773,9 @@ Reply for offer_path="${lead.offer_path}" and ad angle="${angle}" (${AD_ANGLE_LA
 - Thread corrections beat the form. If they named a different city/property, lock that.
 - Answer first, then at most ONE question from unknowns.
 - No "Got it, so…" recap. No stacked questions. No calendar unless they asked to talk.
-- If they ask to talk/call (or include_book_link true): offer 2–3 numbered AVAILABLE SLOTS. Do not invent times.
-- If this inbound picks a slot from AVAILABLE SLOTS, set confirmed_slot_start to that slot's start ISO and ask them to reply YES to confirm (do not say it is locked in yet).
+- If they ask to talk/call (or include_book_link true): offer 2–3 numbered times from the FULL AVAILABLE SLOTS list (usually the first 2–3). Do not invent times. Do not claim a time is unavailable unless it is missing from the FULL list.
+- If they ask for a specific day/time: search the FULL list. Match → confirm that slot exists and ask if it works (set confirmed_slot_start). No match → offer 2–3 nearest alternatives from the FULL list (confirmed_slot_start null).
+- If this inbound clearly picks a slot from AVAILABLE SLOTS, set confirmed_slot_start to that slot's start ISO and ask them to reply YES to confirm (do not say it is locked in yet).
 - If they are not ready to sign, stay in-thread. Handle the objection from KB, then one question. include_book_link false. ready_for_contract false. stop_ai false.
 - If they are qualified and want the program, ready_for_contract true and tell them we'll send the agreement/portal — do not invent a URL.
 - If Call notes exist, pick up from the call. Do not restart the intake.
@@ -1279,13 +1297,19 @@ export async function sendAiReplyToInbound(input: {
     body = ensureBookLinkInvite(body);
   }
 
-  const { matchSlotFromReply, formatCalendarSlotLabel } = await import(
-    "./crmCalendar.js"
-  );
+  const {
+    matchSlotFromReply,
+    formatCalendarSlotLabel,
+    resolveSlotPreference,
+  } = await import("./crmCalendar.js");
   const pending = await findPendingBookingConfirm(lead.id);
   let pendingSlotToLog: { start: string; end: string; label: string } | null =
     null;
   let bookAfterSend: { start: string; end: string; label: string } | null = null;
+  const availabilityAsk =
+    /\b(do you have|what about|how about|any (chance|open|avail)|is there|got (a |any )?|available|free on)\b/i.test(
+      input.inboundText,
+    );
 
   if (pending && isAffirmativeReply(input.inboundText)) {
     bookAfterSend = {
@@ -1298,7 +1322,7 @@ export async function sendAiReplyToInbound(input: {
       `You're all set — I've booked you in for ${bookAfterSend.label} with Ryan. You'll get a calendar invite shortly. Talk soon!`,
     );
   } else if (pending && isNegativeReply(input.inboundText)) {
-    const offer = slots.slice(0, 3);
+    const offer = slots.slice(0, PRESENT_SLOT_COUNT);
     if (offer.length) {
       const lines = offer
         .map((s, i) => `${i + 1}) ${s.label}`)
@@ -1319,8 +1343,28 @@ export async function sendAiReplyToInbound(input: {
     if (matched && !pending) {
       pendingSlotToLog = matched;
       body = sanitizeCustomerSms(
-        `Just to confirm — I'll book you in for ${matched.label} with Ryan. Reply YES to confirm or NO to pick a different time.`,
+        availabilityAsk
+          ? `Yes, I have ${matched.label} — does that work for you?`
+          : `Just to confirm — I'll book you in for ${matched.label} with Ryan. Reply YES to confirm or NO to pick a different time.`,
       );
+    } else if (!pending) {
+      const pref = resolveSlotPreference(input.inboundText, slots);
+      if (pref.kind === "match") {
+        pendingSlotToLog = pref.slot;
+        body = sanitizeCustomerSms(
+          availabilityAsk
+            ? `Yes, I have ${pref.slot.label} — does that work for you?`
+            : `Just to confirm — I'll book you in for ${pref.slot.label} with Ryan. Reply YES to confirm or NO to pick a different time.`,
+        );
+      } else if (pref.kind === "nearest") {
+        const lines = pref.alternatives
+          .map((s, i) => `${i + 1}) ${s.label}`)
+          .join("\n");
+        const wantLabel = pref.want.requestedLabel || "that time";
+        body = sanitizeCustomerSms(
+          `I don't have ${wantLabel} available, but the nearest times I have are:\n${lines}`,
+        );
+      }
     }
   }
 

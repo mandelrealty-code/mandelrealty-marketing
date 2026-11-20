@@ -134,6 +134,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
           status?: string;
           transferState?: "connecting" | "connected" | null;
         },
+        booking: null as Record<string, unknown> | null,
       },
       vocab: {
         STATUS_LABEL,
@@ -192,6 +193,10 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         host.data.calls = Array.isArray(data.calls)
           ? (data.calls as Array<Record<string, unknown>>)
           : [];
+        host.data.booking =
+          data.booking && typeof data.booking === "object"
+            ? (data.booking as Record<string, unknown>)
+            : null;
         const callCount = Array.isArray(data.calls) ? data.calls.length : Number(data.call_count) || 0;
         host.data.leadCallCounts = {
           ...host.data.leadCallCounts,
@@ -297,6 +302,8 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         call("/api/admin/settings?op=book_slot", json("POST", body)),
       rescheduleSlot: (body: Data) =>
         call("/api/admin/settings?op=reschedule_slot", json("POST", body)),
+      cancelBooking: (body: Data) =>
+        call("/api/admin/settings?op=cancel_booking", json("POST", body)),
       markRead: (id: string) => patchLead({ id, markRead: true }),
       aiNudge: (id: string, playbookSteps?: unknown[]) => patchLead({ id, aiNudge: true, ...(playbookSteps ? { playbookSteps } : {}) }),
       aiSendFirst: (id: string) => patchLead({ id, aiSendFirst: true }),

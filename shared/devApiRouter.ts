@@ -356,9 +356,11 @@ export async function handleDevApi(
           const { getPendingDraft } = await import("./smsDraftStore.js");
           const { ensurePlaybook } = await import("./playbook.js");
           const { getLeadById } = await import("./leadStore.js");
-          const [pendingDraft, lead] = await Promise.all([
+          const { getLatestCrmBooking } = await import("./crmCalendar.js");
+          const [pendingDraft, lead, booking] = await Promise.all([
             getPendingDraft(followupsFor),
             getLeadById(followupsFor),
+            getLatestCrmBooking(followupsFor),
           ]);
           let playbook = lead ? ensurePlaybook(lead) : [];
           if (lead && (!lead.playbook_steps || lead.playbook_steps.length === 0) && playbook.length) {
@@ -370,6 +372,7 @@ export async function handleDevApi(
             pending_draft: pendingDraft,
             playbook_steps: playbook,
             ai_send_mode: lead?.ai_send_mode || "autopilot",
+            booking: booking || null,
           });
           return true;
         }
@@ -880,6 +883,22 @@ export async function handleDevApi(
         bookingId: result.bookingId,
         label: result.label,
       });
+      return true;
+    }
+    if (method === "POST" && settingsOp === "cancel_booking") {
+      const body = await readJsonBody(req);
+      const { cancelCalendarBooking } = await import("./crmCalendar.js");
+      const result = await cancelCalendarBooking({
+        bookingId: String(body.bookingId ?? body.booking_id ?? ""),
+        leadId: String(body.leadId ?? body.lead_id ?? ""),
+        leadName: String(body.leadName ?? body.lead_name ?? ""),
+        leadPhone: String(body.leadPhone ?? body.lead_phone ?? ""),
+      });
+      if (!result.ok) {
+        json(res, 400, { error: result.error });
+        return true;
+      }
+      json(res, 200, { ok: true });
       return true;
     }
     if (method === "POST" && settingsOp === "reschedule_slot") {

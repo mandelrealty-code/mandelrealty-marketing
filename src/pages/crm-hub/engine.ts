@@ -43,11 +43,55 @@ export const CRM_EXTRA_CSS = `
 .bkdone a:hover{text-decoration:underline}
 .bkdone .bkacts{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;margin-top:4px}
 .bkdone .bkacts a{margin-top:8px}
-.slots{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.slot{display:flex;align-items:center;justify-content:space-between;height:36px;padding:0 12px;border-radius:var(--r-pill);border:1px solid var(--line);background:#fff;font:500 var(--t-sm)/1 Inter,sans-serif;color:var(--ink);text-align:left;width:100%}
-.slot:hover{background:var(--hover)}
-.slot.on{border-color:rgb(0 0 0 / .45);box-shadow:inset 0 0 0 1px rgb(0 0 0 / .45);background:rgb(0 0 0 / .035);font-weight:600}
-.slot .ck{opacity:0;color:var(--ink)} .slot.on .ck{opacity:1}
+/* Book a call picker (mrg-crm-booking-picker.html) */
+.booksec h5{margin-bottom:10px}
+.booksec h5 span{font-size:var(--t-sm);color:var(--ink);font-weight:650}
+.bnote{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-bottom:8px}
+.days{display:flex;gap:6px;overflow-x:auto;padding:2px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.dpill{flex:none;width:48px;display:flex;flex-direction:column;align-items:center;gap:0;padding:6px 0 7px;border-radius:12px;border:1px solid var(--line);background:#fff;color:var(--ink);font-family:inherit;cursor:pointer;transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease)}
+.dpill span{font-size:11px;font-weight:600;color:var(--ink2);line-height:1.2}
+.dpill b{font-size:16px;font-weight:650;line-height:1.25}
+.dpill .mo{font-size:10px;font-weight:500;color:var(--muted)}
+.dpill:hover:not(.on){border-color:rgb(0 0 0 / .3)}
+.dpill.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.dpill.on span,.dpill.on .mo{color:rgb(255 255 255 / .8)}
+.selwrap{margin-top:10px}
+.selwrap select{width:100%;cursor:pointer}
+.bmeta2{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-top:6px}
+.bookbtn{width:100%;margin-top:10px;justify-content:space-between;height:auto;min-height:40px;padding:8px 14px}
+.bookbtn[disabled]{background:oklch(0.85 0.005 285);color:#fff;opacity:1;pointer-events:none}
+.bookbtn .bl{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left}
+.bookbtn .bs{font-size:11px;font-weight:500;opacity:.8}
+.ccard2{border:1px solid var(--line);border-radius:12px;padding:12px}
+.ccr{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ccr b{color:var(--ink);font-size:var(--t-sm)}
+.okc{width:24px;height:24px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;flex:none}
+.okc svg{width:14px;height:14px;stroke-width:2.4}
+.cdl{display:flex;flex-direction:column;gap:2px;margin:0 0 12px;font-size:var(--t-sm)}
+.cdl dd+dt{margin-top:6px}
+.cdl dt{color:var(--muted);font-weight:500;font-size:var(--t-xs);padding-top:2px}
+.cdl dd{margin:0;color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+.cbtns{display:flex;gap:8px}
+.cbtns .btn{flex:1}
+.bkdone2{background:#fff;border:1px solid var(--line);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;color:var(--ink)}
+.bkdone2 .ok{color:var(--greenink);font-weight:700;font-size:var(--t-sm)}
+.bkdone2 .when{font-size:17px;font-weight:650;margin:3px 0 2px}
+.bkdone2 .w2{font-size:var(--t-sm);color:var(--muted)}
+.bkdone2 .w3{font-size:var(--t-xs);color:var(--muted);font-weight:500;margin-top:6px}
+.bkdone2 .nt{color:var(--greenink);font-weight:600}
+.blinks{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:var(--t-xs);flex-wrap:wrap;white-space:nowrap;row-gap:4px}
+.blinks .lnk{font-size:var(--t-sm)}
+.blinks .sp{flex-basis:100%;height:0}
+.dotsep{color:var(--muted)}
+.lnkm{background:none;border:0;padding:2px 0;font:500 var(--t-xs)/1.2 Inter,sans-serif;color:var(--muted);cursor:pointer}
+.lnkm:hover{color:var(--ink);text-decoration:underline}
+.askc{margin-top:10px;padding:10px 12px;border-radius:10px;background:oklch(0.6 0.19 25 / .07);border:1px solid oklch(0.6 0.19 25 / .2);display:flex;flex-direction:column;gap:4px;font-size:var(--t-sm);color:var(--ink)}
+.askc span{font-size:var(--t-xs);color:var(--ink2)}
+.askc .cbtns{margin-top:6px}
+.btn.redtxt{color:var(--redink);font-weight:600;border-color:var(--line);background:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (max-width:768px){.days{flex-wrap:wrap;overflow:visible}.bookbtn,.cbtns .btn{min-height:44px}}
 @media (max-width:767px){
   .subnav .seg{grid-template-columns:repeat(4,minmax(0,1fr))}
   .wmhead{flex-direction:column;align-items:stretch}
@@ -383,7 +427,7 @@ const S = {
   set: { op: '', opDirty: false, opMsg: '', callerSel: null, nName: '', nPhone: '', nMsg: '', uCode: '', uLabel: '', uMsg: '', paste: '', preview: null, pMsg: '', pErr: '' },
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
-  book: { slots: [], pick: null, loading: false, err: '', leadId: null, step: 'slots', mode: 'book', bookingId: null, googleEventId: null },
+  book: { slots: [], dayKey: null, pick: null, loading: false, err: '', leadId: null, step: 'pick', mode: 'book', bookingId: null, googleEventId: null, note: '' },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -759,56 +803,138 @@ function aiBlock(l) {
     <div style="margin-top:10px"><span class="flabel">How AI sends</span><div class="aiseg" role="radiogroup" aria-label="How AI sends"><button role="radio" aria-checked="${mode === 'autopilot'}" class="${mode === 'autopilot' ? 'on' : ''}" data-act="sendMode" data-v="autopilot" ${dis}>Autopilot</button><button role="radio" aria-checked="${mode === 'draft'}" class="${mode === 'draft' ? 'on' : ''}" data-act="sendMode" data-v="draft" ${dis}>Draft for review</button></div>
     <div class="aiexp">${mode === 'autopilot' ? 'Autopilot sends AI replies immediately, no review.' : 'AI writes a draft. Nothing sends until you approve it.'}</div></div></div>`;
 }
+function bookTzParts(iso) {
+  const d = new Date(iso);
+  const fmt = (opts) => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', ...opts }).format(d);
+  const weekday = fmt({ weekday: 'short' });
+  const month = fmt({ month: 'short' });
+  const dayNum = fmt({ day: 'numeric' });
+  const y = fmt({ year: 'numeric' });
+  const m = String(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Toronto', month: 'numeric' }).format(d)).padStart(2, '0');
+  const day = String(dayNum).padStart(2, '0');
+  const time = fmt({ hour: 'numeric', minute: '2-digit', hour12: true });
+  return {
+    key: `${y}-${m}-${day}`,
+    weekday,
+    month,
+    dayNum,
+    long: `${weekday}, ${month} ${dayNum}`,
+    time,
+  };
+}
+
+function bookDaysFromSlots(slots) {
+  const map = new Map();
+  for (const s of slots || []) {
+    const p = bookTzParts(s.start);
+    if (!map.has(p.key)) map.set(p.key, { key: p.key, weekday: p.weekday, month: p.month, dayNum: p.dayNum, long: p.long, times: [] });
+    map.get(p.key).times.push(s);
+  }
+  return [...map.values()];
+}
+
+function activeCrmBooking(l) {
+  const hd = callHostData();
+  const row = hd.booking;
+  if (row && String(row.lead_id || row.leadId) === String(l.id)) return row;
+  return null;
+}
+
+function bookPickerHtml(l, b, days) {
+  const dayKey = b.dayKey || (days[0] && days[0].key) || null;
+  const day = days.find((d) => d.key === dayKey) || days[0];
+  const pick = day ? (day.times || []).find((s) => s.start === b.pick) : null;
+  const endLabel = pick ? bookTzParts(pick.end).time : '';
+  const slotLong = pick ? (pick.label || `${day.long} · ${bookTzParts(pick.start).time}`) : '';
+  const busy = isBusy('book');
+  return `${b.mode === 'reschedule' ? '<div class="bnote">Rescheduling — pick a new time</div>' : (b.note ? `<div class="bnote">${esc(b.note)}</div>` : '')}
+    <div class="days" role="radiogroup" aria-label="Day">${days.map((d) => {
+      const on = d.key === day.key;
+      return `<button type="button" class="dpill ${on ? 'on' : ''}" role="radio" aria-checked="${on ? 'true' : 'false'}" data-act="bookDay" data-day="${esc(d.key)}"><span>${esc(d.weekday)}</span><b>${esc(d.dayNum)}</b><span class="mo">${esc(d.month)}</span></button>`;
+    }).join('')}</div>
+    <label class="sr" for="bookTimeSel">Time</label>
+    <div class="selwrap"><select id="bookTimeSel" class="input ${pick ? '' : 'ph'}" data-sel="bookTime" aria-label="Time" ${busy ? 'disabled' : ''}>
+      <option value="">Select a time</option>
+      ${(day ? day.times : []).map((s) => {
+        const t = bookTzParts(s.start).time;
+        return `<option value="${esc(s.start)}" ${b.pick === s.start ? 'selected' : ''}>${esc(t)}</option>`;
+      }).join('')}
+    </select></div>
+    ${pick ? `<div class="bmeta2">1 hour · ends at ${esc(endLabel)}</div>` : ''}
+    <button type="button" class="btn primary bookbtn" data-act="bookShowConfirm" ${(!pick || busy) ? 'disabled' : ''}>${
+      pick
+        ? `<span class="bl"><span>Book this time</span><span class="bs">${esc(slotLong)} – ${esc(endLabel)}</span></span>${ic('arrow', 'sm')}`
+        : `Book this time ${ic('arrow', 'sm')}`
+    }</button>
+    ${b.mode === 'reschedule' ? `<button type="button" class="lnkm" data-act="bookKeepCurrent" style="margin-top:8px">Keep current time</button>` : ''}`;
+}
+
+function slotConfirmLabel(slot) {
+  if (slot && slot.label) return String(slot.label);
+  if (!slot || !slot.start) return '';
+  const p = bookTzParts(slot.start);
+  return `${p.long} · ${p.time}`;
+}
+
+function bookConfirmHtml(l, pick) {
+  const email = (l.email || '').trim() || '—';
+  const phone = (l.phone || '').trim() || '—';
+  const busy = isBusy('book');
+  const label = slotConfirmLabel(pick);
+  return `<div class="ccard2"><div class="ccr"><span class="okc">${ic('check', 'sm')}</span><b>Confirm this booking?</b></div>
+    <dl class="cdl"><dt>Slot</dt><dd>${esc(label)}</dd><dt>Calendar invite</dt><dd>→ ${esc(email)}</dd><dt>Confirmation text</dt><dd>→ ${esc(phone)}</dd></dl>
+    <div class="cbtns"><button class="btn primary" data-act="confirmBookSlot" ${busy ? 'disabled' : ''}>${busy ? '<i class="spin" style="width:12px;height:12px;border-color:rgb(255 255 255 / .3);border-top-color:#fff"></i>Booking…' : 'Confirm'}</button><button class="btn ghost" data-act="cancelBookConfirm" style="color:var(--muted)" ${busy ? 'disabled' : ''}>Cancel</button></div></div>`;
+}
+
+function bookBookedHtml(l, b, booking) {
+  const startIso = (booking && (booking.slot_start || booking.slotStart)) || l.call_start_iso || '';
+  const when = (booking && (booking.label || booking.call_booking))
+    || l.call_booking
+    || (startIso ? slotConfirmLabel({ start: startIso }) : '');
+  const eventId = String((booking && (booking.google_event_id || booking.googleEventId)) || b.googleEventId || '').trim();
+  const bookingId = String((booking && (booking.id || booking.bookingId)) || b.bookingId || '').trim();
+  const calHref = eventId
+    ? `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(eventId)}`
+    : 'https://calendar.google.com/calendar/r';
+  if (b.step === 'askcancel') {
+    return `<div class="bkdone2"><div class="ok">✓ Call booked</div><div class="when">${esc(when)}</div><div class="w2">30-min intro call with Ryan Mandel</div><div class="w3">Added to calendar · Confirmation sent to lead</div></div>
+      <div class="askc" role="alert"><b>Cancel this booking?</b><span>The calendar event will be removed and ${esc(l.name || 'the lead')} will be notified by text.</span><div class="cbtns"><button class="btn sm redtxt" data-act="bookDoCancel" data-booking-id="${esc(bookingId)}" ${isBusy('book') ? 'disabled' : ''}>Yes, cancel</button><button class="btn sm" data-act="bookKeepCurrent" ${isBusy('book') ? 'disabled' : ''}>Keep it</button></div></div>`;
+  }
+  return `<div class="bkdone2"><div class="ok">✓ Call booked</div><div class="when">${esc(when)}</div><div class="w2">30-min intro call with Ryan Mandel</div><div class="w3">Added to calendar · Confirmation sent to lead</div>
+    ${b.note ? `<div class="w3 nt">${esc(b.note)}</div>` : ''}</div>
+    <div class="blinks"><a href="${esc(calHref)}" target="_blank" rel="noopener noreferrer" class="lnk">View in calendar →</a><span class="sp"></span><button type="button" class="lnkm" data-act="rescheduleBooking" data-booking-id="${esc(bookingId)}" data-event-id="${esc(eventId)}">Reschedule</button><span class="dotsep">·</span><button type="button" class="lnkm" data-act="bookAskCancel">Cancel booking</button></div>`;
+}
+
 function bookBlock(l) {
-  const already = l.status === 'booked' || l.status === 'call_done' || l.status === 'won' || Boolean(l.call_start_iso);
   const b = S.book;
+  const booking = activeCrmBooking(l);
+  const leadBooked = Boolean(booking) || l.status === 'booked' || Boolean(l.call_start_iso);
   const rescheduling = b.mode === 'reschedule' && b.leadId === String(l.id);
   const dis = isBusy('book') || b.loading ? 'disabled' : '';
-  if (already && !rescheduling) {
-    const when = l.call_booking || (l.call_start_iso ? formatBookingWhen(l.call_start_iso) : '');
-    return `<div class="dsec"><h5>Book a call</h5>
-      <div class="okbox">${ic('check', 'sm')}<span><b>Call booked.</b>${when ? ` ${esc(when)}` : ''}${l.booked_by ? ` · ${esc(l.booked_by)}` : ''}</span></div>
-      <button class="btn sm" style="margin-top:8px" data-act="rescheduleBooking" ${dis}>Reschedule</button>
-    </div>`;
-  }
-  const title = rescheduling ? 'Reschedule call' : 'Book a call';
-  const pick = (b.slots || []).find((s) => s.start === b.pick);
-  if (b.step === 'confirm' && pick && b.leadId === String(l.id)) {
-    const email = (l.email || '').trim() || 'their email';
-    const phone = (l.phone || '').trim() || 'their phone';
-    const confirmLabel = rescheduling
-      ? (isBusy('book') ? 'Rescheduling…' : 'Confirm reschedule')
-      : (isBusy('book') ? 'Booking…' : 'Confirm booking');
-    return `<div class="dsec"><h5>${esc(title)}</h5>
-      <div class="okbox" style="flex-direction:column;align-items:flex-start;gap:6px">
-        <span><b>${rescheduling ? 'Reschedule' : 'Book'} ${esc(pick.label)} for ${esc(l.name || 'this lead')}?</b></span>
-        <span class="meta">A calendar invite will be sent to ${esc(email)} and a confirmation text to ${esc(phone)}.</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <button class="btn primary" data-act="confirmBookSlot" ${dis}>${ic('cal', 'sm')}${esc(confirmLabel)}</button>
-        <button class="btn" data-act="cancelBookConfirm" ${dis}>Cancel</button>
-      </div>
-    </div>`;
-  }
-  let slotsHtml;
-  if (b.loading && b.leadId === String(l.id)) {
-    slotsHtml = `<div class="meta" style="margin-top:8px"><span class="refreshing"><i class="spin"></i>Loading open times…</span></div>`;
+  const showBooked = leadBooked && !rescheduling && b.step !== 'pick' && b.step !== 'confirm';
+
+  let body;
+  if (b.step === 'askcancel' || showBooked) {
+    body = bookBookedHtml(l, b, booking);
+  } else if (b.step === 'confirm') {
+    const pick = (b.slots || []).find((s) => s.start === b.pick);
+    body = pick ? bookConfirmHtml(l, pick) : '<div class="meta">Pick a time first.</div>';
+  } else if (b.loading && b.leadId === String(l.id)) {
+    body = `${b.note ? `<div class="bnote">${esc(b.note)}</div>` : ''}<div class="meta"><span class="refreshing"><i class="spin"></i>Loading open times…</span></div>`;
   } else if (b.err && b.leadId === String(l.id)) {
-    slotsHtml = `<div class="warnbox">${ic('alert', 'sm')}<span>${esc(b.err)}</span></div>
+    body = `${b.note ? `<div class="bnote">${esc(b.note)}</div>` : ''}<div class="warnbox">${ic('alert', 'sm')}<span>${esc(b.err)}</span></div>
       <button class="btn sm" style="margin-top:8px" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}Retry</button>`;
-  } else if (!(b.slots || []).length) {
-    slotsHtml = `<div class="meta" style="margin-top:8px">No open times in the next week. Connect Google in Settings → Connectors, or try again later.</div>
-      <button class="btn sm" style="margin-top:8px" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}Refresh</button>`;
   } else {
-    slotsHtml = `<div class="slots">${(b.slots || []).map((s) => {
-      const on = b.pick === s.start;
-      return `<button type="button" class="slot ${on ? 'on' : ''}" data-act="pickBookSlot" data-start="${esc(s.start)}" data-end="${esc(s.end)}" aria-pressed="${on ? 'true' : 'false'}">${esc(s.label)}<span class="ck">${ic('check', 'xs')}</span></button>`;
-    }).join('')}</div>`;
+    const days = bookDaysFromSlots(b.slots || []);
+    if (!days.length) {
+      body = `${b.note ? `<div class="bnote">${esc(b.note)}</div>` : ''}<div class="meta" style="margin-top:4px">No open times in the next week. Connect Google in Settings → Connectors, or try again later.</div>
+        <button class="btn sm" style="margin-top:8px" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}Refresh</button>`;
+    } else {
+      body = bookPickerHtml(l, { ...b, dayKey: b.dayKey || days[0].key }, days);
+    }
   }
-  return `<div class="dsec"><h5>${esc(title)} <button class="btn sm ghost" data-act="reloadBookSlots" ${dis}>${ic('refresh', 'xs')}</button></h5>
-    <div class="meta">${rescheduling ? 'Pick a new open hour. We’ll update the calendar invite and text the lead.' : 'Pick an open hour on Ryan’s calendar. You’ll confirm before anything is saved.'}</div>
-    ${slotsHtml}
-  </div>`;
+
+  return `<div class="dsec booksec"><h5><span>Book a call</span><button class="iconbtn" data-act="reloadBookSlots" aria-label="Reload slots" title="Reload slots" style="width:28px;height:28px" ${dis}>${ic('refresh', 'sm')}</button></h5><div class="bbody">${body}</div></div>`;
 }
 function saleBlock(l, hl) {
   const d = D(l), dis = isBusy('save') ? 'disabled' : '';
@@ -876,11 +1002,13 @@ function callHostData() {
       leadCallCounts: {},
       teamCallers: [],
       activeCall: null,
+      booking: null,
     };
   }
   if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
   if (!Array.isArray(host.data.calls)) host.data.calls = [];
   if (!host.data.leadCallCounts || typeof host.data.leadCallCounts !== 'object') host.data.leadCallCounts = {};
+  if (host.data.booking === undefined) host.data.booking = null;
   return host.data;
 }
 const fmtCallClock = (secs) => {
@@ -1550,6 +1678,13 @@ async function loadThread(id) {
       hd.leadCallCounts = { ...(hd.leadCallCounts || {}), [id]: data.calls.length };
       mergeLead(id, { call_count: data.calls.length });
     }
+    if (data.booking !== undefined) {
+      hd.booking = data.booking || null;
+      syncBookingFromHost(id);
+      if (hd.booking && S.book.mode !== 'reschedule' && S.book.step !== 'confirm' && S.book.step !== 'pick' && S.book.step !== 'askcancel') {
+        S.book = { ...S.book, leadId: id, step: 'booked' };
+      }
+    }
   } catch {
     if (S.th.id !== id) return;
     S.th.loaded = true;
@@ -1642,13 +1777,38 @@ function openLead(id, opts = {}) {
       hd.callRecordingUrl = null;
       hd.callRecordingId = null;
       hd.calls = [];
+      hd.booking = null;
       if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
     }
-    loadThread(id);
-    loadBookSlots(id);
+    const opened = leadById(id);
+    const alreadyBooked = Boolean(opened && (opened.status === 'booked' || opened.call_start_iso));
+    S.book = {
+      slots: [],
+      dayKey: null,
+      pick: null,
+      loading: false,
+      err: '',
+      leadId: id,
+      step: alreadyBooked ? 'booked' : 'pick',
+      mode: 'book',
+      bookingId: null,
+      googleEventId: null,
+      note: '',
+    };
+    loadThread(id).then(() => {
+      if (S.leadId !== id) return;
+      const l = leadById(id);
+      const booked = Boolean(activeCrmBooking(l || { id }) || (l && (l.status === 'booked' || l.call_start_iso)));
+      if (booked) {
+        S.book = { ...S.book, leadId: id, step: S.book.mode === 'reschedule' ? S.book.step : 'booked', mode: S.book.mode === 'reschedule' ? 'reschedule' : 'book' };
+        syncBookingFromHost(id);
+        renderMain();
+      } else {
+        void loadBookSlots(id);
+      }
+    });
     if (host.markRead) host.markRead(id).catch(() => undefined);
-    const l = leadById(id);
-    if (l) mergeLead(id, { unread: false, sms_last_read_at: new Date().toISOString(), needs_you: l.needs_you.filter((r) => r !== 'unanswered_inbound' && r !== 'review_ai') });
+    if (opened) mergeLead(id, { unread: false, sms_last_read_at: new Date().toISOString(), needs_you: opened.needs_you.filter((r) => r !== 'unanswered_inbound' && r !== 'review_ai') });
     delete S.ld[id];
   }
   render();
@@ -1658,29 +1818,35 @@ async function loadBookSlots(leadId = S.leadId, opts = {}) {
   if (!leadId || !host.loadCalendarSlots) return;
   const id = String(leadId);
   const keepMode = opts.keepMode === true;
+  const keepNote = opts.keepNote === true;
   S.book = {
     ...S.book,
     leadId: id,
     loading: true,
     err: '',
     pick: null,
-    step: 'slots',
+    dayKey: null,
+    step: 'pick',
     mode: keepMode ? (S.book.mode || 'book') : 'book',
     bookingId: keepMode ? S.book.bookingId : null,
     googleEventId: keepMode ? S.book.googleEventId : null,
+    note: keepNote || keepMode ? (S.book.note || '') : '',
   };
   renderMain();
   try {
     const data = await host.loadCalendarSlots();
     if (S.book.leadId !== id) return;
+    const slots = Array.isArray(data.slots) ? data.slots : [];
+    const days = bookDaysFromSlots(slots);
     S.book = {
       ...S.book,
       leadId: id,
       loading: false,
       err: '',
       pick: null,
-      step: 'slots',
-      slots: Array.isArray(data.slots) ? data.slots : [],
+      dayKey: days[0] ? days[0].key : null,
+      step: 'pick',
+      slots,
     };
   } catch (e) {
     if (S.book.leadId !== id) return;
@@ -1690,45 +1856,47 @@ async function loadBookSlots(leadId = S.leadId, opts = {}) {
       loading: false,
       err: errMsg(e, 'Could not load calendar times.'),
       pick: null,
-      step: 'slots',
+      dayKey: null,
+      step: 'pick',
       slots: [],
     };
   }
   renderMain();
 }
 
-function latestBookingMeta(leadId) {
-  const msgs = (S.th && S.th.id === String(leadId) && S.th.messages) || [];
-  for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i];
-    const mType = m.type || (m.meta && m.meta.type) || '';
-    if (mType !== 'booking_confirmed') continue;
-    return {
-      bookingId: String(m.booking_id || (m.meta && m.meta.booking_id) || '').trim(),
-      googleEventId: String(m.google_event_id || (m.meta && m.meta.google_event_id) || '').trim(),
-    };
-  }
-  return { bookingId: '', googleEventId: '' };
+function syncBookingFromHost(leadId) {
+  const hd = callHostData();
+  const row = hd.booking;
+  if (!row || String(row.lead_id || row.leadId) !== String(leadId)) return;
+  S.book = {
+    ...S.book,
+    leadId: String(leadId),
+    bookingId: String(row.id || '').trim() || S.book.bookingId,
+    googleEventId: String(row.google_event_id || row.googleEventId || '').trim() || S.book.googleEventId,
+    step: S.book.mode === 'reschedule' || S.book.step === 'askcancel' || S.book.step === 'confirm' || S.book.step === 'pick'
+      ? S.book.step
+      : 'booked',
+  };
 }
 
 async function startReschedule(opts = {}) {
   const l = leadById(S.leadId);
   if (!l) return;
-  const fromCard = {
-    bookingId: String(opts.bookingId || '').trim(),
-    googleEventId: String(opts.googleEventId || '').trim(),
-  };
-  const fromThread = latestBookingMeta(l.id);
+  const hd = callHostData();
+  const row = hd.booking;
+  const bookingId = String(opts.bookingId || (row && row.id) || S.book.bookingId || '').trim();
+  const googleEventId = String(opts.googleEventId || (row && (row.google_event_id || row.googleEventId)) || S.book.googleEventId || '').trim();
   S.book = {
     ...S.book,
     leadId: String(l.id),
     mode: 'reschedule',
-    step: 'slots',
+    step: 'pick',
     pick: null,
-    bookingId: fromCard.bookingId || fromThread.bookingId || null,
-    googleEventId: fromCard.googleEventId || fromThread.googleEventId || null,
+    dayKey: null,
+    note: '',
+    bookingId: bookingId || null,
+    googleEventId: googleEventId || null,
   };
-  S.ptab = 'chat';
   S.rtab = 'details';
   await loadBookSlots(l.id, { keepMode: true });
 }
@@ -1770,30 +1938,90 @@ async function confirmBookSlot() {
           leadPhone: l.phone || '',
           booked_by: 'booker',
         });
+    const label = data.label || slot.label;
     mergeLead(l.id, {
       status: 'booked',
       call_start_iso: slot.start,
-      call_booking: data.label || slot.label,
+      call_booking: label,
       booked_by: 'Booker',
       ai_paused: true,
     });
     D(l).booked = 'Booker';
-    toast(data.label ? (reschedule ? `Rescheduled to ${data.label}` : `Booked ${data.label}`) : (reschedule ? 'Call rescheduled' : 'Call booked'));
+    const hd = callHostData();
+    hd.booking = {
+      id: data.bookingId || S.book.bookingId,
+      lead_id: l.id,
+      slot_start: slot.start,
+      slot_end: slot.end,
+      google_event_id: data.eventId || S.book.googleEventId,
+      label,
+    };
+    S.book = {
+      ...S.book,
+      slots: S.book.slots,
+      pick: null,
+      dayKey: null,
+      loading: false,
+      err: '',
+      leadId: String(l.id),
+      step: 'booked',
+      mode: 'book',
+      bookingId: String((hd.booking && hd.booking.id) || '').trim() || null,
+      googleEventId: String((hd.booking && hd.booking.google_event_id) || '').trim() || null,
+      note: reschedule ? 'Rescheduled · lead notified by text' : '',
+    };
+    toast(label ? (reschedule ? `Rescheduled to ${label}` : `Booked ${label}`) : (reschedule ? 'Call rescheduled' : 'Call booked'));
     await loadThread(l.id);
     loadLeads();
+  } catch (e) {
+    toast(errMsg(e, reschedule ? 'Could not reschedule that time.' : 'Could not book that time.'), 'bad');
+  } finally {
+    setBusy('book', false);
+  }
+}
+
+async function cancelActiveBooking() {
+  const l = leadById(S.leadId);
+  if (!l || !host.cancelBooking) return;
+  const hd = callHostData();
+  const bookingId = String(S.book.bookingId || (hd.booking && hd.booking.id) || '').trim();
+  if (!bookingId) {
+    toast('Could not find the booking to cancel.', 'bad');
+    return;
+  }
+  setBusy('book', true);
+  try {
+    await host.cancelBooking({
+      bookingId,
+      leadId: l.id,
+      leadName: l.name || '',
+      leadPhone: l.phone || '',
+    });
+    hd.booking = null;
+    mergeLead(l.id, {
+      status: 'engaging',
+      call_start_iso: null,
+      call_booking: '',
+      ai_paused: false,
+    });
     S.book = {
       slots: [],
+      dayKey: null,
       pick: null,
       loading: false,
       err: '',
-      leadId: null,
-      step: 'slots',
+      leadId: String(l.id),
+      step: 'pick',
       mode: 'book',
       bookingId: null,
       googleEventId: null,
+      note: 'Booking cancelled · lead notified',
     };
+    toast('Booking cancelled. Lead notified by text.');
+    await loadBookSlots(l.id, { keepNote: true });
+    loadLeads();
   } catch (e) {
-    toast(errMsg(e, reschedule ? 'Could not reschedule that time.' : 'Could not book that time.'), 'bad');
+    toast(errMsg(e, 'Could not cancel booking.'), 'bad');
   } finally {
     setBusy('book', false);
   }
@@ -2497,16 +2725,36 @@ const ACT = {
   startOnboarding: () => { const l = leadById(S.leadId); if (l) startOnboarding(l); },
   openUnit: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.onboarding) host.openOnboardingUnit && host.openOnboardingUnit(l.onboarding.unitId); },
   convertClient: (b) => { const l = leadById(b.dataset.id || S.leadId); S.menu = null; renderMenu(); if (l && host.convertLeadToOpsClient) host.convertLeadToOpsClient({ id: l.id, name: l.name, email: l.email, phone: l.phone }); },
-  reloadBookSlots: () => { void loadBookSlots(S.leadId, { keepMode: S.book.mode === 'reschedule' }); },
-  pickBookSlot: (b) => {
-    S.book = { ...S.book, pick: b.dataset.start || null, step: 'confirm' };
+  reloadBookSlots: () => {
+    if (S.book.step === 'booked' || S.book.step === 'askcancel') {
+      void loadThread(S.leadId);
+      return;
+    }
+    void loadBookSlots(S.leadId, { keepMode: S.book.mode === 'reschedule', keepNote: Boolean(S.book.note) });
+  },
+  bookDay: (b) => {
+    S.book = { ...S.book, dayKey: b.dataset.day || null, pick: null, step: 'pick' };
+    renderMain();
+  },
+  bookShowConfirm: () => {
+    if (!S.book.pick) return;
+    S.book = { ...S.book, step: 'confirm' };
     renderMain();
   },
   cancelBookConfirm: () => {
-    S.book = { ...S.book, pick: null, step: 'slots' };
+    S.book = { ...S.book, step: 'pick' };
     renderMain();
   },
   confirmBookSlot: () => { void confirmBookSlot(); },
+  bookAskCancel: () => {
+    S.book = { ...S.book, step: 'askcancel', mode: 'book' };
+    renderMain();
+  },
+  bookDoCancel: () => { void cancelActiveBooking(); },
+  bookKeepCurrent: () => {
+    S.book = { ...S.book, step: 'booked', mode: 'book', pick: null, dayKey: null, note: S.book.note || '' };
+    renderMain();
+  },
   rescheduleBooking: (b) => {
     void startReschedule({
       bookingId: b.dataset.bookingId || '',
@@ -2590,6 +2838,11 @@ function onChange(e) {
     if (k.startsWith('f.')) { S.f[k.slice(2)] = v; renderMain(); if (S.modal && S.modal.kind === 'filters') renderOverlay(); return; }
     if (k === 'nl.source') { S.nl.source = v; keepFocus(renderOverlay); return; }
     if (k === 'ringFirst') { selectRingFirst(v); return; }
+    if (k === 'bookTime') {
+      S.book = { ...S.book, pick: v || null, step: 'pick' };
+      renderMain();
+      return;
+    }
     const l = leadById(S.leadId); if (!l) return;
     if (k === 'status') patchLead({ status: v }, `Stage set to ${STATUS_LABEL[v] || v}`);
     else if (k === 'offerPath') patchLead({ offerPath: v }, `Path set to ${OFFER_PATH_LABEL[v] || v}`);

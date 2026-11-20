@@ -197,6 +197,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method === "GET" && op === "calendar_slots") {
+    // Up to 30 free slots over ~7 weekdays; ±30 min buffer applied in listCalendarSlots.
     const { listCalendarSlots } = await import("../crmCalendar.js");
     const result = await listCalendarSlots();
     if (result.error && result.slots.length === 0) {
@@ -247,6 +248,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bookingId: result.bookingId,
       label: result.label,
     });
+  }
+
+  if (req.method === "POST" && op === "cancel_booking") {
+    const body = readBody(req);
+    const { cancelCalendarBooking } = await import("../crmCalendar.js");
+    const result = await cancelCalendarBooking({
+      bookingId: String(body.bookingId ?? body.booking_id ?? ""),
+      leadId: String(body.leadId ?? body.lead_id ?? ""),
+      leadName: String(body.leadName ?? body.lead_name ?? ""),
+      leadPhone: String(body.leadPhone ?? body.lead_phone ?? ""),
+    });
+    if (!result.ok) {
+      return res.status(400).json({ error: result.error });
+    }
+    return res.status(200).json({ ok: true });
   }
 
   if (req.method === "POST" && op === "reschedule_slot") {

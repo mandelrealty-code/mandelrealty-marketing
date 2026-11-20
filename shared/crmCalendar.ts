@@ -12,7 +12,8 @@ export const BOOKING_HOURS_START = 9;
 export const BOOKING_HOURS_END = 17;
 const SLOT_MS = 60 * 60 * 1000;
 const BUFFER_MS = 30 * 60 * 1000;
-const MAX_SLOTS = 10;
+/** Up to ~7 weekdays × business hours — AI gets the full list, presents 3. */
+const MAX_SLOTS = 30;
 const LOOKAHEAD_DAYS = 7;
 
 export type CalendarSlot = {
@@ -240,16 +241,55 @@ async function fetchBusyBlocks(
     const start = new Date(startRaw).getTime();
     const end = new Date(endRaw).getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    // Buffer: 30 min before and after each event.
+    // A 9:00–10:00 event blocks 8:00–8:30 (slot
+    // ending within 30 min of event start) and
+    // blocks 10:00–10:30 (slot starting within
+    // 30 min of event end).
     blocks.push({ start: start - BUFFER_MS, end: end + BUFFER_MS });
   }
   return blocks;
 }
 
 function overlaps(blocks: BusyBlock[], start: number, end: number): boolean {
+  // Expanded busy blocks already include ±30 min; any overlap means the slot is blocked.
   return blocks.some((b) => start < b.end && end > b.start);
 }
 
-/** Free 1-hour Toronto slots over the next 7 days (weekdays 9–17), up to 10. */
+/** Phone-call calendar event — no Google Meet (omit conferenceData / conferenceDataVersion). */
+function buildPhoneCallEventBody(input: {
+  name: string;
+  phone: string;
+  start: Date;
+  end: Date;
+  attendees: { email: string }[];
+}) {
+  const phone = input.phone.trim() || "n/a";
+  const name = input.name.trim() || "there";
+  return {
+    summary: "Call with Ryan Mandel · Mandel Realty Group",
+    location: `Phone call — ${phone}`,
+    description: `Phone call with ${name}.\nPhone: ${phone}\n\nLead from MRG CRM.`,
+    start: {
+      dateTime: input.start.toISOString(),
+      timeZone: CALL_TZ,
+    },
+    end: {
+      dateTime: input.end.toISOString(),
+      timeZone: CALL_TZ,
+    },
+    attendees: input.attendees,
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: "popup", minutes: 10 },
+        { method: "email", minutes: 60 },
+      ],
+    },
+  };
+}
+
+/** Free 1-hour Toronto slots over the next 7 days (weekdays 9–17), up to 30. */
 export async function listCalendarSlots(
   now = new Date(),
 ): Promise<{ slots: CalendarSlot[]; error?: string }> {
@@ -380,7 +420,7 @@ export async function sendRescheduleConfirmationSms(input: {
   const to = toE164(input.leadPhone);
   if (!to) return { ok: false, error: "Invalid phone number." };
   const name = input.leadName.trim() || "there";
-  const body = `Hi ${name}, your call has been rescheduled to ${input.label}. Reply STOP to opt out.`;
+  const body = `Hi ${name}, your call with Ryan has been rescheduled to ${input.label}. Reply STOP to opt out.`;
   const send = await sendTwilioSms({
     accountSid: env.TWILIO_ACCOUNT_SID!,
     authToken: env.TWILIO_AUTH_TOKEN!,
@@ -405,6 +445,163 @@ export async function sendRescheduleConfirmationSms(input: {
     }
   }
   return send.ok ? { ok: true } : { ok: false, error: send.error };
+}
+
+export async function sendCancelBookingSms(input: {
+  leadName: string;
+  leadPhone: string;
+  leadId?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { toE164, isTwilioConfigured } = await import("./followUpSequences.js");
+  const { sendTwilioSms } = await import("./twilioSms.js");
+  const env = {
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER,
+  };
+  if (!isTwilioConfigured(env)) {
+    return { ok: false, error: "Twilio is not configured." };
+  }
+  const to = toE164(input.leadPhone);
+  if (!to) return { ok: false, error: "Invalid phone number." };
+  const name = input.leadName.trim() || "there";
+  const body = `Hi ${name}, your call with Ryan at Mandel Realty Group has been cancelled. Reply anytime to rebook. Reply STOP to opt out.`;
+  const send = await sendTwilioSms({
+    accountSid: env.TWILIO_ACCOUNT_SID!,
+    authToken: env.TWILIO_AUTH_TOKEN!,
+    from: env.TWILIO_PHONE_NUMBER!,
+    to,
+    body,
+  });
+  if (input.leadId) {
+    try {
+      const { logSmsMessage } = await import("./smsStore.js");
+      await logSmsMessage({
+        leadId: input.leadId,
+        direction: "outbound",
+        fromPhone: env.TWILIO_PHONE_NUMBER!,
+        toPhone: to,
+        body,
+        providerSid: send.sid ?? null,
+        meta: { booking_cancel_sms: true },
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  return send.ok ? { ok: true } : { ok: false, error: send.error };
+}
+
+export type CancelBookingInput = {
+  bookingId: string;
+  leadId: string;
+  leadName: string;
+  leadPhone: string;
+};
+
+export type CrmBookingRow = {
+  id: string;
+  lead_id: string;
+  slot_start: string;
+  slot_end: string;
+  google_event_id: string | null;
+  booked_by?: string | null;
+  confirmation_sent_at?: string | null;
+  created_at?: string | null;
+  label?: string;
+};
+
+/** Latest crm_bookings row for a lead (for the Book a call panel). */
+export async function getLatestCrmBooking(
+  leadId: string,
+): Promise<CrmBookingRow | null> {
+  const sb = getSupabaseAdmin();
+  const id = leadId.trim();
+  if (!sb || !id) return null;
+  const { data, error } = await sb
+    .from("crm_bookings")
+    .select("id, lead_id, slot_start, slot_end, google_event_id, booked_by, confirmation_sent_at, created_at")
+    .eq("lead_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const start = data.slot_start ? String(data.slot_start) : "";
+  return {
+    id: String(data.id),
+    lead_id: String(data.lead_id),
+    slot_start: start,
+    slot_end: data.slot_end ? String(data.slot_end) : "",
+    google_event_id: data.google_event_id ? String(data.google_event_id) : null,
+    booked_by: data.booked_by != null ? String(data.booked_by) : null,
+    confirmation_sent_at: data.confirmation_sent_at
+      ? String(data.confirmation_sent_at)
+      : null,
+    created_at: data.created_at ? String(data.created_at) : null,
+    label: start ? formatCalendarSlotLabel(start) : "",
+  };
+}
+
+export async function cancelCalendarBooking(
+  input: CancelBookingInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return { ok: false, error: "Database is not configured." };
+
+  const bookingId = input.bookingId.trim();
+  const leadId = input.leadId.trim();
+  if (!bookingId) return { ok: false, error: "Missing booking id." };
+  if (!leadId) return { ok: false, error: "Missing lead id." };
+
+  const { data: row, error: readErr } = await sb
+    .from("crm_bookings")
+    .select("id, lead_id, google_event_id")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (readErr || !row) {
+    return { ok: false, error: readErr?.message || "Booking not found." };
+  }
+  if (String(row.lead_id) !== leadId) {
+    return { ok: false, error: "Booking does not match this lead." };
+  }
+
+  const oldEventId = row.google_event_id ? String(row.google_event_id) : "";
+  if (oldEventId) {
+    const deleted = await deleteCalendarEvent(oldEventId);
+    if (!deleted.ok) return deleted;
+  }
+
+  const { error: delErr } = await sb.from("crm_bookings").delete().eq("id", bookingId);
+  if (delErr) {
+    return { ok: false, error: delErr.message || "Could not delete booking." };
+  }
+
+  const { error: leadErr } = await sb
+    .from("leads")
+    .update({
+      status: "engaging",
+      call_start_iso: null,
+      call_booking: "",
+      ai_paused: false,
+      notes_updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadId);
+  if (leadErr) {
+    console.warn("[crmCalendar] cancel lead update failed", leadErr.message);
+  }
+
+  await sendCancelBookingSms({
+    leadName: input.leadName,
+    leadPhone: input.leadPhone,
+    leadId,
+  }).catch((err) =>
+    console.warn(
+      "[crmCalendar] cancel SMS failed",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+
+  return { ok: true };
 }
 
 export async function deleteCalendarEvent(
@@ -503,19 +700,13 @@ export async function rescheduleCalendarSlot(
   ];
   if (email && /@/.test(email)) attendees.unshift({ email });
 
-  const eventBody = {
-    summary: "Call with Ryan Mandel · Mandel Realty Group",
-    description: `Hi ${name}, looking forward to speaking with you!`,
-    start: {
-      dateTime: start.toISOString(),
-      timeZone: CALL_TZ,
-    },
-    end: {
-      dateTime: end.toISOString(),
-      timeZone: CALL_TZ,
-    },
+  const eventBody = buildPhoneCallEventBody({
+    name,
+    phone,
+    start,
+    end,
     attendees,
-  };
+  });
 
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all",
@@ -627,19 +818,13 @@ export async function bookCalendarSlot(
   ];
   if (email && /@/.test(email)) attendees.unshift({ email });
 
-  const eventBody = {
-    summary: "Call with Ryan Mandel · Mandel Realty Group",
-    description: `Hi ${name}, looking forward to speaking with you!`,
-    start: {
-      dateTime: start.toISOString(),
-      timeZone: CALL_TZ,
-    },
-    end: {
-      dateTime: end.toISOString(),
-      timeZone: CALL_TZ,
-    },
+  const eventBody = buildPhoneCallEventBody({
+    name,
+    phone,
+    start,
+    end,
     attendees,
-  };
+  });
 
   const res = await fetch(
     "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all",
@@ -850,7 +1035,176 @@ async function sendCallBookedTeamEmail(input: {
   }
 }
 
-/** Match a natural-language reply to one of the offered slots. */
+const WEEKDAY_PARSE: Array<{ re: RegExp; day: number; name: string }> = [
+  { re: /\b(sun(day)?)\b/i, day: 0, name: "Sunday" },
+  { re: /\b(mon(day)?)\b/i, day: 1, name: "Monday" },
+  { re: /\b(tue(s|sday)?)\b/i, day: 2, name: "Tuesday" },
+  { re: /\b(wed(nesday)?)\b/i, day: 3, name: "Wednesday" },
+  { re: /\b(thu(r|rs|rsday)?)\b/i, day: 4, name: "Thursday" },
+  { re: /\b(fri(day)?)\b/i, day: 5, name: "Friday" },
+  { re: /\b(sat(urday)?)\b/i, day: 6, name: "Saturday" },
+];
+
+export type ParsedSlotWant = {
+  weekday: number | null;
+  weekdayName: string | null;
+  hour24: number | null;
+  minute: number | null;
+  /** Human phrase e.g. "Tuesday at 3:00 PM" */
+  requestedLabel: string;
+};
+
+/** Parse day and/or time from a lead reply ("tuesday at 3", "thursday", "2pm"). */
+export function parseSlotWant(reply: string, now = new Date()): ParsedSlotWant | null {
+  const text = reply.trim().toLowerCase();
+  if (!text) return null;
+
+  let weekday: number | null = null;
+  let weekdayName: string | null = null;
+  if (/\btomorrow\b/i.test(text)) {
+    const t = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    weekday = torontoParts(t).weekday;
+    weekdayName = WEEKDAY_PARSE.find((w) => w.day === weekday)?.name || "tomorrow";
+  } else {
+    for (const w of WEEKDAY_PARSE) {
+      if (w.re.test(text)) {
+        weekday = w.day;
+        weekdayName = w.name;
+        break;
+      }
+    }
+  }
+
+  let hour24: number | null = null;
+  let minute = 0;
+  const ampm = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b/i);
+  const atHour = text.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\b/i);
+  const bareHour = text.match(/(?:^|\s)(\d{1,2})(?::(\d{2}))?(?:\s*o'?clock)?(?:\s|$)/i);
+  if (ampm) {
+    let h = Number(ampm[1]);
+    minute = ampm[2] ? Number(ampm[2]) : 0;
+    const ap = ampm[3].replace(/\./g, "").toLowerCase();
+    if (ap.startsWith("p") && h < 12) h += 12;
+    if (ap.startsWith("a") && h === 12) h = 0;
+    hour24 = h;
+  } else if (atHour) {
+    let h = Number(atHour[1]);
+    minute = atHour[2] ? Number(atHour[2]) : 0;
+    // Bare "at 3" in booking hours → afternoon
+    if (h >= 1 && h <= 7) h += 12;
+    if (h >= 0 && h <= 23) hour24 = h;
+  } else if (bareHour && (weekday != null || /\b(time|o'?clock)\b/i.test(text))) {
+    let h = Number(bareHour[1]);
+    minute = bareHour[2] ? Number(bareHour[2]) : 0;
+    if (h >= 1 && h <= 7) h += 12;
+    if (h >= BOOKING_HOURS_START && h < BOOKING_HOURS_END) hour24 = h;
+  }
+
+  if (weekday == null && hour24 == null) return null;
+
+  const timeBit =
+    hour24 == null
+      ? ""
+      : (() => {
+          const h12 = ((hour24 + 11) % 12) + 1;
+          const ap = hour24 >= 12 ? "PM" : "AM";
+          const mm = String(minute).padStart(2, "0");
+          return `${h12}:${mm} ${ap}`;
+        })();
+  const requestedLabel = [weekdayName, timeBit ? `at ${timeBit}` : ""]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return { weekday, weekdayName, hour24, minute, requestedLabel };
+}
+
+function slotTorontoParts(slot: CalendarSlot) {
+  return torontoParts(new Date(slot.start));
+}
+
+function slotMatchesWant(slot: CalendarSlot, want: ParsedSlotWant): boolean {
+  const p = slotTorontoParts(slot);
+  if (want.weekday != null && p.weekday !== want.weekday) return false;
+  if (want.hour24 != null) {
+    if (p.hour !== want.hour24) return false;
+    if (want.minute != null && want.minute !== 0 && p.minute !== want.minute) {
+      return false;
+    }
+  }
+  return want.weekday != null || want.hour24 != null;
+}
+
+/** Closest open slots to a requested day/time (from the full calendar list). */
+export function nearestSlotsToWant(
+  want: ParsedSlotWant,
+  slots: CalendarSlot[],
+  limit = 3,
+  now = new Date(),
+): CalendarSlot[] {
+  if (!slots.length) return [];
+  let target = now.getTime();
+  if (want.weekday != null || want.hour24 != null) {
+    for (let offset = 0; offset < LOOKAHEAD_DAYS + 2; offset++) {
+      const probe = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
+      const p = torontoParts(probe);
+      if (want.weekday != null && p.weekday !== want.weekday) continue;
+      const hour = want.hour24 ?? BOOKING_HOURS_START;
+      const minute = want.minute ?? 0;
+      const start = zonedTimeToUtc(p.y, p.m, p.day, hour, minute, CALL_TZ);
+      if (start.getTime() < now.getTime() - 60_000) continue;
+      target = start.getTime();
+      break;
+    }
+  }
+  // Prefer same weekday first when only day was requested and nothing exact matched.
+  const scored = slots.map((s) => {
+    const t = new Date(s.start).getTime();
+    const p = slotTorontoParts(s);
+    const sameDay =
+      want.weekday != null && p.weekday === want.weekday ? 0 : 1;
+    return { s, score: sameDay * 1e12 + Math.abs(t - target) };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  return scored.slice(0, limit).map((x) => x.s);
+}
+
+export type SlotPreferenceResult =
+  | { kind: "match"; slot: CalendarSlot; want: ParsedSlotWant | null }
+  | {
+      kind: "nearest";
+      want: ParsedSlotWant;
+      alternatives: CalendarSlot[];
+    }
+  | { kind: "none" };
+
+/**
+ * Search the FULL slot list for a day/time preference.
+ * Exact match → match; otherwise nearest alternatives from the same list.
+ */
+export function resolveSlotPreference(
+  reply: string,
+  slots: CalendarSlot[],
+  now = new Date(),
+): SlotPreferenceResult {
+  if (!slots.length) return { kind: "none" };
+  const direct = matchSlotFromReply(reply, slots);
+  if (direct) return { kind: "match", slot: direct, want: parseSlotWant(reply, now) };
+
+  const want = parseSlotWant(reply, now);
+  if (!want) return { kind: "none" };
+
+  const matches = slots.filter((s) => slotMatchesWant(s, want));
+  if (matches.length) {
+    return { kind: "match", slot: matches[0]!, want };
+  }
+  const alternatives = nearestSlotsToWant(want, slots, 3, now);
+  if (!alternatives.length) return { kind: "none" };
+  return { kind: "nearest", want, alternatives };
+}
+
+/** Match a natural-language reply to one of the slots (full list, not just the 3 shown). */
 export function matchSlotFromReply(
   reply: string,
   slots: CalendarSlot[],
@@ -869,6 +1223,8 @@ export function matchSlotFromReply(
   const num = text.match(/^\s*(\d+)\s*$/) || text.match(/\b(?:option|number|#)\s*(\d+)\b/);
   if (num) {
     const i = Number(num[1]) - 1;
+    // Numbers 1–3 map to the presented options (first three of the full list).
+    if (i >= 0 && i < Math.min(3, slots.length)) return slots[i] ?? null;
     if (i >= 0 && i < slots.length) return slots[i] ?? null;
   }
 
@@ -876,25 +1232,21 @@ export function matchSlotFromReply(
   if (/\b(third|3rd)\b/.test(text) && slots[2]) return slots[2];
   if (/\b(last)\b/.test(text)) return slots[slots.length - 1] ?? null;
 
+  const want = parseSlotWant(text);
+  if (want) {
+    const matches = slots.filter((s) => slotMatchesWant(s, want));
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1) {
+      // Day + time → first match; day only → first that day; time only → first at that hour
+      return matches[0]!;
+    }
+  }
+
   for (const slot of slots) {
     const label = slot.label.toLowerCase();
     const timePart = label.split("·")[1]?.trim() ?? "";
     if (timePart && text.includes(timePart.toLowerCase().replace(/\s+/g, ""))) {
       return slot;
-    }
-    // "wednesday at 2" / "2pm" / "thu"
-    const weekday = label.split(" ")[0]?.toLowerCase() ?? "";
-    const hourMatch = label.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i);
-    if (weekday && text.includes(weekday.slice(0, 3))) {
-      if (!hourMatch) return slot;
-      const h = Number(hourMatch[1]);
-      const ampm = (hourMatch[3] || "").toLowerCase();
-      const want = `${h}${ampm}`;
-      const compact = text.replace(/\s+/g, "");
-      if (compact.includes(want) || compact.includes(`${h}:00${ampm}`) || text.includes(`${h} ${ampm}`)) {
-        return slot;
-      }
-      if (text.includes(String(h)) && text.includes(ampm)) return slot;
     }
   }
 

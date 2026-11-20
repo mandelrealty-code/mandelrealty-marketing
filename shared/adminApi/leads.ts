@@ -91,12 +91,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
-        const [followups, messages, pendingDraft, latestCall, callRows] = await Promise.all([
+        const { getLatestCrmBooking } = await import("../crmCalendar.js");
+        const [followups, messages, pendingDraft, latestCall, callRows, booking] = await Promise.all([
           listFollowupsForLead(followupsFor),
           listSmsForLead(followupsFor),
           getPendingDraft(followupsFor),
           getLatestLeadCallForLead(followupsFor),
           listLeadCallsForLead(followupsFor),
+          getLatestCrmBooking(followupsFor),
         ]);
         const { getLeadById, updateLeadCrm } = await import("../leadStore.js");
         const lead = await getLeadById(followupsFor);
@@ -135,6 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           calls,
           call_count: calls.length,
           activeCall,
+          booking: booking || null,
           lead: lead
             ? {
                 ...lead,
@@ -614,6 +617,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (typeof req.query.id === "string" ? req.query.id.trim() : "");
     if (!id) return res.status(400).json({ error: "Missing lead id." });
 
+    // DB cascade handles lead_calls and
+    // crm_bookings via FK constraints.
+    // Run crm_cascade_v1.sql before deploying.
     const ok = await deleteLead(id);
     if (!ok) return res.status(500).json({ error: "Could not delete lead." });
     return res.status(200).json({ ok: true, id });
