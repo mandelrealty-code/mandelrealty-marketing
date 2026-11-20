@@ -350,6 +350,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       loadDoc: (id: string) => call(`/api/admin/knowledge?id=${encodeURIComponent(id)}`),
 
       patchLead,
+      updateLead: (leadId: string, fields: Data) => patchLead({ id: leadId, ...fields }),
       updateProfile: (leadId: string, fields: Data) =>
         call("/api/admin/leads?op=update_profile", json("PATCH", { leadId, ...fields })),
       checkStrRules: async (leadId: string) => {

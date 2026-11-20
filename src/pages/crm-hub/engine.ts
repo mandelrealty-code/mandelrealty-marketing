@@ -248,9 +248,9 @@ export const CRM_EXTRA_CSS = `
 .pseg.three{grid-template-columns:repeat(3,1fr)}
 @media (max-width:1239px){
   .rtabs{display:none}
-  .lpanel.t-calls .thread{display:none}
+  .lpanel.t-calls .thread,.lpanel.t-calls .thread-col{display:none}
   .lpanel.t-calls .details{display:flex}
-  .lpanel.t-details .thread{display:none}
+  .lpanel.t-details .thread,.lpanel.t-details .thread-col{display:none}
   .lpanel.t-chat .details{display:none}
 }
 @media (min-width:1240px){
@@ -337,6 +337,56 @@ export const CRM_EXTRA_CSS = `
   .topbar-btns{flex-direction:column}
   .dsec-head{min-height:48px}
 }
+
+/* Compact contact bar + edit modal + chat collapse (mrg-crm-lead-panel-compact_2.html) */
+.contactblk .pt1{display:flex;align-items:center;gap:8px}
+.contactblk .pn{display:flex;align-items:center;gap:8px;flex:1;min-width:0;flex-wrap:wrap}
+.contactblk .pn b{font-size:15px;font-weight:700;color:var(--ink);line-height:1.25}
+.contactblk .editlnk{flex:none;margin-left:auto;border:0;background:none;padding:6px 4px;font:500 11px/1 Inter,sans-serif;color:var(--muted);cursor:pointer;border-radius:6px}
+.contactblk .editlnk:hover{color:var(--ink);text-decoration:underline}
+.contactblk .cline{display:flex;align-items:baseline;gap:6px;min-width:0;margin-top:2px;white-space:nowrap}
+.contactblk .cline b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums;flex:none}
+.contactblk .csep{color:var(--muted)}
+.contactblk .cemail{font-size:var(--t-sm);color:var(--muted);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.emscrim{position:fixed;inset:0;background:rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;padding:16px;z-index:100}
+.emcard{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.12)}
+.emh{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.emh h2{margin:0;font-size:16px;font-weight:700;color:var(--ink)}
+.emf{display:flex;flex-direction:column;gap:12px}
+.emf label{display:block;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:5px}
+.emf .input{height:44px;width:100%}
+.emsave{width:100%;height:44px;margin-top:20px}
+.emcancel{display:block;margin:10px auto 0;min-height:36px;border:0;background:none;font:500 14px Inter,sans-serif;color:var(--muted);cursor:pointer;text-align:center}
+.emcancel:hover{color:var(--ink);text-decoration:underline}
+.lpanel .thread-col{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
+.lpanel .thread-col .thread{flex:1;min-height:0;min-width:0}
+.lpanel .ctog{position:absolute;top:50%;z-index:6;width:28px;height:28px;margin-top:-14px;border-radius:50%;background:#fff;border:1px solid #e8e8e3;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:grid;place-items:center;color:var(--ink2);cursor:pointer;padding:0}
+.lpanel .ctog:hover{background:var(--panel);color:var(--ink)}
+.lpanel .ctog.rtog{right:-14px}
+.lpanel .ctog.ltog{left:-14px}
+.lpanel,.lpanel .thread-col,.lpanel .thread,.lpanel .details,.split{transition:grid-template-columns 200ms ease,width 200ms ease,flex 200ms ease,min-width 200ms ease,opacity 200ms ease}
+.lpanel.chat-collapsed-right{grid-template-columns:0 minmax(0,1fr)}
+.lpanel.chat-collapsed-right .thread-col{width:0;min-width:0;overflow:visible}
+.lpanel.chat-collapsed-right .thread{width:0;min-width:0;overflow:hidden;opacity:0;border:0;padding:0;pointer-events:none}
+.lpanel.chat-collapsed-right .details{flex:1;min-width:0}
+.lpanel.chat-collapsed-right .ctog.rtog{right:auto;left:-14px}
+.lpanel.chat-collapsed-right .ctog.ltog{opacity:0;pointer-events:none}
+.lpanel.chat-collapsed-left{grid-template-columns:0 352px}
+.lpanel.chat-collapsed-left .thread-col{width:0;min-width:0;overflow:visible}
+.lpanel.chat-collapsed-left .thread{width:0;min-width:0;overflow:hidden;opacity:0;border:0;padding:0;pointer-events:none}
+.lpanel.chat-collapsed-left .ctog.ltog{left:auto;right:-14px}
+.lpanel.chat-collapsed-left .ctog.rtog{opacity:0;pointer-events:none}
+.split:has(.lpanel.chat-collapsed-left){grid-template-columns:minmax(0,1fr) 352px}
+.split:has(.lpanel.chat-collapsed-right){grid-template-columns:400px minmax(0,1fr)}
+@media (max-width:1239px){
+  .lpanel .ctog{display:none}
+  .lpanel.chat-collapsed-right,.lpanel.chat-collapsed-left{grid-template-columns:minmax(0,1fr)}
+  .split:has(.lpanel.chat-collapsed-left),.split:has(.lpanel.chat-collapsed-right){grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:768px){
+  .contactblk .editlnk{min-height:44px;min-width:44px;font-size:13px}
+  .emsave{height:48px}
+}
 `;
 
 export function mountCrm(root, host) {
@@ -376,6 +426,7 @@ const I = {
   plus:'<path d="M12 5v14M5 12h14"/>',
   chev:'<path d="m6 9 6 6 6-6"/>',
   back:'<path d="m15 6-6 6 6 6"/>',
+  fwd:'<path d="m9 6 6 6-6 6"/>',
   x:'<path d="M6 6l12 12M18 6 6 18"/>',
   check:'<path d="m5 12 5 5 9-10"/>',
   phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
@@ -575,6 +626,8 @@ const S = {
   draftEdit: null,
   phoneEdit: null,
   contactEdit: null,
+  editContactOpen: false,
+  chatCollapsed: null,
   busy: {},
   fupDone: {},
   preCall: {},
@@ -1445,37 +1498,13 @@ function saleContractBody(l) {
 function saleSectionBody(l, hl) {
   return `<div class="ks ${hl ? 'hl' : ''}"><div class="kbody">${saleContractBody(l)}</div></div>`;
 }
-function contactFieldRow(label, field, displayHtml, emptyLabel, inputType = 'text') {
-  const edit = S.contactEdit;
-  const editing = edit && edit.field === field;
-  const busy = isBusy('save') ? 'disabled' : '';
-  if (editing) {
-    const typeAttr = inputType === 'tel' ? 'type="tel" inputmode="tel"' : inputType === 'email' ? 'type="email"' : 'type="text"';
-    return `<div class="crowf"><div class="clab">${esc(label)}</div><div class="phedit"><input class="input focus" ${typeAttr} data-k="contactEdit.value" value="${esc(edit.value)}" placeholder="${esc(emptyLabel)}" aria-label="${esc(label)}"><button class="btn sm primary" data-act="saveContactField" ${busy}>Save</button><button class="btn sm ghost" data-act="cancelContactField">Cancel</button></div></div>`;
-  }
-  return `<div class="crowf"><div class="clab">${esc(label)}</div><div class="vrow">${displayHtml}<button type="button" class="iconbtn pen" data-act="editContactField" data-v="${esc(field)}" title="Edit ${esc(label)}" aria-label="Edit ${esc(label)}">${ic('edit', 'xs')}</button></div></div>`;
-}
 function contactBlock(l) {
   const phoneOk = phoneUsable(l.phone);
   const op = ringingPhone();
-  const nameVal = String(l.name || '').trim();
+  const nameVal = String(l.full_name || l.name || '').trim() || 'Unnamed lead';
   const emailVal = String(l.email || '').trim();
-  const addrVal = String(l.address || '').trim();
-  const nameHtml = nameVal
-    ? `<span class="cval">${esc(nameVal)}</span>`
-    : `<span class="meta">No name</span>`;
-  let phoneHtml;
-  if (phoneOk) {
-    phoneHtml = `<span class="phv"><span class="topbar-phone">${esc(fmtPhone(l.phone))}</span><button class="iconbtn" data-act="copyPhone" data-id="${esc(l.id)}" title="Copy phone" aria-label="Copy phone">${ic('copy', 'xs')}</button></span>`;
-  } else {
-    phoneHtml = `<span class="meta">No phone number</span>`;
-  }
-  const emailHtml = emailVal
-    ? `<span class="cval">${esc(emailVal)}</span>`
-    : `<span class="meta">No email</span>`;
-  const addrHtml = addrVal
-    ? `<span class="cval">${esc(addrVal)}</span>`
-    : `<span class="meta">No address</span>`;
+  const phoneTxt = phoneOk ? fmtPhone(l.phone) : 'No phone';
+  const emailTxt = emailVal || 'No email';
   const canCall = phoneOk && Boolean(op) && !isBusy('call');
   const preDone = Boolean(S.preCall[l.id]) || S.th.messages.some((m) => m.direction === 'outbound' && ((m.meta && m.meta.pre_call === true) || /calling you in a minute from this number/i.test(m.body || '')));
   const callBtns = phoneOk
@@ -1486,14 +1515,34 @@ function contactBlock(l) {
       <div class="topbar-hint">${preDone ? 'Rings the selected phone first, then connects the lead. No new text.' : 'Calls are recorded · AI texts lead first'}</div>`
     : '<div class="topbar-hint">No phone number</div>';
   return `<div class="topbar contactblk">
-    ${contactFieldRow('Name', 'name', nameHtml, 'Name')}
-    ${contactFieldRow('Phone', 'phone', phoneHtml, 'Phone number', 'tel')}
-    ${contactFieldRow('Email', 'email', emailHtml, 'Email', 'email')}
-    ${contactFieldRow('Address', 'address', addrHtml, 'Contact address')}
+    <div class="pt1"><div class="pn"><b>${esc(nameVal)}</b>${stageChip(l.status)}</div>
+      <button type="button" class="editlnk" data-act="openEditContact">Edit</button></div>
+    <div class="cline"><b>${esc(phoneTxt)}</b><span class="csep">·</span><span class="cemail">${esc(emailTxt)}</span></div>
     ${callBtns}
     ${S.callMsg ? `<div class="okbox">${ic('phone', 'sm')}<span>${esc(S.callMsg)}</span></div>` : ''}
     ${phoneOk && !op ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Choose whose phone rings first in Settings.</b> CRM call rings that phone before the lead. <button class="lnk" data-act="goSettings">Open Settings →</button></span></div>` : ''}
     ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Caller is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
+  </div>`;
+}
+function editContactModal(l) {
+  if (!S.editContactOpen || !l) return '';
+  const nameVal = String(l.full_name || l.name || '').trim();
+  const phoneVal = phoneUsable(l.phone) ? fmtPhone(l.phone) : String(l.phone || '').trim();
+  const emailVal = String(l.email || '').trim();
+  const addrVal = String(l.address || '').trim();
+  const busy = isBusy('save') ? 'disabled' : '';
+  return `<div class="emscrim show" data-act="closeEditContact" role="presentation">
+    <div class="emcard" role="dialog" aria-modal="true" aria-labelledby="emT">
+      <div class="emh"><h2 id="emT">Edit contact</h2><button type="button" class="iconbtn" data-act="closeEditContact" aria-label="Close">${ic('x')}</button></div>
+      <div class="emf">
+        <div><label for="em-name">Name</label><input class="input" id="em-name" type="text" value="${esc(nameVal)}" autocomplete="off"></div>
+        <div><label for="em-phone">Phone</label><input class="input" id="em-phone" type="tel" inputmode="tel" value="${esc(phoneVal)}" autocomplete="off"></div>
+        <div><label for="em-email">Email</label><input class="input" id="em-email" type="email" value="${esc(emailVal)}" autocomplete="off"></div>
+        <div><label for="em-addr">Address</label><input class="input" id="em-addr" type="text" value="${esc(addrVal)}" autocomplete="off"></div>
+      </div>
+      <button type="button" class="btn primary emsave" data-act="saveEditContact" ${busy}>Save changes</button>
+      <button type="button" class="emcancel" data-act="closeEditContact">Cancel</button>
+    </div>
   </div>`;
 }
 function leadTopBar(l) {
@@ -1879,13 +1928,20 @@ function leadPanel(l) {
   const callsLabel = nCalls > 0 ? `Calls (${nCalls})` : 'Calls';
   const detailsBody = `${active}${sections.join('')}`;
   const rightBody = S.rtab === 'calls' ? `${active}${callsPane()}` : detailsBody;
-  return `<div class="card lpanel t-${S.ptab} r-${S.rtab}">${leadHeader(l)}
+  const collapseCls = S.chatCollapsed === 'right' ? ' chat-collapsed-right' : S.chatCollapsed === 'left' ? ' chat-collapsed-left' : '';
+  const togRight = S.chatCollapsed === 'right' ? 'fwd' : 'back';
+  const togLeft = S.chatCollapsed === 'left' ? 'back' : 'fwd';
+  return `<div class="card lpanel t-${S.ptab} r-${S.rtab}${collapseCls}">${leadHeader(l)}
     <div class="plseg"><div class="pseg three" role="tablist">
       <button role="tab" data-act="ptab" data-v="chat" class="${S.ptab === 'chat' ? 'on' : ''}">Chat</button>
       <button role="tab" data-act="ptab" data-v="details" class="${S.ptab === 'details' ? 'on' : ''}">Details</button>
       <button role="tab" data-act="ptab" data-v="calls" class="${S.ptab === 'calls' ? 'on' : ''}">${esc(callsLabel)}</button>
     </div></div>
-    <div class="thread">${thread(l)}</div>
+    <div class="thread-col">
+      <button type="button" class="ctog ltog" data-act="collapseChatLeft" aria-label="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}" title="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}">${ic(togLeft, 'sm')}</button>
+      <button type="button" class="ctog rtog" data-act="collapseChat" aria-label="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}" title="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}">${ic(togRight, 'sm')}</button>
+      <div class="thread">${thread(l)}</div>
+    </div>
     <div class="details">
       ${leadTopBar(l)}
       <div class="rtabs" role="tablist"><div class="seg">
@@ -1893,7 +1949,8 @@ function leadPanel(l) {
         <button type="button" role="tab" data-act="rtab" data-v="calls" class="${S.rtab === 'calls' ? 'on' : ''}">Calls${nCalls > 0 ? ` <span class="count">${nCalls}</span>` : ''}</button>
       </div></div>
       <div class="psecs" data-scroll="details">${rightBody}</div>
-    </div></div>`;
+    </div>
+    ${editContactModal(l)}</div>`;
 }
 function leadView() {
   const l = leadById(S.leadId);
@@ -2496,6 +2553,8 @@ function openLead(id, opts = {}) {
     S.sections = { book: false, profile: false, sale: false, notes: false, ai: false };
     S.phoneEdit = null;
     S.contactEdit = null;
+    S.editContactOpen = false;
+    S.chatCollapsed = null;
     S.draftEdit = null;
     S.callMsg = '';
     S.callNotesEdit = false;
@@ -2853,7 +2912,7 @@ async function runSave(field, value) {
 async function sendSms() {
   const l = leadById(S.leadId); if (!l || isBusy('sms')) return;
   const text = S.sms.trim(); if (!text) return;
-  if (!phoneUsable(l.phone)) { toast('Add a valid phone number for this lead first.', 'bad'); S.ptab = 'details'; S.contactEdit = { field: 'phone', value: '' }; renderMain(); return; }
+  if (!phoneUsable(l.phone)) { toast('Add a valid phone number for this lead first.', 'bad'); S.ptab = 'details'; S.editContactOpen = true; renderMain(); return; }
   setBusy('sms', true);
   try {
     const data = await host.sendSms(l.id, text);
@@ -3435,41 +3494,52 @@ const ACT = {
   draftEdit: () => { if (S.th.draft) { S.draftEdit = { id: S.th.draft.id, text: S.th.draft.body }; renderMain(); const t = root.querySelector('[data-k="draftEdit.text"]'); if (t) t.focus(); } },
   draftCancel: () => { S.draftEdit = null; renderMain(); },
   sendSms: () => sendSms(),
-  editPhone: () => { ACT.editContactField({ dataset: { v: 'phone' } }); },
-  cancelPhone: () => { ACT.cancelContactField(); },
-  savePhone: async () => { if (S.contactEdit && S.contactEdit.field === 'phone') return ACT.saveContactField(); },
-  editContactField: (b) => {
-    const field = String(b.dataset.v || '').trim();
-    const l = leadById(S.leadId);
-    if (!l || !['name', 'phone', 'email', 'address'].includes(field)) return;
-    let value = '';
-    if (field === 'name') value = String(l.name || '');
-    else if (field === 'phone') value = phoneUsable(l.phone) ? fmtPhone(l.phone) : '';
-    else if (field === 'email') value = String(l.email || '');
-    else if (field === 'address') value = String(l.address || '');
-    S.contactEdit = { field, value };
-    S.phoneEdit = field === 'phone' ? value : null;
+  openEditContact: () => {
+    S.editContactOpen = true;
     S.ptab = 'details';
     renderMain();
-    const t = root.querySelector('[data-k="contactEdit.value"]');
-    if (t) t.focus();
+    setTimeout(() => { const t = root.querySelector('#em-name'); if (t) t.focus(); }, 40);
   },
-  cancelContactField: () => { S.contactEdit = null; S.phoneEdit = null; renderMain(); },
-  saveContactField: async () => {
-    const edit = S.contactEdit;
-    if (!edit) return;
-    const field = edit.field;
-    const v = String(edit.value || '').trim();
-    if (field === 'name' && !v) { toast('Enter a name.', 'bad'); return; }
-    if (field === 'phone' && !v) { toast('Enter a phone number.', 'bad'); return; }
-    if (field === 'email' && v && !v.includes('@')) { toast('Enter a valid email.', 'bad'); return; }
-    const body = field === 'name' ? { name: v }
-      : field === 'phone' ? { phone: v }
-      : field === 'email' ? { email: v }
-      : { address: v };
-    const labels = { name: 'Name saved', phone: 'Phone saved', email: 'Email saved', address: 'Address saved' };
-    const data = await patchLead(body, labels[field] || 'Saved');
-    if (data) { S.contactEdit = null; S.phoneEdit = null; renderMain(); }
+  closeEditContact: (b, e) => {
+    if (b && b.classList && b.classList.contains('emscrim') && e && e.target !== b) return;
+    S.editContactOpen = false;
+    renderMain();
+  },
+  saveEditContact: async () => {
+    const l = leadById(S.leadId);
+    if (!l || isBusy('save')) return;
+    const name = String((root.querySelector('#em-name') || {}).value || '').trim();
+    const phone = String((root.querySelector('#em-phone') || {}).value || '').trim();
+    const email = String((root.querySelector('#em-email') || {}).value || '').trim();
+    const address = String((root.querySelector('#em-addr') || {}).value || '').trim();
+    if (!name) { toast('Enter a name.', 'bad'); return; }
+    if (email && !email.includes('@')) { toast('Enter a valid email.', 'bad'); return; }
+    const fields = { name, phone, email, address };
+    let data = null;
+    if (host.updateLead) {
+      setBusy('save', true);
+      try {
+        data = await host.updateLead(l.id, fields);
+        applyLeadResponse(l.id, data);
+        toast('Contact saved');
+      } catch (err) {
+        toast(errMsg(err, 'Could not save contact.'), 'bad');
+        data = null;
+      } finally {
+        setBusy('save', false);
+      }
+    } else {
+      data = await patchLead(fields, 'Contact saved');
+    }
+    if (data) { S.editContactOpen = false; renderMain(); }
+  },
+  collapseChat: () => {
+    S.chatCollapsed = S.chatCollapsed === 'right' ? null : 'right';
+    renderMain();
+  },
+  collapseChatLeft: () => {
+    S.chatCollapsed = S.chatCollapsed === 'left' ? null : 'left';
+    renderMain();
   },
   profEdit: (b) => {
     const field = b.dataset.v;
@@ -4001,6 +4071,7 @@ function onKey(e) {
   if (e.key === 'Escape') {
     if (S.menu) { S.menu = null; renderMenu(); return; }
     if (S.modal) { closeModal(); return; }
+    if (S.editContactOpen) { S.editContactOpen = false; renderMain(); return; }
     if (S.contactEdit != null || S.phoneEdit != null) { S.contactEdit = null; S.phoneEdit = null; renderMain(); return; }
     if (S.prof.edit) { S.prof = { ...S.prof, edit: null, q: '', predictions: [], draftName: '' }; renderMain(); return; }
   }
@@ -4024,8 +4095,11 @@ function onKey(e) {
   }
   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && S.th.draft && S.leadId && !isBusy('save')) { e.preventDefault(); draftAct('approve'); return; }
   if (t.dataset && t.dataset.k === 'sms' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendSms(); return; }
-  if (t.dataset && t.dataset.k === 'contactEdit.value' && e.key === 'Enter') { e.preventDefault(); ACT.saveContactField(); return; }
-  if (t.dataset && t.dataset.k === 'phoneEdit' && e.key === 'Enter') { e.preventDefault(); ACT.savePhone(); return; }
+  if (S.editContactOpen && e.key === 'Enter' && t && (t.id === 'em-name' || t.id === 'em-phone' || t.id === 'em-email' || t.id === 'em-addr')) {
+    e.preventDefault();
+    ACT.saveEditContact();
+    return;
+  }
   if (e.key === 'Enter' && t.matches && t.matches('[data-open]')) { e.preventDefault(); openLead(t.dataset.open); }
 }
 function onSubmit(e) {
