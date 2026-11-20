@@ -1225,14 +1225,12 @@ async function searchPlaces(q) {
       if (S.prof.q !== q) return;
       S.prof.predictions = [];
       const code = e && e.errorCode ? String(e.errorCode) : '';
-      const status = e && e.googleStatus ? String(e.googleStatus) : '';
       const msg = errMsg(e, 'Address search failed');
       if (code === 'MISSING_GOOGLE_MAPS_API_KEY') {
         S.prof.placesErr = 'GOOGLE_MAPS_API_KEY is missing on the server. Add it in Vercel and redeploy.';
-      } else if (status === 'REQUEST_DENIED' || /REQUEST_DENIED|not authorized|API key/i.test(msg)) {
-        S.prof.placesErr = 'Google rejected the key (REQUEST_DENIED). Enable Places API + billing, and remove HTTP-referrer restrictions on this server key.';
       } else {
-        S.prof.placesErr = status ? `${msg} (${status})` : msg;
+        // Show Google's exact denial reason (often more useful than REQUEST_DENIED alone).
+        S.prof.placesErr = msg;
       }
     } finally {
       if (S.prof.q === q) S.prof.searching = false;
