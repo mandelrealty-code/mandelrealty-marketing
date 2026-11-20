@@ -393,7 +393,7 @@ function buildPhoneCallEventBody(input: {
   return {
     summary: "Call with Ryan Mandel · Mandel Realty Group",
     location: `Phone call — ${phone}`,
-    description: `Phone call with ${name}.\nPhone: ${phone}\n\nLead from MRG CRM.`,
+    description: `Phone call with ${name}.\nPhone: ${phone}`,
     start: {
       dateTime: input.start.toISOString(),
       timeZone: CALL_TZ,
