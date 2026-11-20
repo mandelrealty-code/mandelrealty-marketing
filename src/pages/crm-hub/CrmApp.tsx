@@ -135,6 +135,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
           transferState?: "connecting" | "connected" | null;
         },
         booking: null as Record<string, unknown> | null,
+      strRules: null as Record<string, unknown> | null,
       },
       vocab: {
         STATUS_LABEL,
@@ -255,6 +256,21 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       loadDoc: (id: string) => call(`/api/admin/knowledge?id=${encodeURIComponent(id)}`),
 
       patchLead,
+      updateProfile: (leadId: string, fields: Data) =>
+        call("/api/admin/leads?op=update_profile", json("PATCH", { leadId, ...fields })),
+      checkStrRules: async (leadId: string) => {
+        const data = await call(`/api/admin/leads?op=str_rules&leadId=${encodeURIComponent(leadId)}`);
+        host.data.strRules = { ...data, leadId };
+        return data;
+      },
+      placesAutocomplete: async (input: string) => {
+        const data = await call("/api/admin/pm?resource=places", json("POST", { action: "autocomplete", input }));
+        return Array.isArray(data.predictions) ? data.predictions : [];
+      },
+      placesDetails: async (placeId: string) => {
+        const data = await call("/api/admin/pm?resource=places", json("POST", { action: "details", placeId }));
+        return (data.place && typeof data.place === "object" ? data.place : null) as Record<string, unknown> | null;
+      },
       deleteLead: (id: string) => call("/api/admin/leads", json("DELETE", { id })),
       createLead: (body: Data) => call("/api/admin/leads", json("POST", { ...body, createLead: true })),
       sendSms: (id: string, text: string) => patchLead({ id, smsReply: text }),

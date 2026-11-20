@@ -61,6 +61,18 @@ export type LeadRow = {
   referred_by: string;
   /** The onboarding unit this lead became, once onboarding has started. */
   onboarding_unit_id: string | null;
+  /** Sales-call property profile (crm_profile_v1). */
+  property_address: string;
+  property_place_id: string;
+  property_city: string;
+  full_name: string;
+  ownership: string;
+  airbnb_live: boolean | null;
+  furnished: string;
+  occupants: string;
+  occupant_notes: string;
+  str_rules_checked_at: string | null;
+  str_rules_city: string;
 };
 
 export type InsertLeadInput = {
@@ -120,6 +132,19 @@ export type LeadCrmUpdate = {
   onboardingUnitId?: string | null;
 };
 
+export type LeadProfileUpdate = {
+  property_address?: string;
+  property_place_id?: string;
+  property_city?: string;
+  full_name?: string;
+  ownership?: string;
+  airbnb_live?: boolean | null;
+  permit_status?: string;
+  furnished?: string;
+  occupants?: string;
+  occupant_notes?: string;
+};
+
 const SALE_COLUMNS = ["plan", "booked_by", "closed_by", "contract_status", "referred_by", "onboarding_unit_id"];
 const saleColumnMissing = (message: string) => SALE_COLUMNS.filter((c) => new RegExp(c, "i").test(message));
 export const SALE_COLUMNS_NOTE = "Run supabase/onboarding_v4.sql in Supabase, then retry.";
@@ -163,6 +188,18 @@ function mapLead(row: Record<string, unknown>): LeadRow {
     contract_status: (["signed", "sent", "not_sent"].includes(String(row.contract_status ?? "")) ? String(row.contract_status) : "") as LeadRow["contract_status"],
     referred_by: String(row.referred_by ?? ""),
     onboarding_unit_id: (row.onboarding_unit_id as string | null) ?? null,
+    property_address: String(row.property_address ?? ""),
+    property_place_id: String(row.property_place_id ?? ""),
+    property_city: String(row.property_city ?? ""),
+    full_name: String(row.full_name ?? ""),
+    ownership: String(row.ownership ?? ""),
+    airbnb_live:
+      row.airbnb_live === true ? true : row.airbnb_live === false ? false : null,
+    furnished: String(row.furnished ?? ""),
+    occupants: String(row.occupants ?? ""),
+    occupant_notes: String(row.occupant_notes ?? ""),
+    str_rules_checked_at: (row.str_rules_checked_at as string | null) ?? null,
+    str_rules_city: String(row.str_rules_city ?? ""),
   };
 }
 
@@ -454,6 +491,62 @@ export async function setLeadAiPaused(
   paused: boolean,
 ): Promise<LeadRow | null> {
   return updateLeadCrm(leadId, { aiPaused: paused });
+}
+
+const PROFILE_COLUMNS_NOTE = "Run supabase/crm_profile_v1.sql in Supabase, then retry.";
+
+/** Partial update of sales-call property profile fields. */
+export async function updateLeadProfile(
+  leadId: string,
+  patch: LeadProfileUpdate,
+): Promise<boolean> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return false;
+
+  const update: Record<string, unknown> = {};
+  if (patch.property_address !== undefined) update.property_address = patch.property_address;
+  if (patch.property_place_id !== undefined) update.property_place_id = patch.property_place_id;
+  if (patch.property_city !== undefined) update.property_city = patch.property_city;
+  if (patch.full_name !== undefined) update.full_name = patch.full_name;
+  if (patch.ownership !== undefined) update.ownership = patch.ownership;
+  if (patch.airbnb_live !== undefined) update.airbnb_live = patch.airbnb_live;
+  if (patch.permit_status !== undefined) update.permit_status = patch.permit_status;
+  if (patch.furnished !== undefined) update.furnished = patch.furnished;
+  if (patch.occupants !== undefined) update.occupants = patch.occupants;
+  if (patch.occupant_notes !== undefined) update.occupant_notes = patch.occupant_notes;
+
+  if (Object.keys(update).length === 0) return true;
+
+  const { error } = await sb.from("leads").update(update).eq("id", leadId);
+  if (error) {
+    if (/property_address|property_place_id|property_city|full_name|ownership|airbnb_live|furnished|occupants|occupant_notes|str_rules/i.test(error.message)) {
+      throw new Error("The CRM is missing the property profile columns. " + PROFILE_COLUMNS_NOTE);
+    }
+    console.error("[leads] profile update failed", error.message);
+    return false;
+  }
+  return true;
+}
+
+/** Stamp when STR rules were last checked for this lead's property city. */
+export async function markLeadStrRulesChecked(
+  leadId: string,
+  city: string,
+): Promise<boolean> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return false;
+  const { error } = await sb
+    .from("leads")
+    .update({
+      str_rules_checked_at: new Date().toISOString(),
+      str_rules_city: city,
+    })
+    .eq("id", leadId);
+  if (error) {
+    console.error("[leads] str rules stamp failed", error.message);
+    return false;
+  }
+  return true;
 }
 
 export async function deleteLead(leadId: string): Promise<boolean> {

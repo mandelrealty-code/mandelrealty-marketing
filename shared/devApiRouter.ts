@@ -351,6 +351,33 @@ export async function handleDevApi(
     if (method === "GET") {
       try {
         const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+        if (qs.get("op") === "str_rules") {
+          const leadId = (qs.get("leadId") || qs.get("id") || "").trim();
+          if (!leadId) {
+            json(res, 400, { error: "leadId is required." });
+            return true;
+          }
+          const { getLeadById, markLeadStrRulesChecked } = await import("./leadStore.js");
+          const { getStrRules } = await import("./strRules.js");
+          const lead = await getLeadById(leadId);
+          if (!lead) {
+            json(res, 404, { error: "Lead not found." });
+            return true;
+          }
+          const city = String(lead.property_city || "").trim();
+          if (!city) {
+            json(res, 400, { error: "Add a property address with a city first." });
+            return true;
+          }
+          await markLeadStrRulesChecked(leadId, city).catch(() => undefined);
+          const rules = getStrRules(city);
+          if (!rules) {
+            json(res, 200, { notFound: true, city });
+            return true;
+          }
+          json(res, 200, { ...rules, checkedAt: new Date().toISOString() });
+          return true;
+        }
         const followupsFor = qs.get("followups")?.trim() || "";
         if (followupsFor) {
           const { getPendingDraft } = await import("./smsDraftStore.js");
@@ -373,6 +400,7 @@ export async function handleDevApi(
             playbook_steps: playbook,
             ai_send_mode: lead?.ai_send_mode || "autopilot",
             booking: booking || null,
+            lead: lead || null,
           });
           return true;
         }
@@ -407,6 +435,39 @@ export async function handleDevApi(
     }
     if (method === "PATCH") {
       const body = await readJsonBody(req);
+      const qs = new URL(req.url ?? "", "http://localhost").searchParams;
+      const op = (qs.get("op") || String(body.op ?? "")).trim();
+      if (op === "update_profile") {
+        const leadId = String(body.leadId ?? body.id ?? "").trim();
+        if (!leadId) {
+          json(res, 400, { error: "Missing lead id." });
+          return true;
+        }
+        const { updateLeadProfile } = await import("./leadStore.js");
+        const profile: import("./leadStore.js").LeadProfileUpdate = {};
+        if (body.property_address !== undefined) profile.property_address = String(body.property_address ?? "");
+        if (body.property_place_id !== undefined) profile.property_place_id = String(body.property_place_id ?? "");
+        if (body.property_city !== undefined) profile.property_city = String(body.property_city ?? "");
+        if (body.full_name !== undefined) profile.full_name = String(body.full_name ?? "");
+        if (body.ownership !== undefined) profile.ownership = String(body.ownership ?? "");
+        if (body.airbnb_live !== undefined) {
+          if (body.airbnb_live === null) profile.airbnb_live = null;
+          else profile.airbnb_live = Boolean(body.airbnb_live);
+        }
+        if (body.permit_status !== undefined) profile.permit_status = String(body.permit_status ?? "");
+        if (body.furnished !== undefined) profile.furnished = String(body.furnished ?? "");
+        if (body.occupants !== undefined) profile.occupants = String(body.occupants ?? "");
+        if (body.occupant_notes !== undefined) profile.occupant_notes = String(body.occupant_notes ?? "");
+        try {
+          const ok = await updateLeadProfile(leadId, profile);
+          json(res, ok ? 200 : 500, ok ? { ok: true } : { error: "Could not update profile." });
+        } catch (e) {
+          json(res, 500, {
+            error: e instanceof Error ? e.message : "Could not update profile.",
+          });
+        }
+        return true;
+      }
       const id = String(body.id ?? "").trim();
       if (!id) {
         json(res, 400, { error: "Missing lead id." });

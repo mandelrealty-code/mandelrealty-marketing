@@ -175,6 +175,49 @@ export const CRM_EXTRA_CSS = `
 @media (min-width:1240px){
   .plseg{display:none}
 }
+
+/* Property profile (mrg-crm-property-profile.html) */
+.prof h5{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.prof h5>span:first-child{font-size:var(--t-xs);color:var(--ink2);font-weight:600}
+.prof h5 .meta{font-size:11px}
+.pf{padding:8px 0;border-top:1px solid var(--line-2)}
+.pf:first-of-type{border-top:0;padding-top:2px}
+.pl{display:block;font-size:var(--t-xs);font-weight:600;color:var(--ink);margin-bottom:5px}
+.pn{font-weight:500;color:var(--muted);font-size:11px}
+.pl .pn{margin-left:4px}
+.vrow{display:flex;align-items:center;gap:8px;min-height:28px;font-size:var(--t-sm);color:var(--ink)}
+.vrow>span:first-child{flex:1;min-width:0}
+.vrow .bold{font-weight:600}
+.ns{color:var(--muted);font-weight:500}
+.pen{width:28px;height:28px;opacity:.6}
+.pen:hover{opacity:1;background:var(--hover)}
+.pseg3{display:flex;background:var(--panel);border-radius:10px;padding:3px;gap:2px}
+.pseg3 button{flex:1;height:28px;border:0;border-radius:8px;background:none;font:500 var(--t-xs)/1 Inter,sans-serif;color:var(--ink2);cursor:pointer;transition:background var(--fast) var(--ease)}
+.pseg3 button:hover:not(.on){color:var(--ink)}
+.pseg3 button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.sub{margin-top:8px}
+.input.sm2{height:34px;font-size:var(--t-sm)}
+.erow{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.erow2{display:flex;gap:6px;flex-wrap:wrap}.erow2 .input{flex:1;min-width:0;height:34px}
+.pac{position:relative}
+.pacl{position:absolute;left:0;right:0;top:44px;z-index:10;border-radius:12px;padding:4px}
+.paci{display:flex;gap:8px;align-items:flex-start;padding:8px;border-radius:8px;cursor:pointer;font-size:var(--t-sm);border:0;background:none;width:100%;text-align:left;color:inherit}
+.paci svg{margin-top:3px;color:var(--muted);flex:none}
+.paci b{display:block;color:var(--ink);font-weight:600}
+.paci.hov,.paci:hover{background:var(--press)}
+.pgo{font-size:10px;color:var(--muted);text-align:right;padding:4px 8px 2px}
+.okt{display:inline-flex;align-items:center;gap:5px;color:var(--greenink);font-weight:600;font-size:var(--t-xs)}
+.regload{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:var(--t-xs);color:var(--ink2);font-weight:500}
+.regcard{margin-top:8px;background:var(--panel);border-left:2px solid #18181b;border-radius:8px;padding:12px}
+.regcard b.rcity{display:block;font-size:var(--t-sm);color:var(--ink);font-weight:650;margin-bottom:6px}
+.regcard ul{list-style:none;margin:0;padding:0;font-size:12px;line-height:1.5;color:var(--ink)}
+.regcard li{position:relative;padding-left:14px;margin-bottom:4px}
+.regcard li::before{content:"•";position:absolute;left:2px;color:var(--muted)}
+.regcard a{color:var(--tealink);font-weight:600}
+.regsrc{font-size:11px;color:var(--muted);margin-top:6px}
+.regsrc a{color:var(--muted);text-decoration:underline}
+.regfoot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:11px;gap:8px;flex-wrap:wrap}
+@media (max-width:768px){.pseg3 button{height:36px}}
 `;
 
 export function mountCrm(root, host) {
@@ -242,7 +285,8 @@ const I = {
   arrow:'<path d="M5 12h14M13 6l6 6-6 6"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   filter:'<path d="M4 6h16M7 12h10M10 18h4"/>',
-  dl:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 20h16"/>'
+  dl:'<path d="M12 4v11M7 10l5 5 5-5"/><path d="M4 20h16"/>',
+  pin:'<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'
 };
 const ic = (n, c = '') => `<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n] || ''}</svg>`;
 const ok = (h, c, L = .6, a) => `oklch(${L} ${c} ${h}${a != null ? ` / ${a}` : ''})`;
@@ -428,6 +472,7 @@ const S = {
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
   book: { slots: [], dayKey: null, pick: null, loading: false, err: '', leadId: null, step: 'pick', mode: 'book', bookingId: null, googleEventId: null, note: '' },
+  prof: { edit: null, q: '', hi: 0, predictions: [], searching: false, draftName: '', regsLoading: false },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -1000,6 +1045,118 @@ function contactBlock(l) {
     ${isTwilioSender(op) ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Caller is set to the Twilio SMS number.</b> Use the business line or a cell instead.</span></div>` : ''}
     ${!phoneOk ? `<div class="warnbox">${ic('alert', 'sm')}<span><b>Missing number.</b> Texting, Dial and CRM call stay off until a phone is saved.</span></div>` : ''}</div>`;
 }
+
+const OWNERSHIP_OPTS = [
+  { v: 'owns', lab: 'Owns' },
+  { v: 'renting', lab: 'Renting' },
+];
+const AIRBNB_OPTS = [
+  { v: 'live', lab: 'Live' },
+  { v: 'not', lab: 'Not live' },
+];
+const FURNISHED_OPTS = [
+  { v: 'yes', lab: 'Yes' },
+  { v: 'partially', lab: 'Partially' },
+  { v: 'no', lab: 'No' },
+];
+const OCCUPANT_OPTS = [
+  { v: 'vacant', lab: 'Vacant' },
+  { v: 'tenants', lab: 'Tenants' },
+  { v: 'family', lab: 'Family' },
+];
+const PERMIT_PROFILE = ['No permit', 'Applied', 'Approved', 'Not required', 'Unknown'];
+const notset = '<span class="ns">Not set</span>';
+function fmtCheckedAt(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Toronto' });
+}
+function strRulesFor(l) {
+  const hd = callHostData();
+  const cached = hd.strRules;
+  if (!cached || typeof cached !== 'object') return null;
+  if (cached.leadId && String(cached.leadId) !== String(l.id)) return null;
+  return cached;
+}
+function pseg3(opts, cur, act) {
+  return `<div class="pseg3" role="radiogroup">${opts.map((o) => `<button type="button" class="${cur === o.v ? 'on' : ''}" role="radio" aria-checked="${cur === o.v}" data-act="${act}" data-v="${esc(o.v)}">${esc(o.lab)}</button>`).join('')}</div>`;
+}
+function profileBlock(l) {
+  const p = S.prof;
+  const addr = String(l.property_address || '').trim();
+  const city = String(l.property_city || '').trim();
+  const fullName = String(l.full_name || '').trim();
+  const ownership = String(l.ownership || '');
+  const live = l.airbnb_live === true ? 'live' : l.airbnb_live === false ? 'not' : '';
+  const permit = String(l.permit_status || '');
+  const furn = String(l.furnished || '');
+  const occ = String(l.occupants || '');
+  const occNote = String(l.occupant_notes || '');
+  const checkedAt = l.str_rules_checked_at || null;
+  const rules = strRulesFor(l);
+  const dis = isBusy('profile') ? 'disabled' : '';
+
+  let addrRow;
+  if (p.edit === 'addr') {
+    const preds = Array.isArray(p.predictions) ? p.predictions : [];
+    const list = p.q.trim().length >= 3
+      ? `<div class="pacl frost" role="listbox">${preds.length
+        ? preds.map((x, i) => {
+          const desc = String(x.description || '');
+          const main = desc.split(',')[0] || desc;
+          const rest = desc.split(',').slice(1).join(',').trim();
+          return `<button type="button" class="paci ${i === p.hi ? 'hov' : ''}" role="option" data-act="profPickPlace" data-place-id="${esc(x.place_id || '')}" data-desc="${esc(desc)}">${ic('pin', 'xs')}<span><b>${esc(main)}</b>${rest ? `<span class="meta">${esc(rest)}</span>` : ''}</span></button>`;
+        }).join('')
+        : (p.searching ? '<div class="paci meta">Searching…</div>' : '<div class="paci meta">No matches</div>')}<div class="pgo">powered by Google</div></div>`
+      : '';
+    addrRow = `<div class="pac"><div class="search" style="max-width:none">${ic('search', 'sm')}<input class="input focus" data-k="prof.q" value="${esc(p.q)}" placeholder="Search an address" autocomplete="off" aria-autocomplete="list" aria-label="Property address"></div>${list}<div class="erow"><button type="button" class="btn sm" data-act="profCancel">Cancel</button></div></div>`;
+  } else {
+    addrRow = `<div class="vrow"><span class="${addr ? 'bold' : ''}">${addr ? esc(addr) : notset}</span><button type="button" class="iconbtn pen" data-act="profEdit" data-v="addr" aria-label="Edit property address">${ic('edit', 'xs')}</button></div>`;
+  }
+
+  let nameRow;
+  if (p.edit === 'name') {
+    nameRow = `<div class="erow2"><input class="input focus" data-k="prof.draftName" value="${esc(p.draftName)}" placeholder="First and last name" aria-label="Full name"><button type="button" class="btn sm" data-act="profCancel">Cancel</button><button type="button" class="btn sm primary" data-act="profSaveName" ${dis}>Save</button></div>`;
+  } else {
+    nameRow = `<div class="vrow"><span>${fullName ? esc(fullName) : notset}</span><button type="button" class="iconbtn pen" data-act="profEdit" data-v="name" aria-label="Edit full name">${ic('edit', 'xs')}</button></div>`;
+  }
+
+  const permitRow = live === 'not'
+    ? `<div class="sub"><label class="pl" for="pm-prof">Permit status</label><select class="input sm2 ${permit ? '' : 'ph'}" id="pm-prof" data-sel="profPermit" ${dis}><option value="">Select</option>${PERMIT_PROFILE.map((o) => `<option value="${esc(o)}" ${o === permit ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></div>`
+    : '';
+
+  const occNotes = (occ === 'tenants' || occ === 'family')
+    ? `<div class="sub"><input class="input sm2" data-k="prof.occNote" data-save-prof="occupant_notes" value="${esc(occNote)}" placeholder="Names or notes" aria-label="Occupant names or notes" ${dis}></div>`
+    : '';
+
+  let regsBody = '';
+  if (p.regsLoading) {
+    regsBody = `<div class="regload"><i class="spin"></i>Checking rules for ${esc(city || 'this city')}…</div>`;
+  } else if (rules && rules.notFound) {
+    regsBody = `<div class="pn" style="margin-top:8px">No rules on file for ${esc(rules.city || city)}. Check the municipality website directly.</div>
+      <div class="regfoot"><span class="meta">${checkedAt ? `Last checked: ${esc(fmtCheckedAt(checkedAt))}` : ''}</span><button type="button" class="lnkm" data-act="profCheckRegs">Re-check</button></div>`;
+  } else if (rules && Array.isArray(rules.rules)) {
+    regsBody = `<div class="regcard"><b class="rcity">${esc(rules.city || city)}</b><ul>${rules.rules.map((r) => `<li>${esc(typeof r === 'string' ? r : r.text || '')}${r && r.url ? ` <a href="${esc(r.url)}" target="_blank" rel="noopener">link</a>` : ''}</li>`).join('')}</ul>
+      <div class="regsrc">Source: <a href="${esc(rules.sourceUrl || '#')}" target="_blank" rel="noopener">${esc(rules.source || '')}</a></div></div>
+      <div class="regfoot"><span class="meta">Last checked: ${esc(fmtCheckedAt(rules.checkedAt || checkedAt) || 'today')}</span><button type="button" class="lnkm" data-act="profCheckRegs">Re-check</button></div>`;
+  } else if (checkedAt) {
+    regsBody = `<div class="regfoot" style="margin-top:8px"><span class="meta">Last checked: ${esc(fmtCheckedAt(checkedAt))}${city ? ` · ${esc(city)}` : ''}</span><button type="button" class="lnkm" data-act="profCheckRegs">Re-check</button></div>`;
+  }
+
+  const regsHead = checkedAt || (rules && !rules.notFound)
+    ? `<div class="vrow"><span class="okt">${ic('check', 'xs')}Checked${city ? ` for ${esc(city)}` : ''}</span></div>`
+    : `<div class="vrow"><span class="ns">Not checked</span>${addr ? `<button type="button" class="btn sm primary" data-act="profCheckRegs" ${dis}>Check regulations →</button>` : ''}</div>${!addr ? '<div class="pn" style="margin-top:4px">Add a property address first.</div>' : ''}`;
+
+  return `<div class="dsec prof"><h5><span>Property profile</span><span class="meta" style="font-weight:500">Fill in during the sales call</span></h5>
+    <div class="pf"><div class="pl">Property address</div>${addrRow}</div>
+    <div class="pf"><div class="pl">Full name <span class="pn">If different from lead name</span></div>${nameRow}</div>
+    <div class="pf"><div class="pl">Owns or renting</div>${pseg3(OWNERSHIP_OPTS, ownership, 'profOwnership')}</div>
+    <div class="pf"><div class="pl">Airbnb listing</div>${pseg3(AIRBNB_OPTS, live, 'profAirbnb')}${permitRow}</div>
+    <div class="pf"><div class="pl">Furnished</div>${pseg3(FURNISHED_OPTS, furn, 'profFurnished')}</div>
+    <div class="pf"><div class="pl">Occupants</div>${pseg3(OCCUPANT_OPTS, occ, 'profOccupants')}${occNotes}</div>
+    <div class="pf"><div class="pl">STR regulations</div>${regsHead}${regsBody}</div></div>`;
+}
 function callHostData() {
   if (!host.data) {
     host.data = {
@@ -1012,13 +1169,64 @@ function callHostData() {
       teamCallers: [],
       activeCall: null,
       booking: null,
+      strRules: null,
     };
   }
   if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
   if (!Array.isArray(host.data.calls)) host.data.calls = [];
   if (!host.data.leadCallCounts || typeof host.data.leadCallCounts !== 'object') host.data.leadCallCounts = {};
   if (host.data.booking === undefined) host.data.booking = null;
+  if (host.data.strRules === undefined) host.data.strRules = null;
   return host.data;
+}
+async function saveProfile(fields, okMsg = 'Saved to lead') {
+  const id = S.leadId;
+  if (!id || !host.updateProfile) return null;
+  try {
+    setBusy('profile', true);
+    await host.updateProfile(id, fields);
+    mergeLead(id, fields);
+    if (okMsg) toast(okMsg);
+    return true;
+  } catch (e) {
+    toast(errMsg(e, 'Could not save profile'), 'bad');
+    return null;
+  } finally {
+    setBusy('profile', false);
+  }
+}
+let placesT = 0;
+async function searchPlaces(q) {
+  S.prof.q = q;
+  S.prof.hi = 0;
+  if (q.trim().length < 3 || !host.placesAutocomplete) {
+    S.prof.predictions = [];
+    S.prof.searching = false;
+    renderMain();
+    const inp = root.querySelector('[data-k="prof.q"]');
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    return;
+  }
+  S.prof.searching = true;
+  renderMain();
+  const inp0 = root.querySelector('[data-k="prof.q"]');
+  if (inp0) { inp0.focus(); inp0.setSelectionRange(inp0.value.length, inp0.value.length); }
+  clearTimeout(placesT);
+  placesT = setTimeout(async () => {
+    try {
+      const preds = await host.placesAutocomplete(q);
+      if (S.prof.q !== q) return;
+      S.prof.predictions = Array.isArray(preds) ? preds : [];
+    } catch {
+      if (S.prof.q !== q) return;
+      S.prof.predictions = [];
+    } finally {
+      if (S.prof.q === q) S.prof.searching = false;
+      renderMain();
+      const inp = root.querySelector('[data-k="prof.q"]');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    }
+  }, 220);
 }
 const fmtCallClock = (secs) => {
   const s = Math.max(0, Math.floor(secs || 0));
@@ -1148,11 +1356,11 @@ function actionsBlock() {
    <button class="btn" data-act="convertClient">${ic('file', 'sm')}Create client and send contract</button><button class="btn dangerline" data-act="askDelete" ${dis}>${ic('trash', 'sm')}Delete contact</button></div></div>`;
 }
 function leadPanel(l) {
-  let order = ['ai', 'book', 'sale', 'stage', 'contact', 'notes', 'actions'];
+  let order = ['ai', 'book', 'sale', 'stage', 'contact', 'profile', 'notes', 'actions'];
   const hl = l.status === 'won' || Boolean(l.onboarding);
-  if (hl) order = ['sale', 'book', 'ai', 'stage', 'contact', 'notes', 'actions'];
-  else if (!phoneUsable(l.phone)) order = ['contact', 'ai', 'book', 'stage', 'sale', 'notes', 'actions'];
-  const map = { ai: () => aiBlock(l), book: () => bookBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
+  if (hl) order = ['sale', 'book', 'ai', 'stage', 'contact', 'profile', 'notes', 'actions'];
+  else if (!phoneUsable(l.phone)) order = ['contact', 'profile', 'ai', 'book', 'stage', 'sale', 'notes', 'actions'];
+  const map = { ai: () => aiBlock(l), book: () => bookBlock(l), sale: () => saleBlock(l, hl), stage: () => stageBlock(l), contact: () => contactBlock(l), profile: () => profileBlock(l), notes: () => notesBlock(l), actions: () => actionsBlock() };
   const active = activeCallBlock();
   const nCalls = leadCallCount(l.id);
   const callsLabel = nCalls > 0 ? `Calls (${nCalls})` : 'Calls';
@@ -1667,7 +1875,9 @@ async function loadThread(id) {
     if (data.playbook_steps) patch.playbook_steps = data.playbook_steps;
     if (data.ai_send_mode) patch.ai_send_mode = data.ai_send_mode;
     patch.pending_draft = nd;
-    if (data.lead && data.lead.call_notes != null) patch.call_notes = data.lead.call_notes;
+    if (data.lead && typeof data.lead === 'object') {
+      Object.assign(patch, data.lead);
+    }
     mergeLead(id, patch);
     const hd = callHostData();
     if (data.callTranscript !== undefined) hd.callTranscript = data.callTranscript || null;
@@ -1777,6 +1987,7 @@ function openLead(id, opts = {}) {
     S.transcriptOpen = false;
     transcriptScrollTop = 0;
     S.transferState = null;
+    S.prof = { edit: null, q: '', hi: 0, predictions: [], searching: false, draftName: '', regsLoading: false };
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
     lastMsgKey = '';
@@ -1787,6 +1998,7 @@ function openLead(id, opts = {}) {
       hd.callRecordingId = null;
       hd.calls = [];
       hd.booking = null;
+      hd.strRules = null;
       if (!hd.activeCall || String(hd.activeCall.leadId) !== id) hd.activeCall = null;
     }
     const opened = leadById(id);
@@ -2694,6 +2906,113 @@ const ACT = {
   editPhone: () => { const l = leadById(S.leadId); S.phoneEdit = l && phoneUsable(l.phone) ? fmtPhone(l.phone) : ''; S.ptab = 'details'; renderMain(); const t = root.querySelector('[data-k="phoneEdit"]'); if (t) t.focus(); },
   cancelPhone: () => { S.phoneEdit = null; renderMain(); },
   savePhone: async () => { const v = String(S.phoneEdit || '').trim(); if (!v) { toast('Enter a phone number.', 'bad'); return; } const data = await patchLead({ phone: v }, 'Phone saved'); if (data) { S.phoneEdit = null; renderMain(); } },
+  profEdit: (b) => {
+    const field = b.dataset.v;
+    const l = leadById(S.leadId);
+    if (!l) return;
+    if (field === 'addr') {
+      S.prof = { ...S.prof, edit: 'addr', q: String(l.property_address || '').split(',')[0] || '', hi: 0, predictions: [] };
+    } else if (field === 'name') {
+      S.prof = { ...S.prof, edit: 'name', draftName: String(l.full_name || '') };
+    }
+    renderMain();
+    const sel = field === 'addr' ? '[data-k="prof.q"]' : '[data-k="prof.draftName"]';
+    const t = root.querySelector(sel);
+    if (t) t.focus();
+  },
+  profCancel: () => { S.prof = { ...S.prof, edit: null, q: '', predictions: [], draftName: '' }; renderMain(); },
+  profSaveName: async () => {
+    const name = String(S.prof.draftName || '').trim();
+    const ok = await saveProfile({ full_name: name });
+    if (ok) { S.prof = { ...S.prof, edit: null, draftName: '' }; renderMain(); }
+  },
+  profPickPlace: async (b) => {
+    const placeId = String(b.dataset.placeId || '').trim();
+    const desc = String(b.dataset.desc || '').trim();
+    let address = desc;
+    let city = '';
+    let pid = placeId;
+    if (placeId && host.placesDetails) {
+      try {
+        const place = await host.placesDetails(placeId);
+        if (place && place.formatted_address) address = place.formatted_address;
+        if (place && place.city) city = String(place.city).trim();
+      } catch { /* keep autocomplete description */ }
+    }
+    if (!city && address) {
+      const parts = address.split(',').map((x) => x.trim()).filter(Boolean);
+      if (parts.length > 1) city = parts[1];
+    }
+    const fields = {
+      property_address: address,
+      property_place_id: pid,
+      property_city: city,
+    };
+    const ok = await saveProfile(fields);
+    if (ok) {
+      S.prof = { ...S.prof, edit: null, q: '', predictions: [] };
+      const hd = callHostData();
+      hd.strRules = null;
+      mergeLead(S.leadId, { str_rules_checked_at: null, str_rules_city: '' });
+      renderMain();
+    }
+  },
+  profOwnership: async (b) => {
+    const v = b.dataset.v;
+    const l = leadById(S.leadId);
+    if (!l || l.ownership === v) return;
+    await saveProfile({ ownership: v });
+  },
+  profAirbnb: async (b) => {
+    const v = b.dataset.v;
+    const live = v === 'live';
+    const l = leadById(S.leadId);
+    const cur = l && l.airbnb_live === true ? 'live' : l && l.airbnb_live === false ? 'not' : '';
+    if (cur === v) return;
+    const fields = { airbnb_live: live };
+    if (live) fields.permit_status = '';
+    await saveProfile(fields);
+  },
+  profFurnished: async (b) => {
+    const v = b.dataset.v;
+    const l = leadById(S.leadId);
+    if (!l || l.furnished === v) return;
+    await saveProfile({ furnished: v });
+  },
+  profOccupants: async (b) => {
+    const v = b.dataset.v;
+    const l = leadById(S.leadId);
+    if (!l || l.occupants === v) return;
+    const fields = { occupants: v };
+    if (v === 'vacant') fields.occupant_notes = '';
+    await saveProfile(fields);
+  },
+  profCheckRegs: async () => {
+    const l = leadById(S.leadId);
+    if (!l || !host.checkStrRules) return;
+    if (!String(l.property_city || '').trim() && !String(l.property_address || '').trim()) {
+      toast('Add a property address first.', 'bad');
+      return;
+    }
+    S.prof.regsLoading = true;
+    renderMain();
+    try {
+      const data = await host.checkStrRules(l.id);
+      const hd = callHostData();
+      hd.strRules = { ...data, leadId: l.id };
+      const checkedAt = data.checkedAt || new Date().toISOString();
+      mergeLead(l.id, {
+        str_rules_checked_at: checkedAt,
+        str_rules_city: data.city || l.property_city || '',
+      });
+      toast(data.notFound ? 'No rules on file for that city' : 'STR rules loaded');
+    } catch (e) {
+      toast(errMsg(e, 'Could not check STR rules'), 'bad');
+    } finally {
+      S.prof.regsLoading = false;
+      renderMain();
+    }
+  },
   copyPhone: (b) => { const l = leadById(b.dataset.id || S.leadId); if (l && l.phone) copyText(fmtPhone(l.phone), 'Phone'); S.menu = null; renderMenu(); },
   crmCall: () => crmCall(),
   transferCall: () => transferCall(),
@@ -2821,6 +3140,9 @@ function onClick(e) {
 function onInput(e) {
   const t = e.target, k = t.dataset && t.dataset.k;
   if (!k) return;
+  if (k === 'prof.q') { void searchPlaces(t.value); return; }
+  if (k === 'prof.draftName') { S.prof.draftName = t.value; return; }
+  if (k === 'prof.occNote') return;
   setPath(k, t.value);
   if (k === 'f.q') { clearTimeout(qT); qT = setTimeout(() => loadLeads(), 250); return; }
   if (k === 'sms') {
@@ -2867,9 +3189,14 @@ function onChange(e) {
     else if (k === 'offerPath') patchLead({ offerPath: v }, `Path set to ${OFFER_PATH_LABEL[v] || v}`);
     else if (k === 'plan') patchLead({ plan: v }, 'Plan saved');
     else if (k === 'contractStatus') patchLead({ contractStatus: v }, 'Contract saved');
+    else if (k === 'profPermit') void saveProfile({ permit_status: v });
     return;
   }
   if (t.dataset.save) { runSave(t.dataset.save, t.value); return; }
+  if (t.dataset && t.dataset.saveProf === 'occupant_notes') {
+    void saveProfile({ occupant_notes: t.value });
+    return;
+  }
   if (t.dataset.file) { const f = t.files && t.files[0]; if (f) kUpload(f, t); }
 }
 function onKey(e) {
@@ -2878,7 +3205,20 @@ function onKey(e) {
     if (S.menu) { S.menu = null; renderMenu(); return; }
     if (S.modal) { closeModal(); return; }
     if (S.phoneEdit != null) { S.phoneEdit = null; renderMain(); return; }
+    if (S.prof.edit) { S.prof = { ...S.prof, edit: null, q: '', predictions: [], draftName: '' }; renderMain(); return; }
   }
+  if (t.dataset && t.dataset.k === 'prof.q') {
+    const preds = Array.isArray(S.prof.predictions) ? S.prof.predictions : [];
+    if (e.key === 'ArrowDown') { e.preventDefault(); S.prof.hi = Math.min(preds.length - 1, S.prof.hi + 1); renderMain(); const inp = root.querySelector('[data-k="prof.q"]'); if (inp) inp.focus(); return; }
+    if (e.key === 'ArrowUp') { e.preventDefault(); S.prof.hi = Math.max(0, S.prof.hi - 1); renderMain(); const inp = root.querySelector('[data-k="prof.q"]'); if (inp) inp.focus(); return; }
+    if (e.key === 'Enter' && preds[S.prof.hi] && S.prof.q.length > 1) {
+      e.preventDefault();
+      const x = preds[S.prof.hi];
+      ACT.profPickPlace({ dataset: { placeId: x.place_id || '', desc: x.description || '' } });
+      return;
+    }
+  }
+  if (t.dataset && t.dataset.k === 'prof.draftName' && e.key === 'Enter') { e.preventDefault(); ACT.profSaveName(); return; }
   if (t.dataset && t.dataset.k === 'cmd.q') {
     const n = S.cmd.items.length;
     if (e.key === 'ArrowDown') { e.preventDefault(); S.cmd.act = n ? (S.cmd.act + 1) % n : 0; refreshCmd(); return; }
@@ -2935,7 +3275,7 @@ const tick = setInterval(() => { if (S.tab === 'contacts' && !S.leadId && !S.ref
 return {
   destroy() {
     destroyed = true;
-    clearInterval(poll); clearInterval(tick); clearTimeout(qT); clearTimeout(toastT);
+    clearInterval(poll); clearInterval(tick); clearTimeout(qT); clearTimeout(toastT); clearTimeout(placesT);
     if (callTick) { clearInterval(callTick); callTick = null; }
     document.removeEventListener('keydown', onDocKey);
     window.removeEventListener('resize', onResize);

@@ -88,6 +88,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     try {
+      const op = typeof req.query.op === "string" ? req.query.op.trim() : "";
+      if (op === "str_rules") {
+        const leadId =
+          typeof req.query.leadId === "string"
+            ? req.query.leadId.trim()
+            : typeof req.query.id === "string"
+              ? req.query.id.trim()
+              : "";
+        if (!leadId) return res.status(400).json({ error: "leadId is required." });
+        const { getLeadById, markLeadStrRulesChecked } = await import("../leadStore.js");
+        const { getStrRules } = await import("../strRules.js");
+        const lead = await getLeadById(leadId);
+        if (!lead) return res.status(404).json({ error: "Lead not found." });
+        const city = String(lead.property_city || "").trim();
+        if (!city) {
+          return res.status(400).json({ error: "Add a property address with a city first." });
+        }
+        await markLeadStrRulesChecked(leadId, city).catch(() => undefined);
+        const rules = getStrRules(city);
+        if (!rules) {
+          return res.status(200).json({ notFound: true, city });
+        }
+        return res.status(200).json({
+          ...rules,
+          checkedAt: new Date().toISOString(),
+        });
+      }
+
       const followupsFor =
         typeof req.query.followups === "string" ? req.query.followups.trim() : "";
       if (followupsFor) {
@@ -222,6 +250,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "PATCH") {
     const body = readBody(req);
+    const op =
+      (typeof req.query.op === "string" ? req.query.op.trim() : "") ||
+      String(body.op ?? "").trim();
+
+    if (op === "update_profile") {
+      const leadId = String(body.leadId ?? body.id ?? "").trim();
+      if (!leadId) return res.status(400).json({ error: "Missing lead id." });
+      const { updateLeadProfile } = await import("../leadStore.js");
+      const profile: import("../leadStore.js").LeadProfileUpdate = {};
+      if (body.property_address !== undefined) profile.property_address = String(body.property_address ?? "");
+      if (body.property_place_id !== undefined) profile.property_place_id = String(body.property_place_id ?? "");
+      if (body.property_city !== undefined) profile.property_city = String(body.property_city ?? "");
+      if (body.full_name !== undefined) profile.full_name = String(body.full_name ?? "");
+      if (body.ownership !== undefined) profile.ownership = String(body.ownership ?? "");
+      if (body.airbnb_live !== undefined) {
+        if (body.airbnb_live === null) profile.airbnb_live = null;
+        else profile.airbnb_live = Boolean(body.airbnb_live);
+      }
+      if (body.permit_status !== undefined) profile.permit_status = String(body.permit_status ?? "");
+      if (body.furnished !== undefined) profile.furnished = String(body.furnished ?? "");
+      if (body.occupants !== undefined) profile.occupants = String(body.occupants ?? "");
+      if (body.occupant_notes !== undefined) profile.occupant_notes = String(body.occupant_notes ?? "");
+      try {
+        const ok = await updateLeadProfile(leadId, profile);
+        if (!ok) return res.status(500).json({ error: "Could not update profile." });
+        return res.status(200).json({ ok: true });
+      } catch (e) {
+        return res.status(500).json({
+          error: e instanceof Error ? e.message : "Could not update profile.",
+        });
+      }
+    }
+
     const id = String(body.id ?? "").trim();
     if (!id) return res.status(400).json({ error: "Missing lead id." });
 
