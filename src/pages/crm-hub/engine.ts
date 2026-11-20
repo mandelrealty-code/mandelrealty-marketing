@@ -472,7 +472,7 @@ const S = {
   wm: { id: null, name: '', trigger: '', message: '', nameErr: '', trigErr: '', askDel: null },
   cmd: { q: '', act: 0, items: [] },
   book: { slots: [], dayKey: null, pick: null, loading: false, err: '', leadId: null, step: 'pick', mode: 'book', bookingId: null, googleEventId: null, note: '' },
-  prof: { edit: null, q: '', hi: 0, predictions: [], searching: false, draftName: '', regsLoading: false },
+  prof: { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false },
 };
 if (lsGet('crm-sb') === '1') root.classList.add('sb-collapsed');
 
@@ -1101,7 +1101,9 @@ function profileBlock(l) {
   if (p.edit === 'addr') {
     const preds = Array.isArray(p.predictions) ? p.predictions : [];
     const list = p.q.trim().length >= 3
-      ? `<div class="pacl frost" role="listbox">${preds.length
+      ? `<div class="pacl frost" role="listbox">${p.placesErr
+        ? `<div class="paci meta" style="color:var(--redink);white-space:normal">${esc(p.placesErr)}</div>`
+        : preds.length
         ? preds.map((x, i) => {
           const desc = String(x.description || '');
           const main = desc.split(',')[0] || desc;
@@ -1199,6 +1201,7 @@ let placesT = 0;
 async function searchPlaces(q) {
   S.prof.q = q;
   S.prof.hi = 0;
+  S.prof.placesErr = '';
   if (q.trim().length < 3 || !host.placesAutocomplete) {
     S.prof.predictions = [];
     S.prof.searching = false;
@@ -1217,9 +1220,20 @@ async function searchPlaces(q) {
       const preds = await host.placesAutocomplete(q);
       if (S.prof.q !== q) return;
       S.prof.predictions = Array.isArray(preds) ? preds : [];
-    } catch {
+      S.prof.placesErr = '';
+    } catch (e) {
       if (S.prof.q !== q) return;
       S.prof.predictions = [];
+      const code = e && e.errorCode ? String(e.errorCode) : '';
+      const status = e && e.googleStatus ? String(e.googleStatus) : '';
+      const msg = errMsg(e, 'Address search failed');
+      if (code === 'MISSING_GOOGLE_MAPS_API_KEY') {
+        S.prof.placesErr = 'GOOGLE_MAPS_API_KEY is missing on the server. Add it in Vercel and redeploy.';
+      } else if (status === 'REQUEST_DENIED' || /REQUEST_DENIED|not authorized|API key/i.test(msg)) {
+        S.prof.placesErr = 'Google rejected the key (REQUEST_DENIED). Enable Places API + billing, and remove HTTP-referrer restrictions on this server key.';
+      } else {
+        S.prof.placesErr = status ? `${msg} (${status})` : msg;
+      }
     } finally {
       if (S.prof.q === q) S.prof.searching = false;
       renderMain();
@@ -1987,7 +2001,7 @@ function openLead(id, opts = {}) {
     S.transcriptOpen = false;
     transcriptScrollTop = 0;
     S.transferState = null;
-    S.prof = { edit: null, q: '', hi: 0, predictions: [], searching: false, draftName: '', regsLoading: false };
+    S.prof = { edit: null, q: '', hi: 0, predictions: [], searching: false, placesErr: '', draftName: '', regsLoading: false };
     S.sms = ssGet(`mrg_sms_${id}`);
     S.th = { id, messages: [], followups: [], draft: null, loaded: false };
     lastMsgKey = '';

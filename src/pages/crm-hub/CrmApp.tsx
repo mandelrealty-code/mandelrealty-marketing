@@ -265,10 +265,23 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       },
       placesAutocomplete: async (input: string) => {
         const data = await call("/api/admin/pm?resource=places", json("POST", { action: "autocomplete", input }));
+        // googlePlaces returns HTTP 200 with errorCode when Google rejects the key — surface that.
+        if (data.errorCode || data.error) {
+          const err = new Error(String(data.error || data.errorCode || "Places failed")) as Error & {
+            errorCode?: string;
+            googleStatus?: string;
+          };
+          err.errorCode = typeof data.errorCode === "string" ? data.errorCode : undefined;
+          err.googleStatus = typeof data.googleStatus === "string" ? data.googleStatus : undefined;
+          throw err;
+        }
         return Array.isArray(data.predictions) ? data.predictions : [];
       },
       placesDetails: async (placeId: string) => {
         const data = await call("/api/admin/pm?resource=places", json("POST", { action: "details", placeId }));
+        if (data.errorCode || data.error) {
+          throw new Error(String(data.error || data.errorCode || "Place details failed"));
+        }
         return (data.place && typeof data.place === "object" ? data.place : null) as Record<string, unknown> | null;
       },
       deleteLead: (id: string) => call("/api/admin/leads", json("DELETE", { id })),

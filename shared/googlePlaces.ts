@@ -49,6 +49,8 @@ export async function handlePlacesOp(
       url.searchParams.set("input", input);
       url.searchParams.set("key", apiKey);
       url.searchParams.set("types", "address");
+      // Bias toward Canada (MRG market); still returns results outside if they match.
+      url.searchParams.set("components", "country:ca");
 
       const response = await fetch(url.toString());
       if (!response.ok) {
@@ -66,6 +68,7 @@ export async function handlePlacesOp(
         return res.status(200).json({ predictions: data.predictions || [] });
       }
 
+      console.error("[places] autocomplete rejected", data.status, data.error_message);
       return placesErr(
         res,
         data.error_message || data.status || "API error",
