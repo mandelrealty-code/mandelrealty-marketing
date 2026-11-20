@@ -17,16 +17,6 @@ const DEFAULT_BUFFER_MIN = 30;
 const MAX_SLOTS = 100;
 const LOOKAHEAD_DAYS = 60;
 
-export type CalendarSlotsDebug = {
-  eventsFound: number;
-  workingHours: { start: number; end: number };
-  bufferMinutes: number;
-  daysChecked: number;
-  slotsGenerated: number;
-  firstSlot: string;
-  lastSlot: string;
-};
-
 type BookingConfig = {
   startHour: number;
   endHour: number;
@@ -434,11 +424,7 @@ function buildPhoneCallEventBody(input: {
  */
 export async function listCalendarSlots(
   nowDate = new Date(),
-): Promise<{
-  slots: CalendarSlot[];
-  error?: string;
-  debug?: CalendarSlotsDebug;
-}> {
+): Promise<{ slots: CalendarSlot[]; error?: string }> {
   const config = await loadBookingConfig();
   const startHour = config.startHour;
   const endHour = config.endHour;
@@ -446,23 +432,12 @@ export async function listCalendarSlots(
   const durationMs = config.durationMinutes * 60_000;
   const now = nowDate.getTime();
 
-  const emptyDebug = (eventsFound = 0): CalendarSlotsDebug => ({
-    eventsFound,
-    workingHours: { start: startHour, end: endHour },
-    bufferMinutes: config.bufferMinutes,
-    daysChecked: LOOKAHEAD_DAYS,
-    slotsGenerated: 0,
-    firstSlot: "none",
-    lastSlot: "none",
-  });
-
   const accessToken = await getCalendarAccessToken();
   if (!accessToken) {
     return {
       slots: [],
       error:
         "Google Calendar is not connected. Connect Gmail in Settings → Connectors.",
-      debug: emptyDebug(0),
     };
   }
 
@@ -474,7 +449,6 @@ export async function listCalendarSlots(
     return {
       slots: [],
       error: e instanceof Error ? e.message : "Could not read Google Calendar.",
-      debug: emptyDebug(0),
     };
   }
 
@@ -521,18 +495,7 @@ export async function listCalendarSlots(
     if (slots.length >= MAX_SLOTS) break;
   }
 
-  const debug: CalendarSlotsDebug = {
-    eventsFound: events.length,
-    workingHours: { start: startHour, end: endHour },
-    bufferMinutes: config.bufferMinutes,
-    daysChecked: LOOKAHEAD_DAYS,
-    slotsGenerated: slots.length,
-    firstSlot: slots[0]?.label ?? "none",
-    lastSlot: slots[slots.length - 1]?.label ?? "none",
-  };
-  console.info("[crmCalendar] listCalendarSlots", debug);
-
-  return { slots, debug };
+  return { slots };
 }
 
 export type BookSlotInput = {

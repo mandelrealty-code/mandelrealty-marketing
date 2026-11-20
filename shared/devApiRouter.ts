@@ -831,14 +831,10 @@ export async function handleDevApi(
       const { listCalendarSlots } = await import("./crmCalendar.js");
       const result = await listCalendarSlots();
       if (result.error && result.slots.length === 0) {
-        json(res, 400, {
-          error: result.error,
-          slots: [],
-          debug: result.debug ?? null,
-        });
+        json(res, 400, { error: result.error, slots: [] });
         return true;
       }
-      json(res, 200, { slots: result.slots, debug: result.debug ?? null });
+      json(res, 200, { slots: result.slots });
       return true;
     }
     if (method === "POST" && settingsOp === "book_slot") {
