@@ -107,8 +107,16 @@ export async function setPmTeamMemberType(input: { name: string; staff_type: str
     .select("*")
     .single();
   if (error) {
-    if (/staff_type/i.test(error.message || "")) {
-      throw new Error("Staff type column missing. Run supabase/onboarding_v1.sql in Supabase, then retry.");
+    const msg = error.message || "";
+    if (/staff_type/i.test(msg)) {
+      if (/check|violates|invalid|not.?in/i.test(msg)) {
+        throw new Error(
+          "That staff type is blocked by the database check (booker was missing). Run supabase/staff_type_booker_v1.sql in Supabase, then retry.",
+        );
+      }
+      throw new Error(
+        "Staff type column missing. Run supabase/onboarding_v1.sql (or staff_type_booker_v1.sql) in Supabase, then retry.",
+      );
     }
     throw error;
   }

@@ -52,6 +52,8 @@ export type InvitePayload = {
   temp_password?: string;
   email_sent: boolean;
   email_error: string | null;
+  /** Present when the login was created but saving staff_type on the roster failed. */
+  roster_error?: string | null;
   staff_user: StaffRow;
 };
 

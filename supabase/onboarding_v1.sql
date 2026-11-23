@@ -6,11 +6,17 @@
 -- Onboarding follows the same convention as pm_tasks: an assignee is a roster NAME, not an id.
 
 alter table public.pm_team_members
-  add column if not exists staff_type text not null default ''
-    check (staff_type in ('', 'onboarder', 'va', 'software', 'operations', 'partner'));
+  add column if not exists staff_type text not null default '';
+
+-- Recreate the check so re-runs and fresh DBs allow booker (Team invite + coordinator portal).
+alter table public.pm_team_members
+  drop constraint if exists pm_team_members_staff_type_check;
+alter table public.pm_team_members
+  add constraint pm_team_members_staff_type_check
+  check (staff_type in ('', 'onboarder', 'va', 'software', 'booker', 'operations', 'partner'));
 
 comment on column public.pm_team_members.staff_type is
-  'What kind of team member this is: onboarder, va, software, operations or partner. Empty until a partner sets it.';
+  'What kind of team member this is: onboarder, va, software, booker, operations or partner. Empty until a partner sets it.';
 
 -- ---------- One row per unit going through onboarding ----------
 

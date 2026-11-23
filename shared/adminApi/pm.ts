@@ -1807,11 +1807,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             displayName,
             slug: str(body.slug) || undefined,
           });
-          // Roster role — so bootstrap staff_type matches and the portal opens correctly
-          await setPmTeamMemberType({
-            name: invited.user.display_name,
-            staff_type: staffType,
-          });
+          // Roster role — so bootstrap staff_type matches and the portal opens correctly.
+          // Do not block the invite email if the roster write fails (e.g. old CHECK without booker).
+          let roster_error: string | null = null;
+          try {
+            await setPmTeamMemberType({
+              name: invited.user.display_name,
+              staff_type: staffType,
+            });
+          } catch (rosterErr) {
+            roster_error =
+              rosterErr instanceof Error
+                ? rosterErr.message
+                : "Could not save staff type on the roster.";
+            console.error("[staff_invite] setPmTeamMemberType", roster_error);
+          }
           const mail = await sendStaffInviteEmail({
             to: email,
             firstName: invited.user.first_name || "there",
@@ -1829,6 +1839,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             temp_password: invited.tempPassword,
             email_sent: mail.ok,
             email_error: mail.ok ? null : mail.message || "Email failed",
+            roster_error,
           });
         }
       }

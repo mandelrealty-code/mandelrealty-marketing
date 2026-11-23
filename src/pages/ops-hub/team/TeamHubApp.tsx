@@ -238,12 +238,15 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       setInvite(null);
       await Promise.all([loadList(), loadRoster(), loadPartners()]);
       const code = await copyCode(data.temp_password);
+      if (data.roster_error) {
+        setError(data.roster_error);
+      }
       if (data.email_sent) {
         setToast(code ? `Invite sent. Code ${code} (copied) · ${data.team_url}` : `Invite sent · ${data.team_url}`);
       } else {
         setToast(
           code
-            ? `Email failed. Code ${code} (copied) · ${data.team_url}`
+            ? `Email failed. Code ${code} (copied) · ${data.team_url}${data.email_error ? ` — ${data.email_error}` : ""}`
             : `Portal ready (${data.team_url}) — email failed: ${data.email_error || "unknown"}`,
         );
       }
