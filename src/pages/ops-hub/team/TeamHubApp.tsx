@@ -99,8 +99,12 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
   }, []);
 
   const loadPartners = useCallback(async () => {
+    // session API is POST-only (same as Settings)
     const res = await fetch("/api/admin/session?op=list_partners", {
+      method: "POST",
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
     });
     const data = (await res.json().catch(() => ({}))) as {
       error?: string;
