@@ -54,6 +54,7 @@ export const STAFF_TYPE_LABEL: Record<string, string> = {
   onboarder: "Onboarder",
   va: "VA",
   software: "Software",
+  booker: "Booker",
   operations: "Operations",
   partner: "Partner",
 };
@@ -64,6 +65,7 @@ export const STAFF_TYPE_TONE: Record<string, [number, number]> = {
   onboarder: [185, 0.11],
   va: [255, 0.14],
   software: [300, 0.12],
+  booker: [65, 0.14],
   operations: [65, 0.14],
   partner: [155, 0.13],
 };

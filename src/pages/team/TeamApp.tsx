@@ -5,7 +5,11 @@ import {
   sameAirbnbListing,
 } from "../../../shared/airbnbListingUrl";
 import { filterRecentBadReviews } from "../../../shared/reviewRecency";
+import type { StaffType } from "../../../shared/pm/teamStore";
 import { MrgMark } from "../owner/OwnerChrome";
+import { CoordinatorPortal } from "./CoordinatorPortal";
+import { OnboarderPortal } from "./OnboarderPortal";
+import { VAPortal } from "./VAPortal";
 
 type StaffPublic = {
   id?: string;
@@ -18,6 +22,7 @@ type StaffPublic = {
 
 type Bootstrap = {
   user: StaffPublic;
+  staff_type?: StaffType | "";
   session: { authenticated: boolean; must_change_password: boolean };
 };
 
@@ -1007,7 +1012,24 @@ export function TeamApp() {
     );
   }
 
-  /* ——— Authenticated app ——— */
+  /* ——— Role portals (va / onboarder / booker|operations) ——— */
+  const staffType: StaffType | "" = boot?.staff_type ?? "";
+  const portalUser = {
+    id: boot?.user.id || "",
+    display_name: boot?.user.display_name || boot?.user.first_name || "",
+    first_name: boot?.user.first_name || "",
+  };
+  if (staffType === "va") {
+    return <VAPortal user={portalUser} staffType={staffType} />;
+  }
+  if (staffType === "onboarder") {
+    return <OnboarderPortal user={portalUser} staffType={staffType} />;
+  }
+  if (staffType === "booker" || staffType === "operations") {
+    return <CoordinatorPortal user={portalUser} staffType={staffType} />;
+  }
+
+  /* ——— Authenticated app (fallback TasksBoard — unchanged) ——— */
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#f5f5f5]">
       <header className="sticky top-0 z-20 border-b border-white/8 bg-[#0a0a0a]/95 backdrop-blur-sm">

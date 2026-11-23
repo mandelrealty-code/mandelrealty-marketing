@@ -611,6 +611,7 @@ const STAFF_TYPE_LABEL: Record<string, string> = {
   onboarder: "Onboarder",
   va: "VA",
   software: "Software",
+  booker: "Booker",
   operations: "Operations",
   partner: "Partner",
 };
@@ -643,11 +644,41 @@ function StaffTypes({ onError, logins, onInvite, onChanged }: { onError: (msg: s
   };
 
   const loginOf = (name: string) => logins.find((l) => l.name.trim().toLowerCase() === name.trim().toLowerCase());
+  const countAssignments = async (memberName: string) => {
+    const needle = memberName.trim().toLowerCase();
+    let units = 0;
+    let tasks = 0;
+    try {
+      const snap = await pmGet<{ units?: { assignee?: string }[] }>("onboarding");
+      units = (snap.units ?? []).filter((u) => (u.assignee || "").trim().toLowerCase() === needle).length;
+    } catch {
+      /* onboarding optional */
+    }
+    try {
+      const data = await pmGet<{ tasks?: { assignee?: string; assignees?: string[] }[] }>("tasks", {
+        status: "openish",
+      });
+      tasks = (data.tasks ?? []).filter((t) => {
+        if (Array.isArray(t.assignees) && t.assignees.some((a) => a.trim().toLowerCase() === needle)) {
+          return true;
+        }
+        return (t.assignee || "").toLowerCase().includes(needle);
+      }).length;
+    } catch {
+      /* tasks optional */
+    }
+    return { units, tasks };
+  };
   const remove = async (r: RosterRow) => {
     const login = loginOf(r.name);
+    const { units, tasks } = await countAssignments(r.name).catch(() => ({ units: 0, tasks: 0 }));
+    const assignWarn =
+      units || tasks
+        ? `\n\n${units} unit${units === 1 ? "" : "s"} and ${tasks} task${tasks === 1 ? "" : "s"} are still assigned to ${r.name}. Reassign before deactivating, or they will show as Unassigned.`
+        : "";
     const text = login
-      ? `Remove ${r.name}? Their login stops working and they leave this list. Their hours and past tasks stay.`
-      : `Remove ${r.name} from this list? Tasks already given to ${r.name} keep the name.`;
+      ? `Remove ${r.name}? Their login stops working and they leave this list. Their hours and past tasks stay.${assignWarn}`
+      : `Remove ${r.name} from this list? Tasks already given to ${r.name} keep the name.${assignWarn}`;
     if (!window.confirm(text)) return;
     setSaving(r.name);
     try {

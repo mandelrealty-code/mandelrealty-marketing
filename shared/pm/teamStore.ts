@@ -8,7 +8,7 @@ function db() {
   return sb;
 }
 
-export const STAFF_TYPES = ["onboarder", "va", "software", "operations", "partner"] as const;
+export const STAFF_TYPES = ["onboarder", "va", "software", "booker", "operations", "partner"] as const;
 export type StaffType = (typeof STAFF_TYPES)[number] | "";
 
 export type PmTeamMember = {

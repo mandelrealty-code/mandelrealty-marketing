@@ -1,0 +1,368 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mandel Realty: Client Coordinator portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{margin:0;font-family:Inter,system-ui,sans-serif;background:#f2f2ef;color:#3a3a3a;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding:28px 24px 60px}
+h1{margin:0;font-size:22px;font-weight:700;color:#1a1a1a}.lede{margin:6px 0 0;font-size:14px;line-height:1.5;max-width:720px}
+h2{margin:36px 0 4px;font-size:16px;font-weight:700;color:#1a1a1a}h2+p{margin:0 0 14px;font-size:13px;color:#6b6b6b}
+.sec{margin-top:28px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#9a9590;border-top:1px solid #e8e8e3;padding-top:18px}
+.dw{position:relative;width:100%;aspect-ratio:1280/800;border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgb(0 0 0 / .08),0 18px 50px rgb(0 0 0 / .12);background:#fff}
+.dw iframe{position:absolute;left:0;top:0;width:1280px;height:800px;border:0;transform-origin:0 0}
+.mrow{display:flex;gap:40px;flex-wrap:wrap}.mrow>div{flex:none}
+.mw iframe{display:block;width:375px;height:812px;border:0;border-radius:36px;box-shadow:0 0 0 10px #18181b,0 24px 60px rgb(0 0 0 / .2);background:#fff;margin:10px}</style></head><body><div class="wrap">
+<h1>Client Coordinator portal</h1><p class="lede">What the booker sees during a shift. Desktop shows the queue and the call guide side by side; the phone layout is unchanged. Every frame is live.</p>
+<div class="sec">Desktop 1280</div>
+<h2>Clocked in · Today’s calls</h2><p>Queue on the left, today’s calls on the right. Dial opens the call guide on the right while the queue stays visible.</p><div class="dw"><iframe title="Desktop calls" data-cfg='{"state":"A"}'></iframe></div>
+<h2>Clocked in · My scorecard</h2><p>Six stats and calls this week, with today in gold.</p><div class="dw"><iframe title="Desktop scorecard" data-cfg='{"state":"A","rtab":"sc"}'></iframe></div>
+<h2>Call Guide, mid-call</h2><p>Sarah Chen on Q3 · Live listing, status Warm. The queue stays on the left.</p><div class="dw"><iframe title="Desktop guide" data-cfg='{"state":"C"}'></iframe></div>
+<div class="sec">Mobile 375</div>
+<div class="mrow"><div class="mw"><h2>State A · Clocked in</h2><p>All four task types.</p><iframe title="State A" data-cfg='{"state":"A"}'></iframe></div>
+<div class="mw"><h2>State B · Clocked out</h2><p>No tasks until the shift starts.</p><iframe title="State B" data-cfg='{"state":"B"}'></iframe></div>
+<div class="mw"><h2>State C · Call Guide</h2><p>Q3 · Live listing, Warm.</p><iframe title="State C" data-cfg='{"state":"C"}'></iframe></div></div>
+</div>
+<script type="text/plain" id="tpl"><!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>MRG Client Coordinator</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><style>:root{--bg:#fff;--panel:#f2f2ef;--ink:oklch(0.21 0.006 285);--ink2:oklch(0.32 0.006 285);--muted:oklch(0.45 0.008 285);--line:rgb(0 0 0 / .11);--line-2:rgb(0 0 0 / .06);--hover:rgb(0 0 0 / .04);--gold:#c9a84c;--primary:#18181b;--green:oklch(0.6 0.13 155);--amber:oklch(0.6 0.14 65);--red:oklch(0.6 0.19 25);--greenink:oklch(0.42 0.1 155);--amberink:oklch(0.47 0.12 60);--redink:oklch(0.48 0.17 25);--tealink:oklch(0.42 0.09 185);--teal:oklch(0.6 0.11 185);--ease:cubic-bezier(.65,0,.35,1)}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);font-family:Inter,system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:var(--ink2);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+svg.i.sm{width:16px;height:16px}svg.i.xs{width:14px;height:14px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#top{position:sticky;top:0;z-index:20;background:#fff}
+.tb{display:flex;align-items:center;gap:10px;height:64px;padding:0 12px 0 16px;border-bottom:1px solid var(--line-2)}
+.tb svg{flex:none}
+.nm{flex:1;text-align:center;font-size:15px;font-weight:700;color:var(--ink)}
+.clk{position:relative;width:80px;height:40px;border-radius:99px;border:0;background:var(--primary);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:5px}
+.clk::after{content:"";position:absolute;inset:-8px -4px}
+.clk.on{width:auto;min-width:80px;padding:0 12px;background:#fff;color:var(--ink);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.clk .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.clk.p .dot{background:var(--amber)}.clk.p{color:var(--amberink)}
+.sbar{height:3px}.sbar.in{background:var(--green)}.sbar.paused{background:var(--amber)}.sbar.out{height:0}
+#main{padding:16px 16px 40px}
+.sh{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:700;color:var(--ink);margin:8px 0 12px}
+.cnt{display:inline-grid;place-items:center;min-width:22px;height:20px;padding:0 7px;border-radius:99px;background:var(--panel);font-size:12px;font-weight:600;color:var(--ink2)}
+.q{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
+.tc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06);min-height:100px}
+.tc.hot{border-color:oklch(0.6 0.19 25 / .45);background:oklch(0.6 0.19 25 / .04);box-shadow:0 0 0 1px oklch(0.6 0.19 25 / .25),0 4px 14px oklch(0.6 0.19 25 / .12)}
+.th{display:flex;align-items:center;gap:8px}
+.tic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tl{font-size:14px;font-weight:700;color:var(--ink)}.tl.red{color:var(--redink);text-transform:uppercase;letter-spacing:.3px;font-size:13px}
+.who{margin:8px 0 0;font-size:14px;color:var(--ink2)}.who b{color:var(--ink)}
+.tm2{margin:2px 0 0;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.callbtn{width:100%;min-height:56px;margin-top:12px;border:0;border-radius:12px;background:var(--primary);color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:background 150ms var(--ease)}
+.callbtn:hover{background:oklch(0.3 0.006 285)}
+.tc.hot .callbtn{min-height:60px;font-size:17px}
+.tf{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
+.lk{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 2px;border:0;background:none;font-size:14px;font-weight:600;color:var(--tealink);text-decoration:none}
+.lk:hover{text-decoration:underline}
+.done{min-height:44px;min-width:64px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--ink2)}
+.done:hover{background:var(--hover)}
+.prep{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600}.prep.ok{color:var(--greenink)}.prep.no{color:var(--amberink)}
+.upd{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.spill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:99px;font-size:12px;font-weight:700}
+.empty{padding:40px 12px;text-align:center;color:var(--muted);font-size:15px}
+.ping{width:100%;height:56px;border:0;border-radius:12px;background:var(--gold);color:#1a1a1a;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px}
+.ping:hover{filter:brightness(.97)}
+.pstate{min-height:8px;margin:8px 2px 0;font-size:14px}
+.pr{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:14px;min-height:36px}.pr.ok{color:var(--greenink);font-weight:600}
+.pr .lk{min-height:36px;color:var(--greenink)}
+.demo{display:flex;flex-direction:column;gap:2px;margin:8px 0 24px;padding:8px 12px;border:1px dashed rgb(0 0 0 / .2);border-radius:10px}
+.demo>span:first-child{font-size:11px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid rgb(0 0 0 / .15);border-top-color:var(--ink);display:inline-block;animation:sp .7s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.fold{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:#fff}
+.fh{display:flex;align-items:center;gap:8px;width:100%;min-height:56px;padding:0 14px;border:0;background:#fff;font-size:15px;font-weight:650;color:var(--ink);text-align:left}
+.fh .chev{margin-left:auto;display:grid;color:var(--muted);transform:rotate(-90deg);transition:transform 200ms var(--ease)}
+.fold.open .chev{transform:none}
+.fb{display:grid;grid-template-rows:0fr;transition:grid-template-rows 200ms var(--ease)}.fold.open .fb{grid-template-rows:1fr}.fb>div{overflow:hidden;min-height:0}
+.fi{padding:0 14px 14px}
+.ur{display:grid;grid-template-columns:72px 1fr auto;gap:8px;align-items:center;min-height:56px;border-top:1px solid var(--line-2);font-size:14px;color:var(--ink)}
+.ur b{font-variant-numeric:tabular-nums}.mut{color:var(--muted);font-size:13px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sgc{background:var(--panel);border-radius:10px;padding:10px 12px}.sgc b{display:block;font-size:20px;color:var(--ink);line-height:1.2}.sgc span{font-size:12px;color:var(--muted)}
+.ta{width:100%;min-height:110px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:15px/1.5 Inter,sans-serif;color:var(--ink);resize:vertical}
+.ta:focus{outline:none;border-color:oklch(0.6 0.15 255 / .6);box-shadow:0 0 0 3px oklch(0.6 0.15 255 / .12)}
+.blk{width:100%;min-height:56px;margin-top:10px;border:0;border-radius:12px;background:var(--primary);color:#fff;font-size:16px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px}
+.ghost{width:100%;min-height:56px;margin-top:8px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:15px;font-weight:600;color:var(--ink2)}
+/* guide */
+#main.g{padding-top:8px}
+.gh{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.gback{align-self:flex-start;min-height:44px}
+.gt{display:flex;align-items:center;justify-content:center;gap:10px}.gt b{font-size:18px;color:var(--ink)}
+.gp{display:flex;gap:4px;margin:6px 0 14px}.gp i{flex:1;height:4px;border-radius:2px;background:var(--line)}.gp i.d{background:var(--ink)}.gp i.c{background:var(--gold)}
+.gl{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;min-height:44px}
+.iconb{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;margin-left:-2px}
+.say{border-left:3px solid var(--teal);background:oklch(0.6 0.11 185 / .07);border-radius:0 10px 10px 0;padding:12px 14px;margin:8px 0 16px}
+.say span{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--tealink)}
+.say p{margin:4px 0 0;font-size:17px;line-height:1.5;color:var(--ink)}
+.ans{display:flex;flex-direction:column;gap:8px}
+.an{min-height:56px;padding:10px 16px;border-radius:12px;border:1px solid var(--line);background:#fff;font-size:16px;font-weight:600;color:var(--ink);text-align:left;transition:background 150ms var(--ease),border-color 150ms var(--ease)}
+.an:hover{border-color:rgb(0 0 0 / .35)}
+.an.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.objf{margin-top:20px}
+.ob{border-top:1px solid var(--line-2)}
+.ob button{width:100%;min-height:56px;border:0;background:none;text-align:left;font-size:15px;font-weight:600;color:var(--ink);padding:8px 0}
+.ob p{margin:0 0 12px;font-size:15px;color:var(--ink2);padding:10px 12px;background:var(--panel);border-radius:10px}
+.gend{text-align:center;padding:12px 0}
+.gend .ck{width:48px;height:48px;border-radius:50%;background:var(--green);color:#fff;display:grid;place-items:center;margin:8px auto 10px}.gend .ck svg{width:24px;height:24px;stroke-width:2.6}
+.gend h2{margin:0;font-size:20px;color:var(--ink)}.gend p{margin:4px 0 8px;color:var(--muted)}
+.sum{text-align:left;white-space:pre-wrap;background:var(--panel);border-radius:10px;padding:12px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);margin:14px 0 0}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(6px);opacity:0;background:var(--primary);color:#fff;border-radius:12px;padding:0 16px;height:48px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;white-space:nowrap;transition:opacity 180ms,transform 180ms;pointer-events:none;z-index:30}
+.toast.show{opacity:1;transform:translateX(-50%)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* guide fields */
+.gfs{display:flex;flex-direction:column;gap:12px;margin:0 0 14px}
+.gf label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
+.inp{width:100%;min-height:52px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font:16px Inter,sans-serif;color:var(--ink);background:#fff}
+select.inp{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center/16px;padding-right:36px}
+.inp.ta2{min-height:96px;padding:10px 12px;resize:vertical;line-height:1.5}
+.inp:focus{outline:none;border-color:oklch(0.6 0.15 255 / .6);box-shadow:0 0 0 3px oklch(0.6 0.15 255 / .12)}
+.an.pri{background:var(--primary);color:#fff;border-color:var(--primary);text-align:center}
+.an.pri[disabled]{background:oklch(0.85 0.005 285);border-color:transparent;cursor:not-allowed}
+.an.pri:nth-child(n+2){background:#fff;color:var(--ink);border-color:var(--line)}
+.hint2{font-size:13px;color:var(--muted);margin:8px 0 0;text-align:center}
+.say.alt{border-left-color:var(--gold);background:oklch(0.8 0.1 85 / .12)}.say.alt span{color:oklch(0.45 0.09 80)}
+.fillt{margin:-6px 0 16px;padding:10px 12px;border-radius:10px;background:var(--panel);font-size:15px;color:var(--ink)}
+.fillt span{display:block;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.gck{list-style:none;margin:0 0 14px;padding:0;border:1px solid var(--line);border-radius:12px}
+.gck li{display:flex;align-items:center;gap:12px;min-height:56px;padding:0 12px;border-bottom:1px solid var(--line-2);font-size:15px;color:var(--ink)}
+.gck li:last-child{border-bottom:0}
+.cb{width:28px;height:28px;border-radius:8px;border:1.5px solid rgb(0 0 0 / .3);background:#fff;display:grid;place-items:center;flex:none;position:relative}
+.cb::after{content:"";position:absolute;inset:-14px}
+.cb.on{background:var(--primary);border-color:var(--primary);color:#fff}
+/* desktop */
+#right{display:none}
+.tc.active{box-shadow:0 0 0 2px var(--ink),0 1px 4px rgba(0,0,0,0.06)}
+@media (min-width:601px){
+ html,body{height:100%;overflow:hidden}
+ .lay{display:grid;grid-template-columns:380px minmax(0,1fr);height:100dvh}
+ .lc{border-right:1px solid var(--line);overflow:auto;background:#fff}
+ #right{display:block;overflow:auto;padding:24px 32px 40px;background:oklch(0.99 0.002 95)}
+ #f-up,#f-sc{display:none}
+ .tc{padding:14px}
+ .rtabs{display:inline-flex;background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:3px;margin-bottom:18px}
+ .rtabs button{height:36px;padding:0 18px;border:0;border-radius:9px;background:none;font-size:14px;font-weight:500;color:var(--ink2)}
+ .rtabs button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+ .rt{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+ .rt table{width:100%;border-collapse:collapse;font-size:14px}
+ .rt th{background:var(--panel);text-align:left;font-size:12px;font-weight:600;color:var(--muted);padding:8px 14px;border-bottom:1px solid var(--line-2)}
+ .rt td{height:44px;padding:0 14px;border-bottom:1px solid var(--line-2);color:var(--ink)}
+ .rt tr:last-child td{border-bottom:0}
+ .rt tbody tr{transition:background 120ms}.rt tbody tr:hover td{background:oklch(0.98 0.002 95)}
+ .rt .r{text-align:right}.num{font-variant-numeric:tabular-nums}
+ .sbtn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:8px;border:0;background:var(--primary);color:#fff;font-size:13px;font-weight:600}
+ .sbtn.ghost2{background:#fff;color:var(--ink);border:1px solid var(--line)}
+ .mutl{color:var(--muted);font-weight:500;font-size:13px;margin-top:6px}
+ .sg3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:720px}
+ .sg3 .sgc{background:#fff;border:1px solid var(--line);padding:14px 16px}.sg3 .sgc b{font-size:24px}
+ .chart{margin-top:16px;max-width:720px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
+ .ch{font-size:14px;font-weight:650;color:var(--ink);margin-bottom:12px}
+ .bars{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;align-items:end;height:190px}
+ .bc{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;height:100%}
+ .bc i{width:100%;max-width:44px;border-radius:6px 6px 2px 2px;background:oklch(0.82 0.005 285)}
+ .bc i.today{background:var(--gold)}.bc i.fut{background:var(--line-2)}
+ .bv{font-size:12px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums}
+ .bd{font-size:12px;color:var(--muted)}.bd.t{color:var(--ink);font-weight:700}
+ .rg{max-width:760px}
+ .rg .gback{margin-left:-2px}
+}
+</style></head><body>
+<div class="lay"><div class="lc"><header id="top"></header><main id="main"></main></div><aside id="right" aria-label="Calls, scorecard and call guide"></aside></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+/*BOOT*/
+(function(){const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const BOOT=window.BOOT||{state:'A'};
+const STAFF='[Name]';
+const I={phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',chev:'<path d="m6 9 6 6 6-6"/>',back:'<path d="m15 6-6 6 6 6"/>',check:'<path d="m5 12 5 5 9-10"/>',bolt:'<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',doc:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',alert:'<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16h0"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>'};
+const ic=(n,c='')=>`<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${I[n]}</svg>`;
+const LOGO='<svg width="28" height="28" viewBox="162 162 700 700" aria-label="MRG" role="img"><rect x="162" y="162" width="700" height="700" fill="#fff"/><rect x="182" y="182" width="660" height="660" fill="none" stroke="#1a1a1a" stroke-width="40"/><path fill="#1a1a1a" d="M307 325L600 568V712H558V585L347 415V712H307Z M423 535L464 568V712H423Z M717 300V712H676V395L566 490L535 463Z"/></svg>';
+let tt;function toast(m){const t=$('#toast');t.innerHTML=ic('check','sm')+m;t.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ---------- state ---------- */
+const S={clock:BOOT.state==='B'?'out':'in',secs:23*60+41,idle:0,view:'queue',lead:null,ping:''};
+const TASKS=[
+ {id:'sarah',kind:'new',first:'Sarah',name:'Sarah Chen',sub:'Meta ad · Just now',status:''},
+ {id:'john',kind:'appt',first:'John',name:'John Smith',sub:'Growth Plan call with Ryan',time:'2:00 PM – 3:00 PM',mins:12,prep:true,status:''},
+ {id:'michael',kind:'call',first:'Michael',name:'Michael Torres',sub:'Owner unhappy, hasn’t replied',status:''},
+ {id:'amy',kind:'contract',first:'Amy',name:'Amy Chen',sub:'Standard Management · Sent Nov 17',day:4,status:''}
+];
+const STATUS={Pending:[270,.02],Hot:[25,.19],Warm:[65,.14],Nurture:[255,.14],Disqualified:[270,.02]};
+const tone=(h,c)=>({bg:`oklch(0.6 ${c} ${h} / .15)`,t:`oklch(0.45 ${c*.9} ${h})`});
+const pill=s=>{const t=tone(...STATUS[s]);return `<span class="spill" style="background:${t.bg};color:${t.t}">${s}</span>`;};
+
+/* ---------- call guide (Ryan's script) ---------- */
+const AREA={sarah:'Liberty Village',john:'Richmond Hill',michael:'Midtown',amy:'King West'};
+const SLOTS=['Tue 2:00 PM','Wed 10:00 AM'];
+const N={
+ opener:{l:'Opener',say:c=>`Hi ${c.first}, it’s ${STAFF} from Mandel Realty Group. You just reached out about your property in ${c.area}. Is now a bad time for a quick 3-minute chat?`,
+  btns:[['Not a bad time','trust'],['Bad time','resched']]},
+ resched:{l:'Reschedule',say:()=>`No problem at all. Would later today or tomorrow morning be a bad time for me to call back?`,
+  f:[['callback','Callback time','text','e.g. Today 5:30 PM']],btns:[['Save callback & end','END']]},
+ trust:{l:'Trust line',say:()=>`We’re a boutique short-term rental management company in Toronto. We only take on properties we know we can grow, and we’re the only manager that will invest up to $5,000 into your unit.`,btns:[['Continue','q1']]},
+ q1:{l:'Q1 · The property',say:()=>`Tell me a bit about the property: where it is, and how many bedrooms?`,
+  f:[['area','Area / address','text','e.g. 45 King St W'],['type','Type','select',['Condo','House','Cottage','Other']],['beds','Bedrooms','number','e.g. 2'],['owner','Owner','select',['Yes','No']]],
+  btns:[['Continue',A=>A.owner==='No'?'notowner':'q2','owner']]},
+ notowner:{l:'Not the owner',say:()=>`Thanks for letting me know. We work directly with property owners, so I’ll make a note here. If the owner would like to chat, they can reach out any time.`,btns:[['End call','END']]},
+ q2:{l:'Q2 · Where it is now',say:()=>`Is it on Airbnb right now, or not listed yet?`,
+  btns:[['Live on Airbnb / platform','q3a','status'],['Furnished, not listed','q3b','status'],['Unfurnished','q3b','status'],['Buying / under construction','q3b','status']]},
+ q3a:{l:'Q3 · Live listing',say:()=>`Roughly what’s it bringing in a month? And what’s the biggest headache right now: your time, the income, or the guests?`,
+  f:[['revenue','Monthly revenue','text','e.g. $3,200'],['headache','Headache','select',['Time','Income','Guests','Other']],['link','Listing link','url','airbnb.ca/rooms/…']],btns:[['Continue','help']]},
+ q3b:{l:'Q3 · Not live yet',say:()=>`When do you expect it to be ready for guests?`,
+  f:[['ready','Ready for guests','text','e.g. Early January']],btns:[['Continue',A=>A.type==='Condo'?'q3c':'help']]},
+ q3c:{l:'Q3 · Condo rules',say:()=>`Would it be crazy to think Airbnb isn’t allowed in your building? Have you checked with the condo?`,
+  btns:[['Allowed','help','condo'],['Unsure','help','condo'],['Not allowed, open to 30+ day','help','condo'],['Not allowed, not open to 30+ day','dq','condo']]},
+ dq:{l:'Disqualified',say:()=>`Thanks for checking that. Since short stays aren’t allowed in the building and 30+ day stays aren’t an option, we wouldn’t be the right fit right now. I’ll make a note in case anything changes.`,btns:[['End call','END']]},
+ help:{l:'Help wanted',say:()=>`Would it be fair to say you’re looking for us to take it off your hands completely? Or just help with part of it?`,
+  btns:[['Full management','q4','help'],['Help with part of it','q4','help'],['Just exploring','q4','help']]},
+ q4:{l:'Q4 · Their goal',say:()=>`If this went perfectly, what would it look like for you 6 months from now?`,f:[['goal','Goal in their words','textarea','']],btns:[['Continue','q5']]},
+ q5:{l:'Q5 · Decision makers',say:()=>`Is anyone else involved in the decision, like a partner or co-owner?`,btns:[['Just them','q6','decision'],['Partner / co-owner','q5b','decision']]},
+ q5b:{l:'Q5b · Co-owner',say:()=>`Great. What’s their name, so we can make sure they’re included?`,f:[['coowner','Partner / co-owner name','text','']],btns:[['Continue','q6']]},
+ q6:{l:'Q6 · Timing',say:()=>`Would starting within the next month be too soon?`,btns:[['Within 30 days','ROUTE','timing'],['1–3 months','ROUTE','timing'],['3+ months','ROUTE','timing']]},
+ hot:{l:'Route · Hot',say:()=>`Press Ping Ryan: hot lead live in the CRM now. Keep chatting while you wait.`,fill:'Anything about the place you love that guests would too?',
+  btns:[['Ryan tapped I’m free','transfer'],['Ryan: Not now / no answer','book']]},
+ warm:{l:'Route · Warm',say:()=>`Based on what you’ve shared, would you be opposed to seeing exactly what your place could earn? Our Revenue Potential Report shows it, and if you want a lighter option, our Managed Essentials plan takes the busy work off your plate.`,
+  btns:[['Wants a call with Ryan','book'],['Send report / Essentials info','END']]},
+ nurture:{l:'Route · Nurture',say:()=>`Totally understand. Would you be opposed to me sending you our free owner’s guide? When you’re ready, just reply to that email and we’ll pick it up from there.`,btns:[['End call','END']]},
+ transfer:{l:'Transfer',say:()=>`Would it be a bother if I patched you through to Ryan, our founder, right now? It’ll only take about 20 minutes or less.`,
+  intro:(c,A)=>`Ryan, I have ${A.area||c.area}, ${A.beds||'?'}-bed ${(A.type||'property').toLowerCase()}, looking for ${(A.help||'help').toLowerCase()}.`,
+  btns:[['Transferred','END'],['They’d rather book a time','book']]},
+ book:{l:'Book',say:()=>`Would it be a bad idea to grab 20 minutes with Ryan? He’ll show you what your property could earn. Would ${SLOTS[0]} or ${SLOTS[1]} be a bad time?`,
+  f:[['booked','Booked for','text','e.g. '+SLOTS[0]]],btns:[['Booked','lock'],['Not ready to book','END']]},
+ lock:{l:'Lock in',say:()=>`Perfect. You’ll get a calendar invite and a text reminder. Would you be against sending me the listing link before then, so Ryan can prepare your numbers?`,
+  check:['Decision-maker joining?','STR allowed?','Link or photos coming?','Goal and timing clear?','They know it’s 20 minutes about revenue?'],btns:[['Done','END']]}
+};
+const OBJ=[
+ ['“I don’t know” (any question you can’t answer)','That’s a great question, and I want to give you the right answer, not a guess. That’s exactly what Ryan will cover on your call. I’ll make a note so it’s the first thing he addresses.'],
+ ['“Your fee is too high”','Fair. Most owners find they net more with us even after the fee, because we raise rates and occupancy. Would it be a bad idea to have Ryan show you the numbers for your unit?'],
+ ['“Why is there an upfront fee?”','It’s our Launch Package: professional photos, the full listing build, pricing setup, the guidebook, and our team on site setting everything up. Ryan can explain how it’s credited back.'],
+ ['“I don’t want to be locked in”','Totally get it. There are flexible options. Would you be opposed to Ryan walking you through them?'],
+ ['“I’ll think about it”','Of course. Would it be crazy to ask what the main thing is you’d want to think through? I can get Ryan to cover it.'],
+ ['“I can manage it myself”','Many of our owners did, before us. What made you reach out? Would it be a bad thing to work less on this, free up your time, and earn more money while you’re at it?'],
+ ['“Another company is cheaper”','Good to compare. No other company invests in your unit to make sure you earn more. A cheaper company usually eats into what you currently make. With us, we increase your revenue, which usually pays for our fees and then some.'],
+ ['“Is Airbnb even legal here?”','It depends on the city and the building. We check that for your address before we take you on.'],
+ ['“What’s the catch with the furniture?”','No upfront cost. It’s tied to a 24-month plan, and after that the furniture is yours. Ryan can check whether your listing qualifies. Would it be crazy to have him take a look?'],
+ ['“Can I keep control of pricing?”','You can set minimums and maximums. Pricing is one of the most important ways we increase revenue. You’ll always have the final say.'],
+ ['“What if you don’t improve my income?”','Great question for Ryan. Our Growth plan is built exactly around that. If there’s room to grow from your current income, the property can be approved.']
+];
+function score(A){
+ if(A.owner==='No'||A.condo==='Not allowed, not open to 30+ day')return 'Disqualified';
+ if(!A.owner&&!A.help&&!A.status)return 'Pending';
+ if(A.help==='Just exploring'||A.status==='Buying / under construction')return 'Nurture';
+ if(A.owner==='Yes'&&A.help==='Full management'&&A.timing!=='3+ months')return 'Hot';
+ return 'Warm';}
+const G={node:'opener',A:{},hist:[],done:false,obj:false,openObj:-1,chk:[]};
+const ORDER=['opener','trust','q1','q2','q3','help','q4','q5','q6','route','book','lock'];
+const pos=n=>{const m={resched:1,notowner:3,q3a:4,q3b:4,q3c:4,dq:5,q5b:8,hot:9,warm:9,nurture:9,transfer:10};return m[n]??ORDER.indexOf(n);};
+
+/* ---------- render ---------- */
+const fmt=s=>[Math.floor(s/3600),Math.floor(s/60)%60,s%60].map(x=>String(x).padStart(2,'0')).join(':');
+function top(){const c=S.clock;
+ $('#top').innerHTML=`<div class="tb">${LOGO}<b class="nm">${STAFF}</b>
+  ${c==='out'?`<button class="clk" data-a="clockin">Clock in</button>`
+   :`<button class="clk on ${c==='paused'?'p':''}" data-a="clockout" aria-label="Clocked in. Tap to clock out"><i class="dot"></i><span id="tmr">${c==='paused'?'Paused':fmt(S.secs)}</span></button>`}</div>
+  <div class="sbar ${c}"></div>`;}
+const icon=(n,h,c)=>{const t=tone(h,c);return `<span class="tic" style="background:${t.bg};color:${t.t}">${ic(n,'sm')}</span>`;};
+function task(t){const done=`<button class="done" data-a="done" data-id="${t.id}">Done</button>`;const call=(lbl)=>`<button class="callbtn" data-a="call" data-id="${t.id}">${ic('phone','sm')}${lbl} →</button>`;
+ const st=t.status?`<div class="upd">${pill(t.status)}<span>Summary copied to CRM</span></div>`:'';
+ if(t.kind==='new')return `<article class="tc hot"><div class="th">${icon('bolt',25,.19)}<span class="tl red">New lead · Call now</span></div><p class="who"><b>${t.name}</b> · ${t.sub}</p>${st}${call('Call '+t.first)}<div class="tf"><a href="#" onclick="return false" class="lk">Open in CRM →</a>${done}</div></article>`;
+ if(t.kind==='appt')return `<article class="tc"><div class="th">${icon('clock',65,.14)}<span class="tl">Call starting in ${t.mins} min</span></div><p class="who"><b>${t.name}</b> · ${t.sub}</p><p class="tm2">${t.time}</p>${st}${call('Dial '+t.first)}<div class="tf">${t.prep?`<span class="prep ok">${ic('check','xs')}Ryan’s prep ready</span>`:`<span class="prep no">${ic('alert','xs')}Ryan’s prep missing</span>`}${done}</div></article>`;
+ if(t.kind==='call')return `<article class="tc"><div class="th">${icon('phone',270,.02)}<span class="tl">Needs a call</span></div><p class="who"><b>${t.name}</b> · ${t.sub}</p>${st}${call('Call '+t.first)}<div class="tf"><a href="#" onclick="return false" class="lk">View context →</a>${done}</div></article>`;
+ return `<article class="tc"><div class="th">${icon('doc',255,.14)}<span class="tl">Contract follow-up · Day ${t.day}</span></div><p class="who"><b>${t.name}</b> · ${t.sub}</p>${st}${call('Call '+t.first)}<div class="tf"><span></span>${done}</div></article>`;}
+const fold=(id,title,inner,open)=>`<section class="fold ${open?'open':''}" id="f-${id}"><button class="fh" data-a="fold" data-f="${id}" aria-expanded="${!!open}">${title}<span class="chev">${ic('chev','sm')}</span></button><div class="fb"><div><div class="fi">${inner}</div></div></div></section>`;
+function queue(){
+ const q=S.clock==='out'?`<div class="empty">Clock in to start your shift</div>`:TASKS.length?TASKS.map(task).join(''):`<div class="empty">All caught up! ✓</div>`;
+ const pingResp={free:'<span class="pr ok">Ryan is free · <button class="lk" data-a="transfer">Transfer →</button></span>',no:'<span class="pr">Not now</span>',none:'<span class="pr">No response (2 min)</span>',wait:'<span class="pr"><i class="spin"></i>Waiting for Ryan…</span>'};
+ return `<h2 class="sh">Your queue ${S.clock==='out'?'':`<span class="cnt">${TASKS.length}</span>`}</h2><div class="q">${q}</div>
+  ${S.clock==='out'?'':`<h2 class="sh">Ping Ryan</h2><button class="ping" data-a="ping">${ic('bolt','sm')}Ping Ryan: hot lead live</button>
+  <div class="pstate">${S.ping?pingResp[S.ping]:''}</div>
+  <div class="demo"><span>Mockup · Ryan’s three replies</span>${pingResp.free}${pingResp.no}${pingResp.none}</div>`}
+  ${fold('up',`Today’s calls <span class="cnt">3</span>`,[['2:00 PM','John Smith','Growth Plan'],['3:30 PM','Amy Chen','Standard'],['5:00 PM','Mark Davis','Growth Plan']].map(([t,n,p])=>`<div class="ur"><b>${t}</b><span>${n}</span><span class="mut">${p}</span></div>`).join(''))}
+  ${fold('sc','My scorecard',`<div class="sg">${[['8','Calls today'],['3 min','Response time avg'],['75%','Show rate'],['1','Overdue tasks'],['4','Bookings this week'],['2','Contracts pending']].map(([n,l])=>`<div class="sgc"><b>${n}</b><span>${l}</span></div>`).join('')}</div>`)}
+  ${fold('eod','End of day note',`<label class="sr" for="eod">End of day note</label><textarea id="eod" class="ta" placeholder="Anything Ryan or Shane should know?"></textarea><button class="blk" data-a="note">Submit note</button>`)}`;}
+function lead(){const t=TASKS.find(x=>x.id===S.lead)||TASKS[0]||{id:'sarah',name:'Sarah Chen',first:'Sarah'};return {...t,area:AREA[t.id]||'Toronto'};}
+function field([k,lab,type,opt]){const v=G.A[k]||'';
+ if(type==='select')return `<div class="gf"><label for="gf-${k}">${lab}</label><select class="inp" id="gf-${k}" data-f="${k}"><option value="">Select</option>${opt.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('')}</select></div>`;
+ if(type==='textarea')return `<div class="gf"><label for="gf-${k}">${lab}</label><textarea class="inp ta2" id="gf-${k}" data-f="${k}" placeholder="${opt}">${esc(v)}</textarea></div>`;
+ return `<div class="gf"><label for="gf-${k}">${lab}</label><input class="inp" id="gf-${k}" data-f="${k}" type="${type==='number'?'text':type}" ${type==='number'?'inputmode="numeric"':''} value="${esc(v)}" placeholder="${opt}"></div>`;}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function guide(){const c=lead(),st=score(G.A);
+ const head=`<div class="gh"><button class="lk gback" data-a="exit">${ic('back','sm')}Back to queue</button><div class="gt"><b>${c.name}</b><span id="gpill">${pill(st)}</span></div></div>`;
+ if(G.done)return head+`<div class="gend"><div class="ck">${ic('check')}</div><h2>Call complete</h2><p>${c.name} is now</p>${pill(st)}
+  <pre class="sum" id="sum">${esc(summary(c,st))}</pre><button class="blk" data-a="copy">${ic('copy','sm')}Copy summary → CRM</button><button class="ghost" data-a="reopen">Back to last step</button></div>`;
+ const n=N[G.node],p=pos(G.node);
+ const req=n.btns.some(b=>b[2]&&n.f&&n.f.some(f=>f[0]===b[2]))?n.btns.find(b=>b[2]).at(2):null;
+ return head+`<div class="gp" aria-label="Step ${p+1} of ${ORDER.length}">${ORDER.map((_,i)=>`<i class="${i<p?'d':i===p?'c':''}"></i>`).join('')}</div>
+ <div class="gs"><div class="gl">${G.hist.length?`<button class="iconb" data-a="gprev" aria-label="Previous step">${ic('back','sm')}</button>`:'<span></span>'}<span>${n.l}</span></div>
+ <div class="say"><span>Say</span><p>${esc(n.say(c))}</p></div>
+ ${n.intro?`<div class="say alt"><span>Warm-transfer intro</span><p>${esc(n.intro(c,G.A))}</p></div>`:''}
+ ${n.fill?`<div class="fillt"><span>Fill time</span>${n.fill}</div>`:''}
+ ${n.f?`<div class="gfs">${n.f.map(field).join('')}</div>`:''}
+ ${n.check?`<ul class="gck">${n.check.map((x,i)=>`<li><button class="cb ${G.chk[i]?'on':''}" data-a="chk" data-i="${i}" aria-pressed="${!!G.chk[i]}">${G.chk[i]?ic('check','xs'):''}</button>${x}</li>`).join('')}</ul>`:''}
+ <div class="ans">${n.btns.map(([l,to,k],i)=>{const sel=k&&!n.f&&G.A[k]===l;const dis=k&&n.f&&!G.A[k];return `<button class="an ${n.f||n.check?'pri':''} ${sel?'on':''}" data-a="go" data-i="${i}" ${dis?'disabled':''}>${l}</button>`;}).join('')}</div>
+ ${req&&!G.A[req]?`<p class="hint2">Choose ${req==='owner'?'Owner':req} to continue.</p>`:''}</div>
+ <section class="fold objf ${G.obj?'open':''}"><button class="fh" data-a="obj" aria-expanded="${G.obj}">Objections <span class="cnt">11</span><span class="chev">${ic('chev','sm')}</span></button><div class="fb"><div><div class="fi">
+  ${OBJ.map(([q,a],i)=>`<div class="ob ${G.openObj===i?'open':''}"><button data-a="ob" data-i="${i}" aria-expanded="${G.openObj===i}">${q}</button>${G.openObj===i?`<p>${a}</p>`:''}</div>`).join('')}</div></div></div></section>`;}
+function summary(c,st){const A=G.A,L=[`Call summary · ${c.name}`,`Status: ${st}`];
+ const add=(l,v)=>{if(v)L.push(`${l}: ${v}`);};
+ add('Area',A.area||c.area);add('Type',A.type);add('Bedrooms',A.beds);add('Owner',A.owner);add('Now',A.status);add('Monthly revenue',A.revenue);add('Headache',A.headache);add('Listing',A.link);add('Ready for guests',A.ready);add('Condo rules',A.condo);add('Help wanted',A.help);add('Goal',A.goal);add('Decision',A.decision);add('Co-owner',A.coowner);add('Timing',A.timing);add('Callback',A.callback);add('Booked for',A.booked);
+ L.push(`Caller: ${STAFF}`);return L.join('\n');}
+function go(i){const n=N[G.node],[l,to,k]=n.btns[i];if(k&&!n.f)G.A[k]=l;
+ let next=typeof to==='function'?to(G.A):to;
+ if(next==='ROUTE'){const s=score(G.A);next=s==='Hot'?'hot':s==='Nurture'?'nurture':s==='Disqualified'?'dq':'warm';}
+ if(next==='END'){G.hist.push(G.node);G.done=true;return;}
+ G.hist.push(G.node);G.node=next;}
+
+const DESK=matchMedia('(min-width:601px)');
+const CALLS=[{t:'2:00 PM',n:'John Smith',p:'Growth Plan',st:'ok',id:'john'},{t:'3:30 PM',n:'Amy Chen',p:'Standard',st:'miss',id:'amy'},{t:'5:00 PM',n:'Mark Davis',p:'Growth Plan',st:'nc',id:null}];
+const WEEK=[['Mon',6],['Tue',9],['Wed',7],['Thu',11],['Fri',8],['Sat',0],['Sun',0]];const TODAYI=4;
+function rightTabs(){const tab=S.rtab||'calls';
+ const calls=`<div class="rt"><table><thead><tr><th>Time</th><th>Lead</th><th>Plan</th><th>Status</th><th class="r">Action</th></tr></thead><tbody>${CALLS.map((c,i)=>`<tr><td class="num"><b>${c.t}</b></td><td>${c.n}</td><td class="mut">${c.p}</td><td>${c.st==='ok'?`<span class="prep ok">${ic('check','xs')}Ryan’s prep ready</span>`:c.st==='miss'?`<span class="prep no">${ic('alert','xs')}Prep missing</span>`:c.st==='conf'?`<span class="prep ok">${ic('check','xs')}Confirmed</span>`:`<span class="mut">Not confirmed</span>`}</td>
+  <td class="r">${c.id?`<button class="sbtn" data-a="call" data-id="${c.id}">${ic('phone','xs')}Dial →</button>`:c.st==='conf'?'':`<button class="sbtn ghost2" data-a="confirm" data-i="${i}">Confirm →</button>`}</td></tr>`).join('')}</tbody></table></div>
+  <button class="lk mutl" data-a="addcall">+ Add call</button>`;
+ const max=Math.max(...WEEK.map(w=>w[1]));
+ const sc=`<div class="sg3">${[['8','Calls today'],['3 min','Response time avg'],['75%','Show rate'],['1','Overdue tasks'],['4','Bookings this week'],['2','Contracts pending']].map(([n,l])=>`<div class="sgc"><b>${n}</b><span>${l}</span></div>`).join('')}</div>
+  <div class="chart"><div class="ch">Calls this week</div><div class="bars" role="img" aria-label="Calls this week: ${WEEK.map(w=>w[0]+' '+w[1]).join(', ')}">${WEEK.map(([d,v],i)=>`<div class="bc"><span class="bv">${i<=TODAYI?v:''}</span><i style="height:${i<=TODAYI?Math.max(4,v/max*140):4}px" class="${i===TODAYI?'today':i>TODAYI?'fut':''}"></i><span class="bd ${i===TODAYI?'t':''}">${d}</span></div>`).join('')}</div></div>`;
+ return `<div class="rtabs" role="tablist"><button role="tab" class="${tab==='calls'?'on':''}" aria-selected="${tab==='calls'}" data-a="rtab" data-t="calls">Today’s calls</button><button role="tab" class="${tab==='sc'?'on':''}" aria-selected="${tab==='sc'}" data-a="rtab" data-t="sc">My scorecard</button></div><div class="rbody">${tab==='calls'?calls:sc}</div>`;}
+function draw(){top();const desk=DESK.matches;
+ if(desk){$('#main').innerHTML=queue();$('#right').innerHTML=S.view==='guide'?`<div class="rg">${guide()}</div>`:rightTabs();$$('.tc').forEach(c=>{});}
+ else{$('#right').innerHTML='';$('#main').innerHTML=S.view==='guide'?guide():queue();}
+ $('#main').classList.toggle('g',!desk&&S.view==='guide');
+ if(desk&&S.view==='guide'){const c=document.querySelector(`[data-a="call"][data-id="${S.lead}"]`);c&&c.closest('.tc')&&c.closest('.tc').classList.add('active');}}
+DESK.addEventListener('change',draw);
+
+/* ---------- events ---------- */
+document.addEventListener('input',e=>{const f=e.target.closest('[data-f]');if(!f)return;G.A[f.dataset.f]=f.value;const p=$('#gpill');if(p)p.innerHTML=pill(score(G.A));
+ if(f.tagName==='SELECT'){const id=f.id;draw();const n=$('#'+id);n&&n.focus();}});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a;bump();
+ if(a==='clockin'){S.clock='in';S.secs=0;toast('Clocked in');}
+ else if(a==='clockout'){S.clock='out';toast('Clocked out');}
+ else if(a==='done'){const i=TASKS.findIndex(x=>x.id===b.dataset.id);TASKS.splice(i,1);toast('Marked done');}
+ else if(a==='call'){S.lead=b.dataset.id;S.view='guide';Object.assign(G,{node:'opener',A:{},hist:[],done:false,obj:false,openObj:-1,chk:[]});window.scrollTo(0,0);}
+ else if(a==='exit'){S.view='queue';}
+ else if(a==='go'){go(+b.dataset.i);}
+ else if(a==='rtab'){S.rtab=b.dataset.t;}
+ else if(a==='confirm'){CALLS[+b.dataset.i].st='conf';toast('Call confirmed with Mark');}
+ else if(a==='addcall'){toast('Add call opens here');return;}
+ else if(a==='gprev'){if(G.hist.length)G.node=G.hist.pop();}
+ else if(a==='chk'){G.chk[+b.dataset.i]=!G.chk[+b.dataset.i];}
+ else if(a==='reopen'){G.done=false;G.node=G.hist.pop()||'opener';}
+ else if(a==='obj'){G.obj=!G.obj;}
+ else if(a==='ob'){G.openObj=G.openObj===+b.dataset.i?-1:+b.dataset.i;}
+ else if(a==='copy'){const t=TASKS.find(x=>x.id===S.lead);const txt=$('#sum').textContent;try{navigator.clipboard&&navigator.clipboard.writeText(txt).catch(()=>{});}catch(_){}
+   if(t)t.status=score(G.A);S.view='queue';toast('Summary copied. Lead updated.');}
+ else if(a==='ping'){S.ping='wait';draw();return setTimeout(()=>{S.ping='free';draw();},1500);}
+ else if(a==='transfer'){toast('Transferring to Ryan…');return;}
+ else if(a==='note'){$('#eod').value='';toast('Note sent to Ryan and Shane');return;}
+ else if(a==='fold'){const f=$('#f-'+b.dataset.f);f.classList.toggle('open');b.setAttribute('aria-expanded',f.classList.contains('open'));return;}
+ draw();});
+/* idle: pause after 5 min without touch */
+function bump(){S.idle=0;if(S.clock==='paused'){S.clock='in';top();}}
+['pointerdown','keydown','scroll','touchstart'].forEach(ev=>addEventListener(ev,bump,{passive:true}));
+setInterval(()=>{if(S.clock==='in'){S.secs++;S.idle++;const t=$('#tmr');if(t)t.textContent=fmt(S.secs);if(S.idle>=300){S.clock='paused';top();}}},1000);
+if(BOOT.rtab)S.rtab=BOOT.rtab;
+if(BOOT.state==='C'){S.view='guide';S.lead='sarah';Object.assign(G,{node:'q3a',hist:['opener','trust','q1','q2'],A:{area:'Liberty Village',type:'Condo',beds:'2',owner:'Yes',status:'Live on Airbnb / platform'}});}
+draw();
+})();
+<\/script></body></html></script>
+<script>const T=document.getElementById('tpl').textContent.replace(/<\\\/script>/g,'</'+'script>');document.querySelectorAll('iframe[data-cfg]').forEach(f=>{f.srcdoc=T.replace('/*BOOT*/','window.BOOT='+f.dataset.cfg+';');});
+function fit(){document.querySelectorAll('.dw').forEach(w=>{w.querySelector('iframe').style.transform='scale('+(w.clientWidth/1280)+')';});}addEventListener('resize',fit);fit();</script></body></html>

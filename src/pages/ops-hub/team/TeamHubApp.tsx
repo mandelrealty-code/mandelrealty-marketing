@@ -35,7 +35,10 @@ export type TeamHubAppProps = {
 
 type InviteState = null | { name: string; prefilled: boolean };
 
-type ConfirmState = null | { kind: "delete"; user: StaffRow } | { kind: "remove"; row: RosterRow };
+type ConfirmState =
+  | null
+  | { kind: "delete"; user: StaffRow }
+  | { kind: "remove"; row: RosterRow; units?: number; tasks?: number };
 
 export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: TeamHubAppProps) {
   const phone = useIsPhone();
@@ -376,7 +379,33 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       onOpen={(u) => onSelect(u.id)}
       onSetType={(name, type) => void setType(name, type)}
       onSendLogin={(name) => setInvite({ name, prefilled: true })}
-      onRemove={(row) => setConfirm({ kind: "remove", row })}
+      onRemove={(row) => {
+        void (async () => {
+          let units = 0;
+          let tasks = 0;
+          const needle = row.name.trim().toLowerCase();
+          try {
+            const snap = await pmGet<{ units?: { assignee?: string }[] }>("onboarding");
+            units = (snap.units ?? []).filter((u) => (u.assignee || "").trim().toLowerCase() === needle).length;
+          } catch {
+            /* optional */
+          }
+          try {
+            const data = await pmGet<{ tasks?: { assignee?: string; assignees?: string[] }[] }>("tasks", {
+              status: "openish",
+            });
+            tasks = (data.tasks ?? []).filter((t) => {
+              if (Array.isArray(t.assignees) && t.assignees.some((a) => a.trim().toLowerCase() === needle)) {
+                return true;
+              }
+              return (t.assignee || "").toLowerCase().includes(needle);
+            }).length;
+          } catch {
+            /* optional */
+          }
+          setConfirm({ kind: "remove", row, units, tasks });
+        })();
+      }}
       onAddPartner={(name) => void setType(name, "partner", `${name} added as a partner`)}
     />
   );
@@ -404,15 +433,22 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
   } else if (confirm?.kind === "remove") {
     const r = confirm.row;
     const hasLogin = users.some((u) => sameName(u.display_name, r.name));
+    const units = confirm.units ?? 0;
+    const tasks = confirm.tasks ?? 0;
+    const assignWarn =
+      units || tasks
+        ? ` ${units} unit${units === 1 ? "" : "s"} and ${tasks} task${tasks === 1 ? "" : "s"} are still assigned to ${r.name}. Reassign before deactivating, or they will show as Unassigned.`
+        : "";
     confirmEl = (
       <ConfirmModal
         phone={phone}
         busy={savingName === r.name}
         title={`Remove ${r.name}?`}
         body={
-          hasLogin
+          (hasLogin
             ? "Their login is deactivated and they can’t sign in to their portal. They leave this list. Their hours and past tasks stay."
-            : `${r.name} has no login, so the roster row is removed. Tasks already given to ${r.name} keep the name.`
+            : `${r.name} has no login, so the roster row is removed. Tasks already given to ${r.name} keep the name.`) +
+          assignWarn
         }
         confirmLabel="Remove"
         onCancel={() => setConfirm(null)}

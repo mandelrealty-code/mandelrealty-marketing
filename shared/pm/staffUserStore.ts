@@ -3,7 +3,11 @@ import {
   generateTempPassword,
   hashPassword,
 } from "../staffAuth.js";
-import { createPmTeamMember } from "./teamStore.js";
+import {
+  createPmTeamMember,
+  STAFF_TYPES,
+  type StaffType,
+} from "./teamStore.js";
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -25,7 +29,33 @@ export type StaffUser = {
   invited_at: string | null;
   last_login_at: string | null;
   active: boolean;
+  /** When set, login is blocked. Ops data is never deleted. */
+  deactivated_at: string | null;
 };
+
+function mapStaffUser(row: Record<string, unknown>): StaffUser {
+  return {
+    id: String(row.id),
+    created_at: String(row.created_at || ""),
+    updated_at: String(row.updated_at || ""),
+    email: str(row.email),
+    slug: str(row.slug),
+    display_name: str(row.display_name),
+    first_name: str(row.first_name),
+    password_hash: String(row.password_hash || ""),
+    must_change_password: Boolean(row.must_change_password),
+    invite_token: str(row.invite_token),
+    invited_at: row.invited_at ? String(row.invited_at) : null,
+    last_login_at: row.last_login_at ? String(row.last_login_at) : null,
+    active: row.active !== false,
+    deactivated_at: row.deactivated_at ? String(row.deactivated_at) : null,
+  };
+}
+
+/** True when the account must not log in (flag or deactivated_at). */
+export function isStaffLoginBlocked(user: StaffUser): boolean {
+  return !user.active || Boolean(user.deactivated_at);
+}
 
 function str(v: unknown): string {
   return typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
@@ -86,7 +116,7 @@ export async function getStaffUserById(id: string): Promise<StaffUser | null> {
     if (mapped) throw mapped;
     throw error;
   }
-  return (data as StaffUser | null) ?? null;
+  return data ? mapStaffUser(data as Record<string, unknown>) : null;
 }
 
 export async function getStaffUserBySlug(slug: string): Promise<StaffUser | null> {
@@ -102,7 +132,7 @@ export async function getStaffUserBySlug(slug: string): Promise<StaffUser | null
     if (mapped) throw mapped;
     throw error;
   }
-  return (data as StaffUser | null) ?? null;
+  return data ? mapStaffUser(data as Record<string, unknown>) : null;
 }
 
 export async function listStaffUsers(): Promise<StaffUser[]> {
@@ -115,7 +145,32 @@ export async function listStaffUsers(): Promise<StaffUser[]> {
     if (mapped) throw mapped;
     throw error;
   }
-  return (data ?? []) as StaffUser[];
+  return (data ?? []).map((row) => mapStaffUser(row as Record<string, unknown>));
+}
+
+/**
+ * Look up roster role by display name (case-insensitive).
+ * Returns '' when no pm_team_members row matches.
+ */
+export async function getStaffType(displayName: string): Promise<StaffType | ""> {
+  const name = str(displayName);
+  if (!name) return "";
+  const { data, error } = await db()
+    .from("pm_team_members")
+    .select("staff_type, name")
+    .limit(200);
+  if (error) {
+    // Roster missing or unreadable — portals fall back to TasksBoard
+    if (/pm_team_members|relation|does not exist/i.test(error.message || "")) return "";
+    throw error;
+  }
+  const needle = name.toLowerCase();
+  const row = (data ?? []).find(
+    (r) => str((r as { name?: unknown }).name).toLowerCase() === needle,
+  ) as { staff_type?: unknown } | undefined;
+  if (!row) return "";
+  const t = str(row.staff_type);
+  return (STAFF_TYPES as readonly string[]).includes(t) ? (t as StaffType) : "";
 }
 
 export async function createOrRefreshStaffInvite(input: {
@@ -155,6 +210,7 @@ export async function createOrRefreshStaffInvite(input: {
         updated_at: now,
         invite_token: generateTempPassword(),
         active: true,
+        deactivated_at: null,
       })
       .eq("id", (byEmail as StaffUser).id)
       .select("*")
@@ -164,7 +220,11 @@ export async function createOrRefreshStaffInvite(input: {
       if (mapped) throw mapped;
       throw error;
     }
-    return { user: data as StaffUser, tempPassword, created: false };
+    return {
+      user: mapStaffUser(data as Record<string, unknown>),
+      tempPassword,
+      created: false,
+    };
   }
 
   const slug =
@@ -195,7 +255,11 @@ export async function createOrRefreshStaffInvite(input: {
     }
     throw error;
   }
-  return { user: data as StaffUser, tempPassword, created: true };
+  return {
+    user: mapStaffUser(data as Record<string, unknown>),
+    tempPassword,
+    created: true,
+  };
 }
 
 export async function setStaffPassword(
@@ -215,7 +279,7 @@ export async function setStaffPassword(
     .select("*")
     .single();
   if (error) throw error;
-  return data as StaffUser;
+  return mapStaffUser(data as Record<string, unknown>);
 }
 
 export async function touchStaffLogin(userId: string): Promise<void> {
@@ -239,17 +303,49 @@ export async function deleteStaffUser(id: string): Promise<void> {
   }
 }
 
-/** Takes an employee out: the login stops working and they leave the lists, but their hours and history stay. */
+/**
+ * Takes an employee out: login stops; hours/tasks/units stay.
+ * Sets deactivated_at when the column exists; always sets active=false.
+ * Does NOT clear assignee fields anywhere.
+ */
 export async function deactivateStaffUser(id: string): Promise<StaffUser | null> {
   const clean = id.trim();
   if (!clean) throw new Error("id required.");
-  const { data, error } = await db().from("staff_users").update({ active: false, updated_at: new Date().toISOString() }).eq("id", clean).select("*").maybeSingle();
+  const now = new Date().toISOString();
+  const { data, error } = await db()
+    .from("staff_users")
+    .update({ active: false, deactivated_at: now, updated_at: now })
+    .eq("id", clean)
+    .select("*")
+    .maybeSingle();
   if (error) {
+    // Column may not exist until staff_portals_v1.sql runs — fall back to active only
+    if (/deactivated_at|column/i.test(error.message || "")) {
+      const fallback = await db()
+        .from("staff_users")
+        .update({ active: false, updated_at: now })
+        .eq("id", clean)
+        .select("*")
+        .maybeSingle();
+      if (fallback.error) {
+        const mapped = missingTableError(fallback.error);
+        if (mapped) throw mapped;
+        throw fallback.error;
+      }
+      return fallback.data
+        ? mapStaffUser(fallback.data as Record<string, unknown>)
+        : null;
+    }
     const mapped = missingTableError(error);
     if (mapped) throw mapped;
     throw error;
   }
-  return (data as StaffUser | null) ?? null;
+  return data ? mapStaffUser(data as Record<string, unknown>) : null;
+}
+
+/** Alias — same as deactivateStaffUser. Never deletes ops data. */
+export async function deactivateStaff(id: string): Promise<void> {
+  await deactivateStaffUser(id);
 }
 
 export function publicStaffUser(user: StaffUser) {

@@ -10,13 +10,16 @@ import {
   verifyStaffSessionToken,
 } from "./staffAuth.js";
 import {
+  getStaffType,
   getStaffUserById,
   getStaffUserBySlug,
+  isStaffLoginBlocked,
   staffUserForEmployee,
   setStaffPassword,
   touchStaffLogin,
   type StaffUser,
 } from "./pm/staffUserStore.js";
+import type { StaffType } from "./pm/teamStore.js";
 import {
   listPmTasks,
   getPmTask,
@@ -43,6 +46,26 @@ import {
   findOutcomesByListingUrl,
 } from "./pm/outreachOutcomeStore.js";
 import { extractAirbnbRoomId } from "./airbnbListingUrl.js";
+import {
+  answerOnboarderItem,
+  askShane,
+  completePmTaskTimer,
+  coordinatorQueue,
+  logCallSummary,
+  onboarderChecklist,
+  onboarderClockIn,
+  onboarderClockOut,
+  onboarderSchedule,
+  onboarderScorecard,
+  pingRyan,
+  ryanStatus,
+  startPmTaskTimer,
+  todaysCalls,
+  vaApprovals,
+  vaClaims,
+  vaScorecard,
+  vaTasks,
+} from "./pm/staffPortalOps.js";
 
 function readBody(req: VercelRequest): Record<string, unknown> {
   const raw = req.body;
@@ -104,18 +127,21 @@ async function tasksForStaff(user: StaffUser, status: "openish" | "all" | "done"
 
 async function staffBootstrapPublic(slug: string) {
   const user = await getStaffUserBySlug(slug);
-  if (!user || !user.active) return null;
-  // Unauthenticated: never leak email, ids, or login timestamps
+  // Slug still resolves when deactivated so bootstrap can return
+  // authenticated:false; login and authed session paths refuse them.
+  if (!user) return null;
   return {
     user: {
       slug: user.slug,
       first_name: user.first_name,
     },
+    blocked: isStaffLoginBlocked(user),
   };
 }
 
 async function staffBootstrapAuthed(user: StaffUser) {
-  return { user: staffUserForEmployee(user) };
+  const staff_type: StaffType | "" = await getStaffType(user.display_name);
+  return { user: staffUserForEmployee(user), staff_type };
 }
 
 async function requireStaff(
@@ -129,7 +155,7 @@ async function requireStaff(
     return null;
   }
   const user = await getStaffUserById(session.userId);
-  if (!user || !user.active) {
+  if (!user || isStaffLoginBlocked(user)) {
     res.status(401).json({ error: "Unauthorized" });
     return null;
   }
@@ -156,9 +182,13 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
 
         const token = getStaffSessionFromRequest(req.headers.cookie);
         const session = verifyStaffSessionToken(token);
-        if (session) {
+        if (session && !pub.blocked) {
           const user = await getStaffUserById(session.userId);
-          if (user && user.active && user.slug === pub.user.slug) {
+          if (
+            user &&
+            !isStaffLoginBlocked(user) &&
+            user.slug === pub.user.slug
+          ) {
             return res.status(200).json({
               ...(await staffBootstrapAuthed(user)),
               session: {
@@ -169,8 +199,9 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
           }
         }
 
+        // Deactivated (or no session): never authenticated
         return res.status(200).json({
-          ...pub,
+          user: pub.user,
           session: { authenticated: false, must_change_password: false },
         });
       }
@@ -205,6 +236,69 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         });
       }
 
+      if (op === "coordinator_queue") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await coordinatorQueue(user.display_name));
+      }
+
+      if (op === "todays_calls") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await todaysCalls());
+      }
+
+      if (op === "ryan_status") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        const actionId = str(req.query.actionId) || str(req.query.action_id);
+        return res.status(200).json(await ryanStatus(actionId));
+      }
+
+      if (op === "va_tasks") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await vaTasks(user.display_name));
+      }
+
+      if (op === "va_approvals") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await vaApprovals());
+      }
+
+      if (op === "va_claims") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await vaClaims(user.display_name));
+      }
+
+      if (op === "va_scorecard") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await vaScorecard(user.display_name));
+      }
+
+      if (op === "onboarder_schedule") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await onboarderSchedule(user.display_name));
+      }
+
+      if (op === "onboarder_checklist") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        const unitId = str(req.query.unitId) || str(req.query.unit_id);
+        if (!unitId) return res.status(400).json({ error: "unitId required." });
+        return res.status(200).json(await onboarderChecklist(unitId));
+      }
+
+      if (op === "onboarder_scorecard") {
+        const user = await requireStaff(req, res);
+        if (!user) return;
+        return res.status(200).json(await onboarderScorecard(user.display_name));
+      }
+
       return res.status(404).json({ error: "Unknown op." });
     }
 
@@ -221,7 +315,12 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       }
       const user = await getStaffUserBySlug(slug);
       // Constant-ish failure message — do not reveal whether slug/email exists
-      if (!user || !user.active || user.email.toLowerCase() !== email) {
+      // Deactivated staff cannot log in (deactivated_at or active=false).
+      if (
+        !user ||
+        isStaffLoginBlocked(user) ||
+        user.email.toLowerCase() !== email
+      ) {
         return res.status(401).json({ error: "Invalid email or password." });
       }
       if (!verifyPassword(password, user.password_hash)) {
@@ -234,6 +333,7 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
       return res.status(200).json({
         ok: true,
         user: staffUserForEmployee(user),
+        staff_type: payload.staff_type,
         must_change_password: user.must_change_password,
         bootstrap: payload,
       });
@@ -266,6 +366,106 @@ export default async function handleTeam(req: VercelRequest, res: VercelResponse
         if (err instanceof TasksNotReady) return res.status(200).json(await boardPayload(viewer));
         return res.status(400).json({ error: err instanceof Error ? err.message : "That didn't save. Try again." });
       }
+    }
+
+    if (op === "ping_ryan") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const result = await pingRyan({
+        displayName: user.display_name,
+        leadId: str(body.leadId) || str(body.lead_id) || undefined,
+        note: str(body.note) || undefined,
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "log_call_summary") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const leadId = str(body.leadId) || str(body.lead_id);
+      if (!leadId) return res.status(400).json({ error: "leadId required." });
+      const result = await logCallSummary({
+        leadId,
+        outcome: str(body.outcome),
+        status: str(body.status),
+        notes: str(body.notes),
+        booked_at: str(body.booked_at) || undefined,
+        loggedBy: user.display_name,
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "ask_shane") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const result = await askShane({
+        displayName: user.display_name,
+        message: str(body.message),
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "start_task") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const taskId = str(body.taskId) || str(body.task_id) || str(body.id);
+      if (!taskId) return res.status(400).json({ error: "taskId required." });
+      const task = await startPmTaskTimer(taskId, user.display_name);
+      return res.status(200).json({ task: publicTask(task) });
+    }
+
+    if (op === "complete_task") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const taskId = str(body.taskId) || str(body.task_id) || str(body.id);
+      if (!taskId) return res.status(400).json({ error: "taskId required." });
+      const task = await completePmTaskTimer(taskId, user.display_name);
+      return res.status(200).json({ task: publicTask(task) });
+    }
+
+    if (op === "onboarder_clock_in") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const unitId = str(body.unitId) || str(body.unit_id);
+      if (!unitId) return res.status(400).json({ error: "unitId required." });
+      const result = await onboarderClockIn({
+        unitId,
+        jobType: str(body.jobType) || str(body.job_type) || "Intake",
+        lat: Number(body.lat),
+        lng: Number(body.lng),
+        timestamp: str(body.timestamp) || new Date().toISOString(),
+        displayName: user.display_name,
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "onboarder_clock_out") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const unitId = str(body.unitId) || str(body.unit_id);
+      const result = await onboarderClockOut({
+        unitId,
+        totalSeconds: Number(body.totalSeconds) || Number(body.total_seconds) || 0,
+        timestamp: str(body.timestamp) || new Date().toISOString(),
+        displayName: user.display_name,
+        sessionId: str(body.sessionId) || str(body.session_id) || undefined,
+      });
+      return res.status(200).json(result);
+    }
+
+    if (op === "answer_item") {
+      const user = await requireStaff(req, res);
+      if (!user) return;
+      const unitId = str(body.unitId) || str(body.unit_id);
+      const itemId = str(body.itemId) || str(body.item_id);
+      const result = await answerOnboarderItem({
+        unitId,
+        itemId,
+        answer: str(body.answer),
+        photoUrl: str(body.photoUrl) || str(body.photo_url) || undefined,
+        answeredBy: user.display_name,
+      });
+      return res.status(200).json(result);
     }
 
     if (op === "update_task") {
