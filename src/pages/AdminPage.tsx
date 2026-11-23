@@ -303,8 +303,10 @@ export function AdminPage() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
+  const [loginTab, setLoginTab] = useState<"partner" | "staff">("partner");
   // Who is signed in: a partner sees the whole app; an employee (OPS account) sees only their Tasks board.
   const [staffName, setStaffName] = useState<string | null | undefined>(undefined);
+  const [currentPartner, setCurrentPartner] = useState<{ id: string; name: string; email: string } | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [productMode, setProductMode] = useState<AdminProductMode>(() => route.mode);
@@ -626,8 +628,14 @@ export function AdminPage() {
     }
     if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
       void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
-        .then((res) => setAuthed(res.ok))
-        .catch(() => setAuthed(false));
+        .then((res) => {
+          setAuthed(res.ok);
+          if (!res.ok) setCurrentPartner(null);
+        })
+        .catch(() => {
+          setAuthed(false);
+          setCurrentPartner(null);
+        });
       return;
     }
     Promise.all([loadLeads(), loadSettings()]).catch(() => setAuthed(false));
@@ -1392,8 +1400,18 @@ export function AdminPage() {
   useEffect(() => {
     fetch("/api/admin/session?op=whoami", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" })
       .then((res) => res.json())
-      .then((data: { admin?: boolean; staff?: { name: string } | null }) => setStaffName(!data.admin && data.staff ? data.staff.name : null))
-      .catch(() => setStaffName(null));
+      .then((data: {
+        admin?: boolean;
+        partner?: { id: string; name: string; email: string } | null;
+        staff?: { name: string } | null;
+      }) => {
+        setStaffName(!data.admin && data.staff ? data.staff.name : null);
+        setCurrentPartner(data.admin && data.partner ? data.partner : null);
+      })
+      .catch(() => {
+        setStaffName(null);
+        setCurrentPartner(null);
+      });
   }, []);
 
   const login = async (e: FormEvent) => {
@@ -1401,20 +1419,34 @@ export function AdminPage() {
     setLoggingIn(true);
     setLoginError(null);
     try {
+      const payload =
+        loginTab === "staff"
+          ? { email: email.trim(), password, staff: true }
+          : { email: email.trim(), password };
       const res = await fetch("/api/admin/session?op=login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(email.trim() ? { email: email.trim(), password } : { password }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || "Login failed");
       }
-      const signedIn = (await res.json().catch(() => ({}))) as { staff?: { name: string } };
+      const signedIn = (await res.json().catch(() => ({}))) as {
+        staff?: { name: string };
+        partner?: { id: string; name: string; email: string } | null;
+      };
       setPassword("");
       if (signedIn.staff) {
+        setCurrentPartner(null);
         setStaffName(signedIn.staff.name);
+        return;
+      }
+      setCurrentPartner(signedIn.partner ?? null);
+      setStaffName(null);
+      if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
+        setAuthed(true);
         return;
       }
       await loadLeads();
@@ -1422,6 +1454,7 @@ export function AdminPage() {
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
       setAuthed(false);
+      setCurrentPartner(null);
     } finally {
       setLoggingIn(false);
     }
@@ -1430,6 +1463,7 @@ export function AdminPage() {
   const logout = async () => {
     await fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" });
     setAuthed(false);
+    setCurrentPartner(null);
     setLeads([]);
     setSelectedId(null);
   };
@@ -1705,6 +1739,22 @@ export function AdminPage() {
   }
 
   if (!authed) {
+    const tabBtn = (id: "partner" | "staff", label: string) => (
+      <button
+        type="button"
+        onClick={() => {
+          setLoginTab(id);
+          setLoginError(null);
+        }}
+        className={`flex-1 rounded-[10px] px-3 py-2 text-[13px] font-semibold transition ${
+          loginTab === id
+            ? "bg-[#c4a35a] text-[#14100a]"
+            : "bg-transparent text-[#9a9590] hover:text-[#f5f5f5]"
+        }`}
+      >
+        {label}
+      </button>
+    );
     return (
       <div className="crm-shell flex min-h-dvh items-center justify-center bg-[#0a0a0a] px-6">
         <motion.form
@@ -1720,8 +1770,12 @@ export function AdminPage() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#c4a35a]">
                 Mandel Realty Group
               </p>
-              <h1 className="text-[27px] font-semibold leading-tight text-[#f5f5f5]">CRM</h1>
+              <h1 className="text-[27px] font-semibold leading-tight text-[#f5f5f5]">Admin</h1>
             </div>
+          </div>
+          <div className="flex w-full rounded-[12px] border border-white/10 bg-[#141414] p-1">
+            {tabBtn("partner", "Partner login")}
+            {tabBtn("staff", "Team member")}
           </div>
           <div className="flex w-full flex-col gap-3">
             <input
@@ -1729,7 +1783,7 @@ export function AdminPage() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email (team members only)"
+              placeholder={loginTab === "partner" ? "Partner email" : "Team email"}
               className="h-[50px] w-full rounded-[14px] border border-white/10 bg-[#1a1a1a] px-4 text-base text-[#f5f5f5] outline-none placeholder:text-[#6f6a65] focus:border-[#c4a35a]/55"
             />
             <input
@@ -1743,13 +1797,17 @@ export function AdminPage() {
             {loginError && <p className="text-sm text-[#cf7f7b]">{loginError}</p>}
             <button
               type="submit"
-              disabled={loggingIn || !password}
+              disabled={loggingIn || !password || !email.trim()}
               className="h-[50px] w-full rounded-[14px] bg-[#c4a35a] text-[15px] font-bold text-[#14100a] hover:bg-[#dcc084] disabled:opacity-60"
             >
               {loggingIn ? "Signing in…" : "Sign in"}
             </button>
           </div>
-          <p className="text-[12.5px] text-[#5e5a56]">Two-operator access · session held 30 days</p>
+          <p className="text-[12.5px] text-[#5e5a56]">
+            {loginTab === "partner"
+              ? "Shane & Ryan · full admin access"
+              : "Team members · tasks board only"}
+          </p>
         </motion.form>
       </div>
     );
@@ -1772,9 +1830,13 @@ export function AdminPage() {
             startOnboardingFromLead(lead ?? { id: leadId });
           },
           onConvertLeadToOpsClient: convertLeadToOpsClient,
-          onUnauthorized: () => setAuthed(false),
+          onUnauthorized: () => {
+            setAuthed(false);
+            setCurrentPartner(null);
+          },
           onLoggedOut: () => {
             setAuthed(false);
+            setCurrentPartner(null);
             setLeads([]);
             setSelectedId(null);
           },

@@ -922,18 +922,216 @@ export function ConnectorsCard({
   );
 }
 
+/* ---------------- partner accounts ---------------- */
+
+export type PartnerRow = {
+  id: string;
+  name: string;
+  email: string;
+  hasPassword: boolean;
+};
+
+export function PartnersCard({
+  partners,
+  loading,
+  error,
+  editingId,
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  saving,
+  onReload,
+  onEdit,
+  onCancel,
+  onCurrentPassword,
+  onNewPassword,
+  onConfirmPassword,
+  onSave,
+}: {
+  partners: PartnerRow[];
+  loading: boolean;
+  error: string;
+  editingId: string | null;
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+  saving: boolean;
+  onReload: () => void;
+  onEdit: (id: string) => void;
+  onCancel: () => void;
+  onCurrentPassword: (v: string) => void;
+  onNewPassword: (v: string) => void;
+  onConfirmPassword: (v: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="card">
+      <div className="cardhead">
+        <h3>
+          <Icon name="users" className="i sm" />
+          Partner accounts
+        </h3>
+        <button type="button" className="btn ghost sm" disabled={loading} onClick={onReload}>
+          Refresh
+        </button>
+      </div>
+      <div className="cardbody" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="hint" style={{ marginTop: 0 }}>
+          Shane and Ryan each sign in with their own email. Both keep full admin access. First-time setup uses the
+          shared admin password as the current password.
+        </div>
+        {error ? <div className="hint" style={{ color: "var(--red, #b42318)" }}>{error}</div> : null}
+        {loading && partners.length === 0 ? (
+          <div className="hint">Loading partners…</div>
+        ) : partners.length === 0 ? (
+          <div className="hint">No partners yet. Run supabase/partners_v1.sql in Supabase.</div>
+        ) : (
+          partners.map((p) => {
+            const initials = p.name
+              .split(/\s+/)
+              .map((w) => w[0] || "")
+              .join("")
+              .slice(0, 2)
+              .toUpperCase();
+            const editing = editingId === p.id;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  border: "1px solid var(--line, #e8e6e1)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div className="lrow2" style={{ border: 0, padding: 0 }}>
+                  <span className="av sm" style={{ background: "oklch(0.88 0.04 85)" }}>
+                    {initials || "P"}
+                  </span>
+                  <div className="t">
+                    <b>{p.name}</b>
+                    <span className="meta">{p.email}</span>
+                  </div>
+                  <Chip h={p.hasPassword ? 155 : 65} c={p.hasPassword ? 0.13 : 0.14}>
+                    {p.hasPassword ? "Password set" : "No password"}
+                  </Chip>
+                  {!editing ? (
+                    <button type="button" className="btn sm" onClick={() => onEdit(p.id)}>
+                      Set password
+                    </button>
+                  ) : (
+                    <button type="button" className="btn ghost sm" onClick={onCancel}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                {editing ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label className="hint" style={{ margin: 0 }}>
+                      {p.hasPassword
+                        ? "Current password"
+                        : "Shared admin password (first-time setup)"}
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(e) => onCurrentPassword(e.target.value)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          height: 40,
+                          borderRadius: 10,
+                          border: "1px solid var(--line, #e8e6e1)",
+                          padding: "0 12px",
+                        }}
+                      />
+                    </label>
+                    <label className="hint" style={{ margin: 0 }}>
+                      New password
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        onChange={(e) => onNewPassword(e.target.value)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          height: 40,
+                          borderRadius: 10,
+                          border: "1px solid var(--line, #e8e6e1)",
+                          padding: "0 12px",
+                        }}
+                      />
+                    </label>
+                    <label className="hint" style={{ margin: 0 }}>
+                      Confirm new password
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(e) => onConfirmPassword(e.target.value)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          marginTop: 4,
+                          height: 40,
+                          borderRadius: 10,
+                          border: "1px solid var(--line, #e8e6e1)",
+                          padding: "0 12px",
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn primary sm"
+                      disabled={saving}
+                      onClick={onSave}
+                      style={{ alignSelf: "flex-start" }}
+                    >
+                      {saving ? "Saving…" : "Save password"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- log out ---------------- */
 
-export function LogoutCard({ busy, onLogout }: { busy: boolean; onLogout: () => void }) {
+export function LogoutCard({
+  busy,
+  onLogout,
+  partnerName,
+}: {
+  busy: boolean;
+  onLogout: () => void;
+  partnerName?: string | null;
+}) {
+  const label = partnerName?.trim() || "Admin";
+  const initials = label
+    .split(/\s+/)
+    .map((w) => w[0] || "")
+    .join("")
+    .slice(0, 2)
+    .toUpperCase() || "AD";
   return (
     <div className="card">
       <div className="lrow2" style={{ border: 0, padding: "14px 16px" }}>
         <span className="av sm" style={{ background: "oklch(0.38 0.02 270)" }}>
-          AD
+          {initials}
         </span>
         <div className="t">
-          <b>Admin</b>
-          <span className="meta">Shared account</span>
+          <b>{label}</b>
+          <span className="meta">{partnerName ? "Partner account" : "Shared account"}</span>
         </div>
         <button type="button" className="btn" disabled={busy} onClick={onLogout}>
           <Icon name="out" className="i sm" />

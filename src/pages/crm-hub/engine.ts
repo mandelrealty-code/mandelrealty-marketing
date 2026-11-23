@@ -358,30 +358,47 @@ export const CRM_EXTRA_CSS = `
 .emsave{width:100%;height:44px;margin-top:20px}
 .emcancel{display:block;margin:10px auto 0;min-height:36px;border:0;background:none;font:500 14px Inter,sans-serif;color:var(--muted);cursor:pointer;text-align:center}
 .emcancel:hover{color:var(--ink);text-decoration:underline}
-.lpanel .thread-col{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column}
-.lpanel .thread-col .thread{flex:1;min-height:0;min-width:0}
-.lpanel .ctog{position:absolute;top:50%;z-index:6;width:28px;height:28px;margin-top:-14px;border-radius:50%;background:#fff;border:1px solid #e8e8e3;box-shadow:0 1px 4px rgba(0,0,0,0.08);display:grid;place-items:center;color:var(--ink2);cursor:pointer;padding:0}
-.lpanel .ctog:hover{background:var(--panel);color:var(--ink)}
-.lpanel .ctog.rtog{right:-14px}
-.lpanel .ctog.ltog{left:-14px}
-.lpanel,.lpanel .thread-col,.lpanel .thread,.lpanel .details,.split{transition:grid-template-columns 200ms ease,width 200ms ease,flex 200ms ease,min-width 200ms ease,opacity 200ms ease}
-.lpanel.chat-collapsed-right{grid-template-columns:0 minmax(0,1fr)}
-.lpanel.chat-collapsed-right .thread-col{width:0;min-width:0;overflow:visible}
-.lpanel.chat-collapsed-right .thread{width:0;min-width:0;overflow:hidden;opacity:0;border:0;padding:0;pointer-events:none}
-.lpanel.chat-collapsed-right .details{flex:1;min-width:0}
-.lpanel.chat-collapsed-right .ctog.rtog{right:auto;left:-14px}
-.lpanel.chat-collapsed-right .ctog.ltog{opacity:0;pointer-events:none}
-.lpanel.chat-collapsed-left{grid-template-columns:0 352px}
-.lpanel.chat-collapsed-left .thread-col{width:0;min-width:0;overflow:visible}
-.lpanel.chat-collapsed-left .thread{width:0;min-width:0;overflow:hidden;opacity:0;border:0;padding:0;pointer-events:none}
-.lpanel.chat-collapsed-left .ctog.ltog{left:auto;right:-14px}
-.lpanel.chat-collapsed-left .ctog.rtog{opacity:0;pointer-events:none}
-.split:has(.lpanel.chat-collapsed-left){grid-template-columns:minmax(0,1fr) 352px}
-.split:has(.lpanel.chat-collapsed-right){grid-template-columns:400px minmax(0,1fr)}
+/* Lead workspace collapse: real columns are .listcol | .thread-col | .details */
+@media (min-width:1240px){
+  .split{display:flex;gap:16px;height:100%;min-height:0;align-items:stretch}
+  .split .listcol{width:320px;flex:0 0 320px;position:relative;z-index:2;min-height:0;transition:width 200ms ease,flex 200ms ease}
+  .split .lpanel{flex:1 1 auto;min-width:0;overflow:visible;display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:auto minmax(0,1fr);transition:width 200ms ease,flex 200ms ease,grid-template-columns 200ms ease}
+  .split .lpanel .thread-col{min-width:0;min-height:0;overflow:hidden;display:flex;flex-direction:column;transition:width 200ms ease,flex 200ms ease,opacity 200ms ease}
+  .split .lpanel .thread-col .thread{flex:1;min-height:0;min-width:0;border-right:1px solid var(--line-2)}
+  .split .lpanel .details{width:380px;min-width:0;min-height:0;position:relative;z-index:2;overflow:visible;transition:width 200ms ease,flex 200ms ease}
+  .split .lpanel .details .psecs{overflow-y:auto}
+
+  /* Chat collapsed right: chat gone, details expand */
+  .split.chat-collapsed-right .lpanel,
+  .lpanel.chat-collapsed-right{grid-template-columns:0fr minmax(0,1fr)!important}
+  .lpanel.chat-collapsed-right .thread-col{
+    width:0!important;flex:0!important;min-width:0!important;padding:0!important;border:none!important;
+    overflow:hidden!important;opacity:0;pointer-events:none
+  }
+  .lpanel.chat-collapsed-right .details{width:auto!important;min-width:0}
+
+  /* Chat collapsed left: chat gone, lead list expands */
+  .split.chat-collapsed-left .listcol{flex:1 1 auto;width:auto}
+  .split.chat-collapsed-left .lpanel{flex:0 0 380px;width:380px;grid-template-columns:0fr 380px!important}
+  .lpanel.chat-collapsed-left .thread-col{
+    width:0!important;flex:0!important;min-width:0!important;padding:0!important;border:none!important;
+    overflow:hidden!important;opacity:0;pointer-events:none
+  }
+  .lpanel.chat-collapsed-left .details{width:380px;flex-shrink:0}
+
+  /* Toggles sit on list/details edges so they stay visible when chat is gone */
+  .ctog{
+    position:absolute;top:50%;margin-top:-12px;z-index:10;width:24px;height:24px;border-radius:50%;
+    background:#fff;border:1px solid #e8e8e3;box-shadow:0 1px 4px rgba(0,0,0,0.12);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;color:#6b6b6b
+  }
+  .ctog svg.i{width:12px;height:12px}
+  .ctog:hover{background:var(--panel);color:var(--ink)}
+  .listcol .ctog.ltog{right:-12px}
+  .details .ctog.rtog{left:-12px}
+}
 @media (max-width:1239px){
-  .lpanel .ctog{display:none}
-  .lpanel.chat-collapsed-right,.lpanel.chat-collapsed-left{grid-template-columns:minmax(0,1fr)}
-  .split:has(.lpanel.chat-collapsed-left),.split:has(.lpanel.chat-collapsed-right){grid-template-columns:minmax(0,1fr)}
+  .ctog{display:none!important}
 }
 @media (max-width:768px){
   .contactblk .editlnk{min-height:44px;min-width:44px;font-size:13px}
@@ -810,7 +827,12 @@ function renderNav() {
     return `<button data-nav="${id}" class="${active(id) ? 'active' : ''}" ${active(id) ? 'aria-current="page"' : ''}>${ic(n.icon)}${n.label}</button>`; }).join('');
 }
 function renderHead() {
-  $('#today').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const dateEl = $('#today');
+  if (dateEl) {
+    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const greet = greetingForPartner();
+    dateEl.textContent = partnerFirstName() ? `${greet} · ${date}` : date;
+  }
   const on = S.settings ? Boolean(S.settings.ai_responses_enabled) && !envKill() : null;
   $('#aiPill').innerHTML = on == null ? '<i class="dot" style="background:var(--grey)"></i>Auto-reply' : `<i class="dot" style="background:${on ? 'var(--green)' : 'var(--amber)'}"></i>${on ? 'Auto-reply on' : 'Auto-reply off'}`;
   const lead = S.leadId ? leadById(S.leadId) : null;
@@ -829,6 +851,13 @@ function renderHead() {
 /* =========================================================
    Contacts: inbox
    ========================================================= */
+function leadOwnedByPartner(l) {
+  const name = partnerFirstName().toLowerCase();
+  if (!name) return false;
+  const booked = String(l.booked_by || '').toLowerCase();
+  const closed = String(l.closed_by || '').toLowerCase();
+  return booked.includes(name) || closed.includes(name);
+}
 function filtered() {
   const f = S.f;
   const list = S.leads.filter((l) => {
@@ -843,9 +872,10 @@ function filtered() {
   });
   const t = (l) => new Date(l.last_activity_at || (l.last_sms && l.last_sms.created_at) || l.created_at).getTime() || 0;
   const c = (l) => new Date(l.created_at).getTime() || 0;
-  if (f.sort === 'oldest') return list.sort((a, b) => c(a) - c(b));
-  if (f.sort === 'newest') return list.sort((a, b) => c(b) - c(a));
-  return list.sort((a, b) => t(b) - t(a));
+  const mineFirst = (a, b) => Number(leadOwnedByPartner(b)) - Number(leadOwnedByPartner(a));
+  if (f.sort === 'oldest') return list.sort((a, b) => mineFirst(a, b) || c(a) - c(b));
+  if (f.sort === 'newest') return list.sort((a, b) => mineFirst(a, b) || c(b) - c(a));
+  return list.sort((a, b) => mineFirst(a, b) || t(b) - t(a));
 }
 const filterCount = () => { const f = S.f; return (f.path !== 'all') + (f.stage !== 'all') + (f.ai !== 'all') + (f.booked ? 1 : 0) + (f.sort !== 'inbox'); };
 const filtersActive = () => filterCount() > 0 || S.f.needs || Boolean(S.f.q.trim());
@@ -1679,6 +1709,7 @@ function callHostData() {
       activeContract: null,
       contractsUrl: null,
       contractDownloadUrl: null,
+      currentPartner: null,
     };
   }
   if (!Array.isArray(host.data.teamCallers)) host.data.teamCallers = [];
@@ -1690,7 +1721,21 @@ function callHostData() {
   if (host.data.activeContract === undefined) host.data.activeContract = null;
   if (host.data.contractsUrl === undefined) host.data.contractsUrl = null;
   if (host.data.contractDownloadUrl === undefined) host.data.contractDownloadUrl = null;
+  if (host.data.currentPartner === undefined) host.data.currentPartner = null;
   return host.data;
+}
+
+function partnerFirstName() {
+  const p = host.data && host.data.currentPartner;
+  if (!p || !p.name) return '';
+  return String(p.name).trim().split(/\s+/)[0] || '';
+}
+
+function greetingForPartner() {
+  const hour = new Date().getHours();
+  const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const name = partnerFirstName();
+  return name ? `${hello}, ${name}` : hello;
 }
 async function saveProfile(fields, okMsg = 'Saved to lead') {
   const id = S.leadId;
@@ -1930,19 +1975,15 @@ function leadPanel(l) {
   const rightBody = S.rtab === 'calls' ? `${active}${callsPane()}` : detailsBody;
   const collapseCls = S.chatCollapsed === 'right' ? ' chat-collapsed-right' : S.chatCollapsed === 'left' ? ' chat-collapsed-left' : '';
   const togRight = S.chatCollapsed === 'right' ? 'fwd' : 'back';
-  const togLeft = S.chatCollapsed === 'left' ? 'back' : 'fwd';
   return `<div class="card lpanel t-${S.ptab} r-${S.rtab}${collapseCls}">${leadHeader(l)}
     <div class="plseg"><div class="pseg three" role="tablist">
       <button role="tab" data-act="ptab" data-v="chat" class="${S.ptab === 'chat' ? 'on' : ''}">Chat</button>
       <button role="tab" data-act="ptab" data-v="details" class="${S.ptab === 'details' ? 'on' : ''}">Details</button>
       <button role="tab" data-act="ptab" data-v="calls" class="${S.ptab === 'calls' ? 'on' : ''}">${esc(callsLabel)}</button>
     </div></div>
-    <div class="thread-col">
-      <button type="button" class="ctog ltog" data-act="collapseChatLeft" aria-label="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}" title="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}">${ic(togLeft, 'sm')}</button>
-      <button type="button" class="ctog rtog" data-act="collapseChat" aria-label="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}" title="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}">${ic(togRight, 'sm')}</button>
-      <div class="thread">${thread(l)}</div>
-    </div>
+    <div class="thread-col"><div class="thread">${thread(l)}</div></div>
     <div class="details">
+      <button type="button" class="ctog rtog" data-act="collapseChat" aria-label="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}" title="${S.chatCollapsed === 'right' ? 'Show chat' : 'Hide chat'}">${ic(togRight, 'sm')}</button>
       ${leadTopBar(l)}
       <div class="rtabs" role="tablist"><div class="seg">
         <button type="button" role="tab" data-act="rtab" data-v="details" class="${S.rtab === 'details' ? 'on' : ''}">Details</button>
@@ -1955,7 +1996,12 @@ function leadPanel(l) {
 function leadView() {
   const l = leadById(S.leadId);
   const list = filtered();
-  const listcol = `<div class="listcol">
+  const collapseCls = S.chatCollapsed === 'right' ? ' chat-collapsed-right' : S.chatCollapsed === 'left' ? ' chat-collapsed-left' : '';
+  const togLeft = S.chatCollapsed === 'left' ? 'back' : 'fwd';
+  const leftTog = l
+    ? `<button type="button" class="ctog ltog" data-act="collapseChatLeft" aria-label="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}" title="${S.chatCollapsed === 'left' ? 'Show chat' : 'Hide chat, widen inbox'}">${ic(togLeft, 'sm')}</button>`
+    : '';
+  const listcol = `<div class="listcol">${leftTog}
       <div class="filters" style="margin-bottom:8px"><div class="search">${ic('search', 'sm')}<input class="input" type="search" data-k="f.q" value="${esc(S.f.q)}" placeholder="Search leads" aria-label="Search leads"></div>${refreshBtn()}</div>
       <div class="filters">${chipSeg()}<button class="btn sm ${filterCount() ? 'filtbtn on' : ''}" style="height:36px;display:inline-flex" data-act="filters">${ic('filter', 'xs')}Filters${filterCount() ? ` · ${filterCount()}` : ''}</button></div>
       <div class="card clist" data-scroll="clist">${list.length ? list.map(crow).join('') : `<div class="empty" style="padding:24px"><b style="font-size:var(--t-sm)">${S.f.needs && !filterCount() ? 'All caught up' : 'No leads match'}</b></div>`}</div></div>`;
@@ -1964,7 +2010,7 @@ function leadView() {
       : emptyCard('search', 'This lead was not found', 'It may have been deleted.', '<button class="btn sm" data-act="closeLead" style="margin-top:6px">Back to contacts</button>');
     return `<div class="split">${listcol}<div>${body}</div></div>`;
   }
-  return `<div class="split">${listcol}${leadPanel(l)}</div>`;
+  return `<div class="split${collapseCls}">${listcol}${leadPanel(l)}</div>`;
 }
 
 /* =========================================================

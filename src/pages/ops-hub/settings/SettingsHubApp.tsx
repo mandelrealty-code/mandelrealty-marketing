@@ -14,8 +14,10 @@ import {
   HospitableCard,
   HospitablePropertyPicker,
   LogoutCard,
+  PartnersCard,
   hospitableState,
   type DefaultField,
+  type PartnerRow,
 } from "./SettingsCards";
 import { TemplatesCard } from "./TemplatesCard";
 import { Icon } from "../clients/icons";
@@ -73,6 +75,15 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   const [tab, setTab] = useState<SettingsTab>("general");
   const [pickerFresh, setPickerFresh] = useState(false);
   const [hospPropertyCount, setHospPropertyCount] = useState<number | undefined>();
+  const [partners, setPartners] = useState<PartnerRow[]>([]);
+  const [partnersLoading, setPartnersLoading] = useState(false);
+  const [partnersError, setPartnersError] = useState("");
+  const [partnerEditId, setPartnerEditId] = useState<string | null>(null);
+  const [partnerCurrentPw, setPartnerCurrentPw] = useState("");
+  const [partnerNewPw, setPartnerNewPw] = useState("");
+  const [partnerConfirmPw, setPartnerConfirmPw] = useState("");
+  const [partnerSaving, setPartnerSaving] = useState(false);
+  const [currentPartnerName, setCurrentPartnerName] = useState<string | null>(null);
   /** Last values the server confirmed, so blur only saves a real change. */
   const lastSaved = useRef({ comm: "", hst: "" });
 
@@ -133,9 +144,89 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
       .finally(() => setLoading(false));
   }, [applySettings]);
 
+  const loadPartners = useCallback(() => {
+    setPartnersLoading(true);
+    setPartnersError("");
+    void fetch("/api/admin/session?op=list_partners", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          partners?: PartnerRow[];
+        };
+        if (!res.ok) throw new Error(data.error || "Could not load partners.");
+        setPartners(Array.isArray(data.partners) ? data.partners : []);
+      })
+      .catch((e) => setPartnersError(errMsg(e, "Could not load partners.")))
+      .finally(() => setPartnersLoading(false));
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadPartners();
+    void fetch("/api/admin/session?op=whoami", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+      .then((res) => res.json())
+      .then((data: { partner?: { name?: string } | null }) => {
+        setCurrentPartnerName(data.partner?.name?.trim() || null);
+      })
+      .catch(() => setCurrentPartnerName(null));
+  }, [load, loadPartners]);
+
+  const savePartnerPassword = async () => {
+    if (!partnerEditId) return;
+    if (partnerNewPw.length < 8) {
+      setPartnersError("New password must be at least 8 characters.");
+      return;
+    }
+    if (partnerNewPw !== partnerConfirmPw) {
+      setPartnersError("New password and confirmation do not match.");
+      return;
+    }
+    setPartnerSaving(true);
+    setPartnersError("");
+    try {
+      const res = await fetch("/api/admin/session?op=set_partner_password", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partnerId: partnerEditId,
+          currentPassword: partnerCurrentPw,
+          newPassword: partnerNewPw,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        partner?: PartnerRow;
+      };
+      if (!res.ok) throw new Error(data.error || "Could not save password.");
+      if (data.partner) {
+        setPartners((prev) =>
+          prev.map((p) => (p.id === data.partner!.id ? { ...p, ...data.partner! } : p)),
+        );
+      } else {
+        loadPartners();
+      }
+      setPartnerEditId(null);
+      setPartnerCurrentPw("");
+      setPartnerNewPw("");
+      setPartnerConfirmPw("");
+      setToast("Partner password saved.");
+    } catch (e) {
+      setPartnersError(errMsg(e, "Could not save password."));
+    } finally {
+      setPartnerSaving(false);
+    }
+  };
 
   /* ---------------- navigation ---------------- */
 
@@ -365,7 +456,40 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   );
   const costsCard = <CostsCard onManage={() => setSheet("costs")} />;
   const templatesCard = <TemplatesCard phone={phone} onError={setError} onToast={setToast} />;
-  const logoutCard = <LogoutCard busy={busy} onLogout={() => void logout()} />;
+  const partnersCard = (
+    <PartnersCard
+      partners={partners}
+      loading={partnersLoading}
+      error={partnersError}
+      editingId={partnerEditId}
+      currentPassword={partnerCurrentPw}
+      newPassword={partnerNewPw}
+      confirmPassword={partnerConfirmPw}
+      saving={partnerSaving}
+      onReload={loadPartners}
+      onEdit={(id) => {
+        setPartnerEditId(id);
+        setPartnerCurrentPw("");
+        setPartnerNewPw("");
+        setPartnerConfirmPw("");
+        setPartnersError("");
+      }}
+      onCancel={() => {
+        setPartnerEditId(null);
+        setPartnerCurrentPw("");
+        setPartnerNewPw("");
+        setPartnerConfirmPw("");
+        setPartnersError("");
+      }}
+      onCurrentPassword={setPartnerCurrentPw}
+      onNewPassword={setPartnerNewPw}
+      onConfirmPassword={setPartnerConfirmPw}
+      onSave={() => void savePartnerPassword()}
+    />
+  );
+  const logoutCard = (
+    <LogoutCard busy={busy} onLogout={() => void logout()} partnerName={currentPartnerName} />
+  );
   const connectorsCard = (
     <ConnectorsCard
       hospitableConnected={hospitableConnected}
@@ -383,6 +507,7 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
   const generalPane = phone ? (
     <>
       {defaultsCard}
+      {partnersCard}
       {hospCard}
       {costsCard}
       {templatesCard}
@@ -392,6 +517,7 @@ export function SettingsHubApp({ route, setRoute, onModeChange, onLogout, embedd
     <div className="pgrid2 fill-grid">
       <div className="col">
         {defaultsCard}
+        {partnersCard}
         {hospCard}
         {costsCard}
       </div>

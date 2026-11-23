@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { hashPassword, verifyPassword } from "./portalAuth.js";
+import { getPartnerByEmail, getPartnerById, type Partner } from "./pm/partnerStore.js";
 
 const COOKIE_NAME = "mrg_admin_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 days
@@ -37,6 +39,18 @@ function sign(payload: string): string {
   return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
 }
 
+function safeEqual(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a);
+    const bb = Buffer.from(b);
+    if (ba.length !== bb.length) return false;
+    return timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+/** Legacy shared-admin session (no partner id). Payload: exp.nonce */
 export function createAdminSessionToken(): string {
   const exp = Date.now() + MAX_AGE_SEC * 1000;
   const nonce = randomBytes(8).toString("base64url");
@@ -44,24 +58,76 @@ export function createAdminSessionToken(): string {
   return `${payload}.${sign(payload)}`;
 }
 
+/** Partner session — payload is exp.partnerId.nonce (4 parts with sig). */
+export function createPartnerSessionToken(partnerId: string): string {
+  const id = partnerId.trim();
+  if (!id) throw new Error("partnerId required");
+  const exp = Date.now() + MAX_AGE_SEC * 1000;
+  const nonce = randomBytes(8).toString("base64url");
+  const payload = `${exp}.${id}.${nonce}`;
+  return `${payload}.${sign(payload)}`;
+}
+
+/**
+ * Accepts legacy admin tokens (3 parts) and partner tokens (4 parts).
+ * Partner sessions count as full admin for API gates.
+ */
 export function verifyAdminSessionToken(token: string | undefined | null): boolean {
   if (!token || !sessionSecret()) return false;
+  if (verifyPartnerSessionToken(token).valid) return true;
+
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   const [expStr, nonce, sig] = parts;
   if (!expStr || !nonce || !sig) return false;
   const payload = `${expStr}.${nonce}`;
-  const expected = sign(payload);
-  try {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return false;
-  } catch {
-    return false;
-  }
+  if (!safeEqual(sig, sign(payload))) return false;
   const exp = Number(expStr);
   if (!Number.isFinite(exp) || Date.now() > exp) return false;
   return true;
+}
+
+export function verifyPartnerSessionToken(
+  token: string | undefined | null,
+): { valid: boolean; partnerId?: string } {
+  if (!token || !sessionSecret()) return { valid: false };
+  const parts = token.split(".");
+  if (parts.length !== 4) return { valid: false };
+  const [expStr, partnerId, nonce, sig] = parts;
+  if (!expStr || !partnerId || !nonce || !sig) return { valid: false };
+  const payload = `${expStr}.${partnerId}.${nonce}`;
+  if (!safeEqual(sig, sign(payload))) return { valid: false };
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) return { valid: false };
+  return { valid: true, partnerId };
+}
+
+/** Look up partner by email and verify scrypt password hash. */
+export async function verifyPartnerLogin(
+  email: string,
+  password: string,
+): Promise<Partner | null> {
+  const partner = await getPartnerByEmail(email);
+  if (!partner || !partner.password_hash) return null;
+  if (!verifyPassword(password, partner.password_hash)) return null;
+  return partner;
+}
+
+export async function loadPartnerFromSessionToken(
+  token: string | undefined | null,
+): Promise<Partner | null> {
+  const parsed = verifyPartnerSessionToken(token);
+  if (!parsed.valid || !parsed.partnerId) return null;
+  return getPartnerById(parsed.partnerId);
+}
+
+export function hashPartnerPassword(password: string): string {
+  return hashPassword(password);
+}
+
+export function verifyPartnerPassword(password: string, passwordHash: string): boolean {
+  if (!passwordHash) return false;
+  return verifyPassword(password, passwordHash);
 }
 
 export function passwordMatches(input: string): boolean {
@@ -138,3 +204,4 @@ export function cookieShouldBeSecure(req: {
 }
 
 export { COOKIE_NAME };
+export type { Partner };

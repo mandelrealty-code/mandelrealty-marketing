@@ -140,6 +140,7 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
         activeContract: null as Record<string, unknown> | null,
         contractsUrl: null as string | null,
         contractDownloadUrl: null as string | null,
+        currentPartner: null as null | { id: string; name: string; email: string },
       },
       vocab: {
         STATUS_LABEL,
@@ -455,17 +456,41 @@ const CrmApp = forwardRef<CrmAppHandle, CrmAppProps>(function CrmApp(props, ref)
       importPaste: (paste: string) => call("/api/admin/leads", json("POST", { paste })),
     };
 
-    const shadow = holder.current.shadowRoot ?? holder.current.attachShadow({ mode: "open" });
-    shadow.innerHTML = "";
-    const style = document.createElement("style");
-    style.textContent = CRM_CSS + CRM_EXTRA_CSS;
-    const root = document.createElement("div");
-    root.className = propsRef.current.embedded ? "crm embed" : "crm";
-    shadow.append(style, root);
-    mounted.current = mountCrm(root, host) as Mounted;
-    setReady(true);
-    if (routeRef.current.newLead) propsRef.current.onNewLeadHandled?.();
+    let cancelled = false;
+    const boot = async () => {
+      try {
+        const who = await call<{
+          admin?: boolean;
+          partner?: { id: string; name: string; email: string } | null;
+        }>("/api/admin/session?op=whoami", json("POST", {}));
+        if (!cancelled) {
+          host.data.currentPartner =
+            who.admin && who.partner && typeof who.partner === "object"
+              ? {
+                  id: String(who.partner.id || ""),
+                  name: String(who.partner.name || ""),
+                  email: String(who.partner.email || ""),
+                }
+              : null;
+        }
+      } catch {
+        if (!cancelled) host.data.currentPartner = null;
+      }
+      if (cancelled || !holder.current) return;
+      const shadow = holder.current.shadowRoot ?? holder.current.attachShadow({ mode: "open" });
+      shadow.innerHTML = "";
+      const style = document.createElement("style");
+      style.textContent = CRM_CSS + CRM_EXTRA_CSS;
+      const root = document.createElement("div");
+      root.className = propsRef.current.embedded ? "crm embed" : "crm";
+      shadow.append(style, root);
+      mounted.current = mountCrm(root, host) as Mounted;
+      setReady(true);
+      if (routeRef.current.newLead) propsRef.current.onNewLeadHandled?.();
+    };
+    void boot();
     return () => {
+      cancelled = true;
       mounted.current?.destroy();
       mounted.current = null;
     };
