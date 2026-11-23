@@ -306,7 +306,6 @@ export function AdminPage() {
   const [loginTab, setLoginTab] = useState<"partner" | "staff">("partner");
   // Who is signed in: a partner sees the whole app; an employee (OPS account) sees only their Tasks board.
   const [staffName, setStaffName] = useState<string | null | undefined>(undefined);
-  const [currentPartner, setCurrentPartner] = useState<{ id: string; name: string; email: string } | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [productMode, setProductMode] = useState<AdminProductMode>(() => route.mode);
@@ -628,14 +627,8 @@ export function AdminPage() {
     }
     if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
       void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
-        .then((res) => {
-          setAuthed(res.ok);
-          if (!res.ok) setCurrentPartner(null);
-        })
-        .catch(() => {
-          setAuthed(false);
-          setCurrentPartner(null);
-        });
+        .then((res) => setAuthed(res.ok))
+        .catch(() => setAuthed(false));
       return;
     }
     Promise.all([loadLeads(), loadSettings()]).catch(() => setAuthed(false));
@@ -1406,12 +1399,8 @@ export function AdminPage() {
         staff?: { name: string } | null;
       }) => {
         setStaffName(!data.admin && data.staff ? data.staff.name : null);
-        setCurrentPartner(data.admin && data.partner ? data.partner : null);
       })
-      .catch(() => {
-        setStaffName(null);
-        setCurrentPartner(null);
-      });
+      .catch(() => setStaffName(null));
   }, []);
 
   const login = async (e: FormEvent) => {
@@ -1439,11 +1428,9 @@ export function AdminPage() {
       };
       setPassword("");
       if (signedIn.staff) {
-        setCurrentPartner(null);
         setStaffName(signedIn.staff.name);
         return;
       }
-      setCurrentPartner(signedIn.partner ?? null);
       setStaffName(null);
       if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
         setAuthed(true);
@@ -1454,7 +1441,6 @@ export function AdminPage() {
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Login failed");
       setAuthed(false);
-      setCurrentPartner(null);
     } finally {
       setLoggingIn(false);
     }
@@ -1463,7 +1449,6 @@ export function AdminPage() {
   const logout = async () => {
     await fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" });
     setAuthed(false);
-    setCurrentPartner(null);
     setLeads([]);
     setSelectedId(null);
   };
@@ -1830,13 +1815,9 @@ export function AdminPage() {
             startOnboardingFromLead(lead ?? { id: leadId });
           },
           onConvertLeadToOpsClient: convertLeadToOpsClient,
-          onUnauthorized: () => {
-            setAuthed(false);
-            setCurrentPartner(null);
-          },
+          onUnauthorized: () => setAuthed(false),
           onLoggedOut: () => {
             setAuthed(false);
-            setCurrentPartner(null);
             setLeads([]);
             setSelectedId(null);
           },
