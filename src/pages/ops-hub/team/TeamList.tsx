@@ -7,9 +7,28 @@ import {
   fmtLastSignIn,
   portalUrl,
   sameName,
+  type PartnerLoginRow,
   type RosterRow,
   type StaffRow,
 } from "./teamBits";
+
+/** Login badge for a roster row — partners use partners table, everyone else staff_users. */
+function rosterLoginStatus(
+  row: RosterRow,
+  users: StaffRow[],
+  partners: PartnerLoginRow[],
+): { label: string; h: number; c: number; counted: boolean } {
+  if (row.staff_type === "partner") {
+    const partner = partners.find((p) => sameName(p.name, row.name));
+    if (!partner) return { label: "No login", h: 270, c: 0.02, counted: false };
+    if (partner.hasPassword) return { label: "Password set", h: 155, c: 0.13, counted: true };
+    return { label: "No password", h: 65, c: 0.14, counted: false };
+  }
+  const login = users.some((u) => sameName(u.display_name, row.name));
+  return login
+    ? { label: "Has login", h: 155, c: 0.13, counted: true }
+    : { label: "No login", h: 270, c: 0.02, counted: false };
+}
 
 export type TeamTab = "logins" | "types";
 
@@ -66,6 +85,7 @@ function RosterCard({
   phone,
   roster,
   users,
+  partners,
   savingName,
   onSetType,
   onSendLogin,
@@ -75,6 +95,7 @@ function RosterCard({
   phone?: boolean;
   roster: RosterRow[];
   users: StaffRow[];
+  partners: PartnerLoginRow[];
   savingName: string;
   onSetType: (name: string, type: string) => void;
   onSendLogin: (name: string) => void;
@@ -82,8 +103,9 @@ function RosterCard({
   onAddPartner: (name: string) => void;
 }) {
   const [name, setName] = useState("");
-  const hasLogin = (n: string) => users.some((u) => sameName(u.display_name, n));
-  const withLogin = roster.filter((r) => hasLogin(r.name)).length;
+  const withLogin = roster.filter(
+    (r) => rosterLoginStatus(r, users, partners).counted,
+  ).length;
 
   return (
     <div className="card" style={{ overflow: "hidden" }}>
@@ -108,23 +130,17 @@ function RosterCard({
         </div>
       ) : (
         roster.map((r) => {
-          const login = hasLogin(r.name);
-          const send = !login && r.staff_type !== "partner";
+          const status = rosterLoginStatus(r, users, partners);
+          const send = !status.counted && r.staff_type !== "partner";
           const saving = savingName === r.name;
           return (
             <div key={r.id} className="lrow2 tm-roster-row">
               <Avatar name={r.name} seed={r.id} className="sm" />
               <div className="t">
                 <b>{r.name}</b>
-                {login ? (
-                  <Chip h={155} c={0.13}>
-                    Has login
-                  </Chip>
-                ) : (
-                  <Chip h={270} c={0.02}>
-                    No login
-                  </Chip>
-                )}
+                <Chip h={status.h} c={status.c}>
+                  {status.label}
+                </Chip>
               </div>
               <span className="tm-typesel">
                 <select
@@ -212,6 +228,7 @@ export function TeamList({
   users,
   weekByStaff,
   roster,
+  partners,
   savingName,
   banner,
   onInvite,
@@ -228,6 +245,7 @@ export function TeamList({
   users: StaffRow[];
   weekByStaff: Map<string, number>;
   roster: RosterRow[];
+  partners: PartnerLoginRow[];
   savingName: string;
   banner?: ReactNode;
   onInvite: () => void;
@@ -331,6 +349,7 @@ export function TeamList({
       phone={phone}
       roster={roster}
       users={users}
+      partners={partners}
       savingName={savingName}
       onSetType={onSetType}
       onSendLogin={onSendLogin}

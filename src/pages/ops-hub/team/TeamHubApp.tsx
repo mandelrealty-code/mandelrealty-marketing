@@ -18,6 +18,7 @@ import {
   sameName,
   type BoardTask,
   type InvitePayload,
+  type PartnerLoginRow,
   type RosterRow,
   type StaffRow,
   type TimeRow,
@@ -48,6 +49,7 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
   const [users, setUsers] = useState<StaffRow[]>([]);
   const [weekEntries, setWeekEntries] = useState<TimeRow[]>([]);
   const [roster, setRoster] = useState<RosterRow[]>([]);
+  const [partners, setPartners] = useState<PartnerLoginRow[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [detailEntries, setDetailEntries] = useState<TimeRow[]>([]);
   const [detailTotal, setDetailTotal] = useState(0);
@@ -96,13 +98,25 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     setRoster(data.members ?? []);
   }, []);
 
+  const loadPartners = useCallback(async () => {
+    const res = await fetch("/api/admin/session?op=list_partners", {
+      credentials: "include",
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      partners?: PartnerLoginRow[];
+    };
+    if (!res.ok) throw new Error(data.error || "Could not load partners.");
+    setPartners(Array.isArray(data.partners) ? data.partners : []);
+  }, []);
+
   const loadAll = useCallback(() => {
     setListLoading(true);
     setError("");
-    Promise.all([loadList(), loadRoster()])
+    Promise.all([loadList(), loadRoster(), loadPartners()])
       .catch((e) => setError(errMsg(e, "Could not load employees.")))
       .finally(() => setListLoading(false));
-  }, [loadList, loadRoster]);
+  }, [loadList, loadRoster, loadPartners]);
 
   useEffect(() => {
     loadAll();
@@ -373,6 +387,7 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       users={users}
       weekByStaff={weekByStaff}
       roster={roster}
+      partners={partners}
       savingName={savingName}
       banner={banner}
       onInvite={() => setInvite({ name: "", prefilled: false })}
@@ -432,24 +447,27 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     );
   } else if (confirm?.kind === "remove") {
     const r = confirm.row;
-    const hasLogin = users.some((u) => sameName(u.display_name, r.name));
+    const staffLogin = users.some((u) => sameName(u.display_name, r.name));
+    const partnerLogin =
+      r.staff_type === "partner" && partners.some((p) => sameName(p.name, r.name));
+    const hasLogin = staffLogin || partnerLogin;
     const units = confirm.units ?? 0;
     const tasks = confirm.tasks ?? 0;
     const assignWarn =
       units || tasks
         ? ` ${units} unit${units === 1 ? "" : "s"} and ${tasks} task${tasks === 1 ? "" : "s"} are still assigned to ${r.name}. Reassign before deactivating, or they will show as Unassigned.`
         : "";
+    const removeBody = partnerLogin
+      ? `${r.name} is a partner. Removing them from this roster does not delete their Settings login. Their hours and past tasks stay.`
+      : hasLogin
+        ? "Their login is deactivated and they can’t sign in to their portal. They leave this list. Their hours and past tasks stay."
+        : `${r.name} has no login, so the roster row is removed. Tasks already given to ${r.name} keep the name.`;
     confirmEl = (
       <ConfirmModal
         phone={phone}
         busy={savingName === r.name}
         title={`Remove ${r.name}?`}
-        body={
-          (hasLogin
-            ? "Their login is deactivated and they can’t sign in to their portal. They leave this list. Their hours and past tasks stay."
-            : `${r.name} has no login, so the roster row is removed. Tasks already given to ${r.name} keep the name.`) +
-          assignWarn
-        }
+        body={removeBody + assignWarn}
         confirmLabel="Remove"
         onCancel={() => setConfirm(null)}
         onConfirm={() => void removeRosterRow(r)}

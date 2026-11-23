@@ -39,6 +39,14 @@ export type BoardTask = {
 
 export type RosterRow = { id: string; name: string; staff_type: string; phone?: string };
 
+/** Partner login row from /api/admin/session?op=list_partners (no password hash). */
+export type PartnerLoginRow = {
+  id: string;
+  name: string;
+  email: string;
+  hasPassword: boolean;
+};
+
 export type InvitePayload = {
   team_url: string;
   temp_password?: string;
