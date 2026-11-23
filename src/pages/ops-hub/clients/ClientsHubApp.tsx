@@ -180,7 +180,7 @@ export function ClientsHubApp({ route, setRoute, onModeChange, embedded = false 
       return;
     }
     if (id === "dashboard") {
-      onModeChange("ops", { opsTab: "sops" });
+      onModeChange("dashboard");
       return;
     }
     if (id === "team") {

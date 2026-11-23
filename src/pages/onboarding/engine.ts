@@ -671,7 +671,7 @@ function renderNav(){
 }
 function setNav(id){
   const modeMap = {crm:'crm', ops:'ops', clients:'ops', properties:'ops', team:'ops', sops:'ops', copilot:'copilot', settings:'ops', dashboard:'ops', onboarding:'onboarding', revenue:'ops'};
-  if(id==='dashboard' && host.go){ host.go('ops', { opsTab: 'sops' }); return; }
+  if(id==='dashboard' && host.go){ host.go('dashboard'); return; }
   if(id!=='onboarding' && host.go && modeMap[id] && modeMap[id]!=='onboarding'){
     if (id === 'clients') { host.go('ops', { opsTab: 'clients' }); return; }
     if (id === 'properties') { host.go('ops', { opsTab: 'properties' }); return; }

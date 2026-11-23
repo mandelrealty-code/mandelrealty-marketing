@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import handleDashboard from "../shared/adminApi/dashboard.js";
 import handleKnowledge from "../shared/adminApi/knowledge.js";
 import handleLeads from "../shared/adminApi/leads.js";
 import handleOpsHubWebhook from "../shared/adminApi/opsHubWebhook.js";
@@ -34,6 +35,7 @@ function sectionOf(req: VercelRequest): string {
   }
   if (url.includes("/pm") || url.includes("section=pm")) return "pm";
   if (url.includes("copilot")) return "copilot";
+  if (url.includes("dashboard")) return "dashboard";
   if (url.includes("leads")) return "leads";
   if (url.includes("/sign") || url.includes("section=sign")) return "sign";
 
@@ -61,6 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return handlePm(req, res);
     case "copilot":
       return handleCopilot(req, res);
+    case "dashboard":
+      return handleDashboard(req, res);
     case "gmail":
       return handleGmail(req, res);
     case "outlook":

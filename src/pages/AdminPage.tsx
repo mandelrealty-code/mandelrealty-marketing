@@ -306,6 +306,11 @@ export function AdminPage() {
   const [loginTab, setLoginTab] = useState<"partner" | "staff">("partner");
   // Who is signed in: a partner sees the whole app; an employee (OPS account) sees only their Tasks board.
   const [staffName, setStaffName] = useState<string | null | undefined>(undefined);
+  const [currentPartner, setCurrentPartner] = useState<{
+    id: string;
+    name: string;
+    email: string;
+  } | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   const [productMode, setProductMode] = useState<AdminProductMode>(() => route.mode);
@@ -625,7 +630,7 @@ export function AdminPage() {
       meta.content = "noindex, nofollow";
       document.head.appendChild(meta);
     }
-    if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
+    if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding" || route.mode === "dashboard") {
       void fetch("/api/admin/session?op=check", { method: "POST", credentials: "include" })
         .then((res) => setAuthed(res.ok))
         .catch(() => setAuthed(false));
@@ -1399,8 +1404,20 @@ export function AdminPage() {
         staff?: { name: string } | null;
       }) => {
         setStaffName(!data.admin && data.staff ? data.staff.name : null);
+        setCurrentPartner(
+          data.admin && data.partner && typeof data.partner === "object"
+            ? {
+                id: String(data.partner.id || ""),
+                name: String(data.partner.name || ""),
+                email: String(data.partner.email || ""),
+              }
+            : null,
+        );
       })
-      .catch(() => setStaffName(null));
+      .catch(() => {
+        setStaffName(null);
+        setCurrentPartner(null);
+      });
   }, []);
 
   const login = async (e: FormEvent) => {
@@ -1429,10 +1446,28 @@ export function AdminPage() {
       setPassword("");
       if (signedIn.staff) {
         setStaffName(signedIn.staff.name);
+        setCurrentPartner(null);
         return;
       }
       setStaffName(null);
-      if (CRM_HUB || route.mode === "copilot" || route.mode === "onboarding") {
+      setCurrentPartner(
+        signedIn.partner && typeof signedIn.partner === "object"
+          ? {
+              id: String(signedIn.partner.id || ""),
+              name: String(signedIn.partner.name || ""),
+              email: String(signedIn.partner.email || ""),
+            }
+          : null,
+      );
+      /* Partners land on Dashboard after login. */
+      writeStoredAdminMode("dashboard");
+      switchProduct("dashboard");
+      if (
+        CRM_HUB ||
+        route.mode === "copilot" ||
+        route.mode === "onboarding" ||
+        route.mode === "dashboard"
+      ) {
         setAuthed(true);
         return;
       }
@@ -1449,6 +1484,7 @@ export function AdminPage() {
   const logout = async () => {
     await fetch("/api/admin/session?op=logout", { method: "POST", credentials: "include" });
     setAuthed(false);
+    setCurrentPartner(null);
     setLeads([]);
     setSelectedId(null);
   };
@@ -1799,13 +1835,30 @@ export function AdminPage() {
   }
 
   /* One persistent shell for OPS / CRM / Onboarding / Copilot — sidebar never remounts. */
-  if (CRM_HUB || productMode === "ops" || productMode === "crm" || productMode === "onboarding" || productMode === "copilot") {
+  if (
+    CRM_HUB ||
+    productMode === "ops" ||
+    productMode === "crm" ||
+    productMode === "onboarding" ||
+    productMode === "copilot" ||
+    productMode === "dashboard"
+  ) {
     return (
       <ClientsApp
         route={route}
         setRoute={setRoute}
         onModeChange={switchProduct}
         onLogout={logout}
+        dashboardHub={{
+          currentPartner,
+          onOpenOnboardingUnit: openOnboardingUnit,
+          onStartOnboarding: (leadId) => {
+            const lead = leads.find((l) => l.id === leadId);
+            startOnboardingFromLead(lead ?? { id: leadId });
+          },
+          onOpenCrmLead: openLeadFromOnboarding,
+          onUnauthorized: () => setAuthed(false),
+        }}
         crmHub={{
           openNewLead: newLeadOpen,
           onNewLeadHandled: onCrmNewLeadHandled,

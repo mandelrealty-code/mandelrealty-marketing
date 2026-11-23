@@ -179,7 +179,7 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     if (id === "crm") return onModeChange("crm");
     if (id === "copilot") return onModeChange("copilot");
     if (id === "onboarding") return onModeChange("onboarding");
-    if (id === "dashboard") return onModeChange("ops", { opsTab: "sops" });
+    if (id === "dashboard") return onModeChange("dashboard");
     if (id === "team") {
       setTab("logins");
       return onSelect(null);

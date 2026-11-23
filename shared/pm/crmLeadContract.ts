@@ -779,6 +779,23 @@ export async function completeMagicSign(input: {
   const planName =
     String(lead?.plan || "").trim() || signed.title || "management";
   const propertyLabel = propertyLabelForEmail(lead);
+
+  // Create dashboard action for Shane
+  try {
+    const { createDashboardAction, resolveShanePartnerId } = await import(
+      "../adminApi/dashboard.js"
+    );
+    const shaneId = await resolveShanePartnerId();
+    await createDashboardAction({
+      type: "contract_signed",
+      partnerId: shaneId,
+      leadId: lead?.id || null,
+      title: "Contract signed",
+      body: `${clientName} signed the ${planName} agreement for ${propertyLabel}.`,
+    });
+  } catch {
+    /* signing succeeded even if dashboard action fails */
+  }
   const signedOnLabel = signed.signed_on || new Date().toISOString().slice(0, 10);
   const clientEmail =
     (client?.email || lead?.email || "").trim().toLowerCase();

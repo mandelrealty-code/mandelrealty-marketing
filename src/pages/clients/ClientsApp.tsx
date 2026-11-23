@@ -10,6 +10,7 @@ import {
   type PropertyRow,
 } from "./api";
 import CrmApp, { type CrmLeadForClient } from "../crm-hub/CrmApp";
+import DashboardApp from "../dashboard/DashboardApp";
 import OnboardingApp from "../onboarding/OnboardingApp";
 import { PaneBoundary } from "../ops-hub/clients/PaneBoundary";
 
@@ -91,13 +92,21 @@ function MovedToCopilot({ screen }: { screen: "tasks" | "reviews" }) {
 
 type Tab = "tasks" | "reviews" | "clients" | "properties" | "month" | "sops" | "employees" | "settings";
 
-type ShellModePane = "crm" | "onboarding" | "copilot";
+type ShellModePane = "dashboard" | "crm" | "onboarding" | "copilot";
 
 type Props = {
   onModeChange: (mode: AdminProductMode, patch?: Partial<AdminRoute>) => void;
   route: AdminRoute;
   setRoute: (next: AdminRoute, opts?: { push?: boolean }) => void;
   onLogout?: () => void;
+  /** Bridge props so Dashboard stays inside the persistent HubShell. */
+  dashboardHub?: {
+    currentPartner?: { id: string; name: string; email: string } | null;
+    onOpenOnboardingUnit: (unitId: string) => void;
+    onStartOnboarding: (leadId: string) => void;
+    onOpenCrmLead: (leadId: string) => void;
+    onUnauthorized?: () => void;
+  };
   /** Bridge props so CRM stays inside the persistent HubShell. */
   crmHub?: {
     openNewLead?: boolean;
@@ -151,7 +160,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export default function ClientsApp({ onModeChange, route, setRoute, onLogout, crmHub, onboardingHub }: Props) {
+export default function ClientsApp({ onModeChange, route, setRoute, onLogout, dashboardHub, crmHub, onboardingHub }: Props) {
   const desktop = useIsDesktop();
   const [tab, setTab] = useState<Tab>(() => route.opsTab);
   const [clients, setClients] = useState<ClientRow[]>([]);
@@ -264,9 +273,12 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
   );
   const visitedModes = useRef<Set<ShellModePane>>(
     new Set(
-      route.mode === "crm" || route.mode === "onboarding" || route.mode === "copilot"
+      route.mode === "dashboard" ||
+        route.mode === "crm" ||
+        route.mode === "onboarding" ||
+        route.mode === "copilot"
         ? [route.mode]
-        : [],
+        : ["dashboard"],
     ),
   );
 
@@ -2528,11 +2540,16 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
      (blank white main) between navigateHub and the appliedOpsKey effect. */
   const hubTab: Tab = route.mode === "ops" ? route.opsTab : tab;
   if (route.mode === "ops") visitedHubs.current.add(hubTab);
-  if (route.mode === "crm" || route.mode === "onboarding" || route.mode === "copilot") {
+  if (
+    route.mode === "dashboard" ||
+    route.mode === "crm" ||
+    route.mode === "onboarding" ||
+    route.mode === "copilot"
+  ) {
     visitedModes.current.add(route.mode);
   }
 
-  /* Persistent shell: one HubShell for OPS hubs + CRM + Onboarding + Copilot so the sidebar
+  /* Persistent shell: one HubShell for OPS hubs + Dashboard + CRM + Onboarding + Copilot so the sidebar
      never remounts and tab switches never flash white or drop icons. */
   const opsHubTab =
     (SOPS_HUB && hubTab === "sops") ||
@@ -2542,6 +2559,7 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
     (TEAM_HUB && hubTab === "employees") ||
     (SETTINGS_HUB && hubTab === "settings");
   const shellMode =
+    route.mode === "dashboard" ||
     route.mode === "crm" ||
     route.mode === "onboarding" ||
     route.mode === "copilot" ||
@@ -2571,7 +2589,7 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
           <HubShell
             active={hubActiveFromRoute(route)}
             onNavigate={(id) => {
-              if (id === "crm" || id === "onboarding" || id === "copilot") {
+              if (id === "dashboard" || id === "crm" || id === "onboarding" || id === "copilot") {
                 navigateHub(hubHost, id);
                 return;
               }
@@ -2580,7 +2598,7 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
                   ? "employees"
                   : id === "revenue"
                     ? "month"
-                    : id === "dashboard" || id === "sops"
+                    : id === "sops"
                       ? "sops"
                       : id === "properties"
                         ? "properties"
@@ -2643,6 +2661,20 @@ export default function ClientsApp({ onModeChange, route, setRoute, onLogout, cr
                     setRoute={setRoute}
                     onModeChange={hubModeChange}
                     onLogout={onLogout}
+                  />,
+                )
+              : null}
+            {dashboardHub
+              ? modePane(
+                  "dashboard",
+                  <DashboardApp
+                    embedded
+                    currentPartner={dashboardHub.currentPartner}
+                    onModeChange={hubModeChange}
+                    onStartOnboarding={dashboardHub.onStartOnboarding}
+                    onOpenOnboardingUnit={dashboardHub.onOpenOnboardingUnit}
+                    onOpenCrmLead={dashboardHub.onOpenCrmLead}
+                    onUnauthorized={dashboardHub.onUnauthorized}
                   />,
                 )
               : null}

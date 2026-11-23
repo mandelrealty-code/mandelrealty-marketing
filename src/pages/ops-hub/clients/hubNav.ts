@@ -12,8 +12,9 @@ export function hubActiveFromOpsTab(opsTab: AdminRoute["opsTab"] | string | null
   return "sops";
 }
 
-/** Highlight for the persistent shell across OPS / CRM / Onboarding / Copilot. */
+/** Highlight for the persistent shell across OPS / CRM / Onboarding / Copilot / Dashboard. */
 export function hubActiveFromRoute(route: Pick<AdminRoute, "mode" | "opsTab">): string {
+  if (route.mode === "dashboard") return "dashboard";
   if (route.mode === "crm") return "crm";
   if (route.mode === "onboarding") return "onboarding";
   if (route.mode === "copilot") return "copilot";
@@ -29,12 +30,13 @@ export type HubNavHost = {
 /** Shared sidebar navigation used by every OPS hub page. */
 export function navigateHub(host: HubNavHost, id: string) {
   const { route, setRoute, onModeChange } = host;
+  if (id === "dashboard") return onModeChange("dashboard");
   if (id === "crm") return onModeChange("crm");
   if (id === "copilot") return onModeChange("copilot");
   if (id === "onboarding") return onModeChange("onboarding");
 
   const opsTab: AdminRoute["opsTab"] =
-    id === "dashboard" || id === "sops"
+    id === "sops"
       ? "sops"
       : id === "team"
         ? "employees"

@@ -2559,10 +2559,10 @@ async function loadDocs() {
    Navigation and routing
    ========================================================= */
 function setNav(id) {
-  const modeMap = { crm: 'crm', ops: 'ops', clients: 'ops', properties: 'ops', team: 'ops', sops: 'ops', copilot: 'copilot', settings: 'ops', dashboard: 'ops', onboarding: 'onboarding', revenue: 'ops' };
+  const modeMap = { crm: 'crm', ops: 'ops', clients: 'ops', properties: 'ops', team: 'ops', sops: 'ops', copilot: 'copilot', settings: 'ops', dashboard: 'dashboard', onboarding: 'onboarding', revenue: 'ops' };
   if (id === 'settings') { if (host.go) host.go('ops', { opsTab: 'settings' }); return; }
   if (id === 'crm') { S.leadId = null; setTab('contacts'); return; }
-  if (id === 'dashboard') { if (host.go) host.go('ops', { opsTab: 'sops' }); return; }
+  if (id === 'dashboard') { if (host.go) host.go('dashboard'); return; }
   const m = modeMap[id];
   if (m && m !== 'crm' && host.go) {
     if (id === 'clients') { host.go('ops', { opsTab: 'clients' }); return; }

@@ -1,10 +1,11 @@
-export type AdminProductMode = "crm" | "onboarding" | "ops" | "copilot";
+export type AdminProductMode = "dashboard" | "crm" | "onboarding" | "ops" | "copilot";
 
 const MODE_KEY = "mrg_admin_mode";
 
 export function readStoredAdminMode(): AdminProductMode {
   try {
     const v = localStorage.getItem(MODE_KEY);
+    if (v === "dashboard") return "dashboard";
     if (v === "crm") return "crm";
     // Legacy storage key "clients" maps to OPS
     if (v === "ops" || v === "clients") return "ops";
@@ -13,7 +14,7 @@ export function readStoredAdminMode(): AdminProductMode {
   } catch {
     /* ignore */
   }
-  return "crm";
+  return "dashboard";
 }
 
 export function writeStoredAdminMode(mode: AdminProductMode) {

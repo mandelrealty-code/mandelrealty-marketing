@@ -272,7 +272,8 @@ export function SopsHubApp({ route, setRoute, onModeChange, onOpenVideoStudio, r
     if (id === "crm") return onModeChange("crm");
     if (id === "copilot") return onModeChange("copilot");
     if (id === "onboarding") return onModeChange("onboarding");
-    if (id === "dashboard" || id === "sops") return navOps("sops");
+    if (id === "dashboard") return onModeChange("dashboard");
+    if (id === "sops") return navOps("sops");
     if (id === "team") return navOps("employees");
     if (id === "properties") return navOps("properties");
     if (id === "revenue") return navOps("month");

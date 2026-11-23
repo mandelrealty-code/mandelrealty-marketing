@@ -104,6 +104,10 @@ export function parseAdminRoute(
     return { ...emptyAdminRoute("crm"), leadId: legacyLead };
   }
 
+  if (parts[0] === "dashboard") {
+    return emptyAdminRoute("dashboard");
+  }
+
   if (parts[0] === "copilot") {
     return emptyAdminRoute("copilot");
   }
@@ -163,6 +167,7 @@ export function parseAdminRoute(
 }
 
 export function adminPath(route: AdminRoute): string {
+  if (route.mode === "dashboard") return "/dashboard";
   if (route.mode === "copilot") return "/copilot";
   if (route.mode === "onboarding") return "/onboarding";
   if (route.mode === "crm") {
