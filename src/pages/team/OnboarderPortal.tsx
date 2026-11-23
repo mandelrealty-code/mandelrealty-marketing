@@ -216,8 +216,6 @@ export function OnboarderPortal({ user, staffType }: Props) {
       setProgress(r.progress);
       await loadChecklist(unit.id);
       if (r.nextItemId) {
-        const flat = sections.flatMap((s) => s.items);
-        // reload already updated sections via loadChecklist — find next after reload
         showToast(value === "no" && current.essential ? "Flagged" : "Saved");
       } else {
         showToast("Checklist complete.");
