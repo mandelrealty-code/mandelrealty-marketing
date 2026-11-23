@@ -533,6 +533,90 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
   return { lastActivityAt, answeredItems, isActive };
 }
 
+export type StravoPropertyHit = {
+  id: string;
+  name: string;
+  address: string;
+};
+
+/** Search cleaner-app properties by name (ilike). Read-only. */
+export async function searchStravoProperties(q: string): Promise<StravoPropertyHit[]> {
+  const term = String(q || "").trim().replace(/[%*,]/g, " ").slice(0, 80);
+  if (!term) return [];
+  const pattern = `*${term}*`;
+  try {
+    const rows = await cleanerGet<
+      { id?: string; name?: string; address?: string; title?: string }[]
+    >(
+      `properties?or=(name.ilike.${encodeURIComponent(pattern)},address.ilike.${encodeURIComponent(pattern)})` +
+        `&select=id,name,address&order=name.asc&limit=25`,
+    );
+    return (rows || [])
+      .map((r) => ({
+        id: String(r.id || "").trim(),
+        name: String(r.name || r.title || "").trim() || "Untitled property",
+        address: String(r.address || "").trim(),
+      }))
+      .filter((r) => r.id);
+  } catch {
+    // Fallback: name-only filter if `or=` / address column differs.
+    const rows = await cleanerGet<
+      { id?: string; name?: string; address?: string; title?: string }[]
+    >(
+      `properties?name=ilike.${encodeURIComponent(pattern)}` +
+        `&select=id,name,address&order=name.asc&limit=25`,
+    );
+    return (rows || [])
+      .map((r) => ({
+        id: String(r.id || "").trim(),
+        name: String(r.name || r.title || "").trim() || "Untitled property",
+        address: String(r.address || "").trim(),
+      }))
+      .filter((r) => r.id);
+  }
+}
+
+export async function linkStravoProperty(
+  unitId: string,
+  cleanerPropertyId: string,
+): Promise<void> {
+  const id = String(unitId || "").trim();
+  const pid = String(cleanerPropertyId || "").trim();
+  if (!id || !pid) throw new Error("unitId and cleanerPropertyId required.");
+  const sb = db();
+  const { error } = await sb
+    .from("onboarding_units")
+    .update({
+      cleaner_property_id: pid,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function markPortalLinkSent(unitId: string): Promise<string> {
+  const id = String(unitId || "").trim();
+  if (!id) throw new Error("unitId required.");
+  const now = new Date().toISOString();
+  const sb = db();
+  const { error } = await sb
+    .from("onboarding_units")
+    .update({
+      portal_link_sent_at: now,
+      updated_at: now,
+    })
+    .eq("id", id);
+  if (error) {
+    if (/portal_link_sent_at|column.*does not exist|schema cache/i.test(error.message || "")) {
+      throw new Error(
+        "portal_link_sent_at missing. Run supabase/onboarding_portal_link_v1.sql in Supabase, then retry.",
+      );
+    }
+    throw error;
+  }
+  return now;
+}
+
 export async function acknowledgeIntakeFlag(unitId: string, flagId: string): Promise<void> {
   const key = String(flagId || "").trim();
   if (!unitId || !key) throw new Error("unit_id and flag_id required.");

@@ -30,6 +30,10 @@ import {
   acknowledgeIntakeFlag,
   getIntakeProgress,
   getIntakeProgressStream,
+  getUnitIntakeLink,
+  linkStravoProperty,
+  markPortalLinkSent,
+  searchStravoProperties,
 } from "../pm/intakeProgress.js";
 import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
@@ -602,6 +606,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json(await getIntakeProgressStream(unitId));
           }
           return res.status(200).json(await getIntakeProgress(unitId));
+        }
+        if (op === "search_stravo_properties") {
+          const q =
+            typeof req.query.q === "string"
+              ? req.query.q
+              : typeof req.query.term === "string"
+                ? req.query.term
+                : "";
+          const properties = await searchStravoProperties(q);
+          return res.status(200).json({ properties });
         }
         return res.status(200).json(await onboardingSnapshot(torontoToday()));
       }
@@ -1752,6 +1766,70 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!flagId) return res.status(400).json({ error: "flag_id required." });
           await acknowledgeIntakeFlag(unit, flagId);
           return res.status(200).json({ ok: true });
+        }
+        if (op === "link_stravo_property") {
+          const unitId = unit || str(body.unitId);
+          const cleanerPropertyId =
+            str(body.cleanerPropertyId) || str(body.cleaner_property_id);
+          if (!unitId || !cleanerPropertyId) {
+            return res.status(400).json({ error: "unitId and cleanerPropertyId required." });
+          }
+          await linkStravoProperty(unitId, cleanerPropertyId);
+          return res.status(200).json({ ok: true, cleaner_property_id: cleanerPropertyId });
+        }
+        if (op === "send_portal_link") {
+          const unitId = unit || str(body.unitId);
+          let email = str(body.onboarderEmail) || str(body.onboarder_email) || str(body.email);
+          if (!unitId) return res.status(400).json({ error: "unitId required." });
+          const link = await getUnitIntakeLink(unitId);
+          let displayName = str(body.display_name) || str(body.onboarderName);
+          if (!email) {
+            const users = await listStaffUsers();
+            const match = users.find(
+              (u) =>
+                displayName &&
+                u.display_name.trim().toLowerCase() === displayName.trim().toLowerCase(),
+            );
+            if (match) {
+              email = match.email;
+              displayName = match.display_name;
+            }
+          }
+          if (!email) {
+            return res.status(400).json({
+              error: "onboarderEmail required (or a staff user matching the onboarder name).",
+            });
+          }
+          if (!displayName) displayName = email.split("@")[0] || "Onboarder";
+          const invited = await createOrRefreshStaffInvite({
+            email,
+            displayName,
+          });
+          try {
+            await setPmTeamMemberType({
+              name: invited.user.display_name,
+              staff_type: "onboarder",
+            });
+          } catch {
+            /* Roster write is best-effort; invite still goes out. */
+          }
+          const mail = await sendStaffInviteEmail({
+            to: email,
+            firstName: invited.user.first_name || "there",
+            slug: invited.user.slug,
+            tempPassword: invited.tempPassword,
+            displayName: invited.user.display_name,
+            role: "Onboarder",
+          });
+          const sentAt = await markPortalLinkSent(unitId);
+          return res.status(200).json({
+            ok: true,
+            email_sent: mail.ok,
+            email_error: mail.ok ? null : mail.message || "Email failed",
+            portal_link_sent_at: sentAt,
+            address: link.address,
+            team_url: teamPortalUrl(invited.user.slug),
+          });
         }
         if (op === "add_note") {
           const text = str(body.text);

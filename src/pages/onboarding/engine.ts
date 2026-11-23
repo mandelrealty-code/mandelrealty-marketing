@@ -12,7 +12,57 @@ const WA_WELCOME_CSS = `
 .wawelcome .wacopy{width:100%}
 `;
 
-export const ONBOARDING_CSS = ONBOARDING_CSS_BASE + WA_WELCOME_CSS;
+const AUDIT_CSS = `
+.audit-nl{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:8px;background:#fff8e6;border:1px solid #f0c060;margin:0 0 10px}
+.audit-nl b{display:block;color:var(--ink);font-size:14px;font-weight:600}
+.audit-nl p{margin:4px 0 10px;font-size:13px;color:var(--muted)}
+.audit-nl .btn.amber{background:#f0c060;border-color:transparent;color:#2a1d00;font-weight:600}
+.audit-ln{display:flex;align-items:center;gap:8px;min-height:40px;font-size:13px;color:var(--ink2);border-bottom:1px solid #f0f0ee;margin-bottom:8px}
+.audit-ln b{color:var(--ink);font-weight:600}
+.audit-ln .dot8{width:8px;height:8px;border-radius:50%;background:oklch(0.6 0.13 155);box-shadow:0 0 0 3px oklch(0.6 0.13 155 / .18);flex:none}
+.audit-ln .mlink{margin-left:auto;border:0;background:none;font-size:13px;font-weight:500;color:var(--muted);padding:0;cursor:pointer}
+.audit-ln .mlink:hover{color:var(--ink);text-decoration:underline}
+.audit-exp{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;display:inline-grid;place-items:center;color:var(--ink2);flex:none}
+.audit-exp[aria-expanded=true] svg{transform:rotate(180deg)}
+.audit-exp svg{transition:transform .2s}
+.audit-pc{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--panel);color:var(--muted);font-variant-numeric:tabular-nums}
+.audit-pc.live{background:rgb(31 111 107 / .1);color:#1f6f6b}
+.audit-pc.ok{background:oklch(0.6 0.13 155 / .14);color:oklch(0.42 0.1 155)}
+.audit-panel{background:#f7f7f8;border-radius:8px;padding:16px;margin:4px 0 12px 28px}
+.audit-prow{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
+.audit-prow .r{margin-left:auto;display:flex;gap:6px;align-items:center}
+.audit-prow.sent{color:oklch(0.42 0.1 155)}
+.audit-hr{height:1px;background:rgb(0 0 0 / .07);margin:14px 0}
+.audit-plbl{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.audit-pbar{height:4px;border-radius:999px;background:rgb(0 0 0 / .08);overflow:hidden}
+.audit-pbar i{display:block;height:100%;background:#0f9d7e;border-radius:inherit}
+.audit-os{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--ink2)}
+.audit-os .d{width:8px;height:8px;border-radius:50%;flex:none}
+.audit-os .d.g{background:oklch(0.6 0.13 155)}
+.audit-os .d.a{background:oklch(0.7 0.14 70)}
+.audit-os .d.n{background:oklch(0.75 0.005 285)}
+.audit-acts{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.audit-acts li{display:flex;align-items:center;gap:8px;min-height:28px;font-size:13px;color:var(--ink2)}
+.audit-acts .t{margin-left:auto;color:var(--muted);font-size:12px;white-space:nowrap}
+.audit-acts .dot6{width:6px;height:6px;border-radius:50%;background:oklch(0.7 0.006 285)}
+.audit-mrow{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.audit-chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fff;border:1px solid var(--line);color:var(--ink2)}
+.audit-chip.red{background:oklch(0.6 0.19 25 / .1);border-color:transparent;color:oklch(0.48 0.17 25)}
+.audit-th{width:40px;height:40px;border-radius:4px;object-fit:cover;background:var(--panel);border:0;padding:0}
+.audit-empty{font-size:13px;color:var(--muted)}
+.audit-modal-scrim{position:fixed;inset:0;z-index:80;background:rgb(20 20 25 / .22);display:flex;align-items:flex-start;justify-content:center;padding-top:12vh}
+.audit-modal{background:#fff;border:1px solid var(--line);box-shadow:0 24px 60px rgb(0 0 0 / .18);border-radius:18px;padding:22px;width:min(480px,92vw)}
+.audit-modal h2{margin:0;font-size:18px;font-weight:700;color:var(--ink)}
+.audit-modal .lede{font-size:14px;margin:4px 0 14px;color:var(--muted)}
+.audit-res{list-style:none;margin:10px 0 0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:280px;overflow-y:auto}
+.audit-res li{display:flex;align-items:center;gap:12px;min-height:56px;padding:0 10px 0 14px}
+.audit-res li+li{border-top:1px solid var(--line-2)}
+.audit-res b{display:block;font-size:14px;color:var(--ink)}
+.audit-res small{font-size:12px;color:var(--muted)}
+.audit-res .btn{margin-left:auto}
+`;
+
+export const ONBOARDING_CSS = ONBOARDING_CSS_BASE + WA_WELCOME_CSS + AUDIT_CSS;
 
 export function mountOnboarding(root, host) {
 'use strict';
@@ -349,6 +399,7 @@ function applyHostData(data){
         buildingNotes: u.buildingNotes||''
       },
       cleanerPropertyId: u.cleanerPropertyId||'',
+      portalLinkSentAt: u.portalLinkSentAt || null,
       docs,
       history,
       skipped,
@@ -604,7 +655,8 @@ let units = [];
 
 let events = [];
 let evId = 20;
-const ui = { histAll:new Set(), f:{stage:'',who:'',plan:'',attn:false,q:''}, addTask:{}, tab:{}, skipAsk:{}, archiveAsk:null, hoEdit:new Set(), rweek:0, rday:(TODAY.getDay()+6)%7, changes:new Set(), nav:'onboarding', view:'pipe', open:new Set(), week:0, mday:(TODAY.getDay()+6)%7, upDone:{}, busy:new Set() };
+const ui = { histAll:new Set(), f:{stage:'',who:'',plan:'',attn:false,q:''}, addTask:{}, tab:{}, skipAsk:{}, archiveAsk:null, hoEdit:new Set(), rweek:0, rday:(TODAY.getDay()+6)%7, changes:new Set(), nav:'onboarding', view:'pipe', open:new Set(), week:0, mday:(TODAY.getDay()+6)%7, upDone:{}, busy:new Set(), auditExp:{}, intakeLive:{}, stravoModal:null };
+let auditPollTimer = null;
 
 /* =========================================================
    Helpers
@@ -925,7 +977,7 @@ function stageTasks(u, sid){
 }
 function stageTabs(u, sel){
   const act=getActiveStages(u), cur=STAGES[u.stage].id, curPos=act.indexOf(cur), live=u.status.k==='done';
-  return `<div class="stabs" role="tablist" aria-label="Stages"><button class="stab ho ${sel==='handoff'?'sel':''}" role="tab" aria-selected="${sel==='handoff'}" data-act="tab" data-id="${u.id}" data-s="handoff" style="--sc:var(--ink)">${ic('clip','sm')}Handoff</button><button class="stab ho ${sel==='intake'?'sel':''}" role="tab" aria-selected="${sel==='intake'}" data-act="tab" data-id="${u.id}" data-s="intake" style="--sc:oklch(0.55 0.11 175)">${ic('pulse','sm')}Intake progress</button>${act.map((id,pos)=>{
+  return `<div class="stabs" role="tablist" aria-label="Stages"><button class="stab ho ${sel==='handoff'?'sel':''}" role="tab" aria-selected="${sel==='handoff'}" data-act="tab" data-id="${u.id}" data-s="handoff" style="--sc:var(--ink)">${ic('clip','sm')}Handoff</button>${act.map((id,pos)=>{
     const st=STAGES[SIDX[id]];
     let state = pos<curPos || (live && id===cur) ? 'past' : id===cur ? 'cur' : 'future';
     let mark = state==='past' ? ' ✓' : state==='cur' ? ' →' : '';
@@ -933,16 +985,147 @@ function stageTabs(u, sel){
     return `<button class="stab ${state} ${id===sel?'sel':''}" role="tab" aria-selected="${id===sel}" data-act="tab" data-id="${u.id}" data-s="${id}" style="--sc:${st.c}"><i class="d"></i>${st.name}${mark}</button>`;
   }).join('')}</div>`;
 }
-function intakeHTML(u){
-  return `<div class="dwrap" data-detail="${u.id}">
-    <div class="dhead"><h4>Intake progress<span class="meta">Live checklist from the Stravo portal</span></h4></div>
-    <div class="dbody">
-      ${phasesHTML(u)}
-      ${factsRow(u)}
-      ${stageTabs(u,'intake')}
-      <div class="intake-mount" data-intake-unit="${esc(u.id)}" data-cleaner-id="${esc(u.cleanerPropertyId||'')}" data-addr="${esc(u.addr||'')}"></div>
-    </div>
+function auditAgo(at){
+  if(!at) return '';
+  const ms=Date.parse(at); if(!Number.isFinite(ms)) return '';
+  const s=Math.max(0,Math.round((Date.now()-ms)/1000));
+  if(s<45) return 'just now';
+  const m=Math.round(s/60); if(m<60) return `${m} min ago`;
+  const h=Math.floor(m/60); return `${h}h ${m%60}m ago`;
+}
+function isAuditChecklistTask(t){ return /Onboarder completes audit/i.test(t.name||''); }
+function stravoLinkHTML(u){
+  const linked=!!(u.cleanerPropertyId||'').trim();
+  if(!linked){
+    return `<div class="audit-nl"><div><b>⚠ Not linked to Stravo portal</b><p>Link this unit to connect the onboarder checklist.</p><button type="button" class="btn sm amber" data-act="stravoOpen" data-id="${u.id}">Link to Stravo →</button></div></div>`;
+  }
+  return `<div class="audit-ln"><span class="dot8" aria-hidden="true"></span><b>Linked to Stravo</b><button type="button" class="mlink" data-act="stravoOpen" data-id="${u.id}">Change</button></div>`;
+}
+function auditPanelHTML(u, live){
+  const linked=!!(u.cleanerPropertyId||'').trim();
+  const first=whoName(u.assignee).split(/\s+/)[0]||'onboarder';
+  const sent=u.portalLinkSentAt;
+  let sendRow;
+  if(sent){
+    sendRow=`<div class="audit-prow sent"><span>✓ <b>Portal link sent</b> · ${esc(auditAgo(sent)||relTime(sent))}</span><span class="r"><button type="button" class="btn sm ghost" data-act="auditSendPortal" data-id="${u.id}">Resend →</button></span></div>`;
+  } else {
+    sendRow=`<div class="audit-prow"><span>Send ${esc(first)} their portal link</span><span class="r"><button type="button" class="btn sm primary" data-act="auditSendPortal" data-id="${u.id}">Send ${esc(first)} their portal link →</button></span></div>`;
+  }
+  if(!linked){
+    return `<div class="audit-panel">${sendRow}<div class="audit-hr"></div><div class="audit-empty">Link to Stravo first. Live progress shows here once the onboarder starts.</div></div>`;
+  }
+  const answered=live?.answeredItems??0, total=live?.totalItems??140, pct=Math.min(100, Math.round((answered/total)*100));
+  const name=live?.answeredBy||whoName(u.assignee)||'Onboarder';
+  let status;
+  if(answered>=total) status=`<span class="d g"></span><b>${esc(name)}</b> · Finished the checklist`;
+  else if(live?.isActive) status=`<span class="d g"></span><b>${esc(name)}</b> · Active now`;
+  else if(answered>0 || live?.lastActivity) status=`<span class="d a"></span><b>${esc(name)}</b> · No activity ${live?.idleMinutes!=null?`${live.idleMinutes}m`:'—'}`;
+  else status=`<span class="d n"></span>Not started yet`;
+  const rows=(live?.recentActivity||[]).slice(0,3).map(r=>{
+    if(r.kind==='flag') return `<li><span aria-hidden="true">🚩</span><span>${esc(r.label)}</span><span class="mut">(flagged)</span><span class="t">${esc(auditAgo(r.answeredAt))}</span></li>`;
+    return `<li><span class="dot6"></span><span>${esc(r.label)}</span><span class="mut">→</span><b>${esc(r.answerValue||'—')}</b><span class="t">${esc(auditAgo(r.answeredAt))}</span></li>`;
+  }).join('');
+  const photos=live?.photos||[];
+  const flags=live?.flags||[];
+  const photoChip=photos.length?`<div class="audit-mrow"><span class="audit-chip">📷 ${live.photoCount??photos.length} photos</span>${photos.slice(0,3).map(p=>`<img class="audit-th" src="${esc(p.url)}" alt="">`).join('')}</div>`:'';
+  const flagChip=flags.length?`<div class="audit-mrow"><span class="audit-chip red">🚩 ${flags.length} flag${flags.length===1?'':'s'}</span><span>${esc(flags[0].name)}${flags[0].note?` · ${esc(flags[0].note)}`:''}</span></div>`:'';
+  return `<div class="audit-panel">${sendRow}<div class="audit-hr"></div>
+    <div class="audit-plbl">Live progress<span><b>${answered} / ${total}</b> · ${pct}%</span></div>
+    <div class="audit-pbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+    <div class="audit-os">${status}</div>
+    ${rows?`<ul class="audit-acts">${rows}</ul><button type="button" class="btn sm ghost" data-act="auditViewAll" data-id="${u.id}" style="margin-top:8px">View all →</button>`:`<div class="audit-empty" style="margin-top:10px">Nothing yet. Answers appear as ${esc(first)} works.</div>`}
+    ${photoChip}${flagChip}
   </div>`;
+}
+function auditTasksHTML(u, list, ro, view){
+  const live=ui.intakeLive[u.id]||null;
+  const answered=live?.answeredItems??0;
+  const complete=answered>=140;
+  const expanded=!!ui.auditExp[u.id];
+  const tasks=list.map((t,i)=>{
+    const auditTask=isAuditChecklistTask(t);
+    const done=auditTask ? (t.done || complete) : t.done;
+    const dueTxt = t.na ? '' : !t.due ? '' : `<span class="tdue ${!done&&diff(t.due)<0?'late':''}">${!done&&diff(t.due)===0?'Today':fmt(t.due)}</span>`;
+    if(auditTask){
+      const chip=complete?`<span class="audit-pc ok">Complete</span>`:`<span class="audit-pc ${answered?'live':''}">${answered} / 140</span>`;
+      return `<li class="${done?'done':''}">
+        <label title="Checks itself at 140 / 140"><input type="checkbox" disabled ${done?'checked':''}><span class="tn">${esc(t.name)}</span></label>
+        ${avatar(t.who,u,'sm')}${dueTxt}${chip}
+        <button type="button" class="audit-exp" data-act="auditToggle" data-id="${u.id}" aria-expanded="${expanded}" aria-label="${expanded?'Collapse':'Expand'} audit progress">${ic('chev','sm')}</button>
+        ${expanded?auditPanelHTML(u, live):''}
+      </li>`;
+    }
+    const ownerTask = t.who==='owner' && !t.done && !t.na;
+    const naBtn = (t.who==='owner' || ro) ? (t.na ? `<span class="nalbl">${t.auto_na?'N/A · tier':'N/A'}</span>` : '')
+      : `<button class="nabtn ${t.na?'on':''}" data-act="taskNA" data-id="${u.id}" data-i="${i}" aria-pressed="${!!t.na}" title="${t.na?'Restore task':'Mark not applicable'}">N/A</button>`;
+    return `
+    <li class="${t.done?'done':''} ${t.na?'na':''} ${ownerTask?'owner':''} ${ro?'ro':''}">
+      ${t.na
+        ? `<div class="ownrow"><span class="nadash" aria-hidden="true">—</span><span class="tn">${esc(t.name)}</span>${t.link?appLink():''}${t.done&&t.doneAt?`<span class="tdone">${esc(whoName(t.doneBy))} · ${relTime(t.doneAt)}</span>`:''}</div>`
+        : ownerTask
+        ? `<div class="ownrow"><i class="dot" style="background:var(--grey)"></i><span class="tn">${esc(t.name)}</span>${t.link?appLink():''}<span class="owntag">Waiting on owner</span></div>`
+        : (ro || AUTO.includes(t.special))
+          ? `<label ${ro?'title="Read-only"':''}><input type="checkbox" disabled ${t.done?'checked':''}><span class="tn">${esc(t.name)}</span>${t.link?appLink():''}${!ro?'<span class="owntag">Auto</span>':''}</label>`
+          : `<label><input type="checkbox" data-act="task" data-id="${u.id}" data-i="${i}" ${t.id?`data-task-id="${t.id}"`:''} ${t.done?'checked':''}><span class="tn">${esc(t.name)}</span>${t.link?appLink():''}${t.done&&t.doneAt?`<span class="tdone">${esc(whoName(t.doneBy))} · ${relTime(t.doneAt)}</span>`:''}</label>`}
+      ${avatar(t.who,u,'sm')}${dueTxt}${naBtn}
+    </li>`;}).join('');
+  return `${stravoLinkHTML(u)}<ul class="tasks">${tasks}</ul>`;
+}
+function stravoModalHTML(){
+  const m=ui.stravoModal; if(!m) return '';
+  const rows=(m.results||[]).map(p=>`<li><div><b>${esc(p.name)}</b><small>${esc(p.address||'portal.stravo.ai')}</small></div><button type="button" class="btn sm" data-act="stravoLink" data-id="${esc(m.unitId)}" data-pid="${esc(p.id)}">Link →</button></li>`).join('');
+  return `<div class="audit-modal-scrim" data-act="stravoClose"><div class="audit-modal" role="dialog" aria-modal="true" aria-labelledby="stravoTitle" data-stop>
+    <h2 id="stravoTitle">Link to Stravo</h2>
+    <p class="lede">Search for the matching property in the Stravo portal.</p>
+    <input class="input" data-k="stravoQ" data-id="${esc(m.unitId)}" value="${esc(m.q||'')}" placeholder="Search Stravo properties" aria-label="Search Stravo properties" autocomplete="off">
+    <ul class="audit-res">${m.loading?`<li class="none" style="justify-content:center;color:var(--muted)">Searching…</li>`: rows || `<li style="justify-content:center;color:var(--muted)">No Stravo properties match</li>`}</ul>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button type="button" class="btn ghost" data-act="stravoClose">Cancel</button></div>
+  </div></div>`;
+}
+function stopAuditPoll(){ if(auditPollTimer){ clearInterval(auditPollTimer); auditPollTimer=null; } }
+function ensureAuditPoll(){
+  stopAuditPoll();
+  const openId=Object.keys(ui.auditExp).find(id=>ui.auditExp[id]);
+  if(!openId) return;
+  let n=0;
+  const tick=()=>{
+    if(document.visibilityState!=='visible') return;
+    const u=unitById(openId); if(!u || !ui.auditExp[openId]){ stopAuditPoll(); return; }
+    n+=1;
+    // Stream every 10s; full payload every 60s.
+    loadAuditIntake(openId, n%6!==0);
+  };
+  auditPollTimer=setInterval(tick, 10000);
+}
+function loadAuditIntake(unitId, streamOnly){
+  const u=unitById(unitId); if(!u) return Promise.resolve();
+  if(!(u.cleanerPropertyId||'').trim()){ ui.intakeLive[unitId]=null; renderPipeline(); return Promise.resolve(); }
+  const get = host.get || ((q)=>fetch('/api/admin/pm?'+new URLSearchParams({resource:'onboarding',...q}),{credentials:'include'}).then(r=>r.json()));
+  const q = streamOnly
+    ? { op:'intake_progress', unitId, stream:'1' }
+    : { op:'intake_progress', unitId };
+  return get(q).then(data=>{
+    if(streamOnly){
+      const prev=ui.intakeLive[unitId]||{};
+      ui.intakeLive[unitId]={
+        ...prev,
+        answeredItems: data.answeredItems ?? prev.answeredItems ?? 0,
+        isActive: !!data.isActive,
+        lastActivity: data.lastActivityAt ?? prev.lastActivity ?? null,
+        totalItems: prev.totalItems || 140,
+        progress: Math.min(100, Math.round(((data.answeredItems ?? 0)/140)*100)),
+      };
+    } else {
+      ui.intakeLive[unitId]=data;
+    }
+    const live=ui.intakeLive[unitId];
+    const auditTask=(u.tasks||[]).find(isAuditChecklistTask);
+    if(live && live.answeredItems>=140 && auditTask && !auditTask.done && auditTask.id){
+      act('toggle_task', { id: auditTask.id, done: true, done_by: 'System' });
+      return;
+    }
+    renderPipeline();
+  }).catch(err=>{ if(host.onError) host.onError(err); });
 }
 function skipUI(u, sid, isNA){
   if(isNA || sid==='live' || u.status.k==='done') return '';
@@ -1081,7 +1264,7 @@ function handoffHTML(u){
 }
 function detailHTML(u){
   if(ui.tab[u.id]==='handoff') return handoffHTML(u);
-  if(ui.tab[u.id]==='intake') return intakeHTML(u);
+  if(ui.tab[u.id]==='intake'){ ui.tab[u.id]=STAGES[u.stage].id; }
   const s = STAGES[u.stage];
   const act = getActiveStages(u);
   const selId = (ui.tab[u.id] && act.includes(ui.tab[u.id])) ? ui.tab[u.id] : s.id;
@@ -1173,6 +1356,11 @@ function detailHTML(u){
   const cleaner = !ro && u.tasks.some(t=>t.special==='cleaner') ? `
     <div class="inline-field"><label for="cl${u.id}">Cleaner</label><input class="input" style="flex:1" id="cl${u.id}" data-k="cleaner" data-id="${u.id}" value="${esc(u.cleaner)}" placeholder="Type the cleaner’s name"></div>` : '';
   const snotes = u.notes.filter(n=>n.stage===selId);
+  const leftTasks = isNA
+    ? `<div class="skipbox"><b>Skipped — not applicable</b><span class="meta">This stage was marked as not needed for this unit.</span><button class="btn sm ghost" data-act="unskip" data-id="${u.id}" data-s="${selId}">Undo skip</button></div>`
+    : selId==='audit'
+      ? `${auditTasksHTML(u, list, ro, view)}${addRow?`<ul class="tasks">${addRow}</ul>`:''}`
+      : `<ul class="tasks">${tasks}${addRow}</ul>${cleaner}`;
   return `<div class="dwrap" data-detail="${u.id}">
     ${head}
     <div class="dbody">
@@ -1181,8 +1369,7 @@ function detailHTML(u){
       ${whatsappWelcomeHTML(u)}
       ${stageTabs(u, selId)}
       <div class="dgrid">
-        <div>${isNA ? `<div class="skipbox"><b>Skipped — not applicable</b><span class="meta">This stage was marked as not needed for this unit.</span><button class="btn sm ghost" data-act="unskip" data-id="${u.id}" data-s="${selId}">Undo skip</button></div>`
-                    : `<ul class="tasks">${tasks}${addRow}</ul>${cleaner}`}${skipUI(u, selId, isNA)}${advance}</div>
+        <div>${leftTasks}${skipUI(u, selId, isNA)}${advance}</div>
         <div class="facts"><dl>
           <dt>Owner</dt><dd>${esc(u.owner)}</dd>
           ${u.phone?`<dt>Phone</dt><dd>${esc(u.phone)}</dd>`:''}
@@ -1281,6 +1468,8 @@ function renderPipeline(){
       ${open?detailHTML(u):''}
     </article>`;
   }).join('').replace(/name="(ho\w+)"/g,'name="m-$1"');
+  const oldModal=root.querySelector('.audit-modal-scrim'); if(oldModal) oldModal.remove();
+  if(ui.stravoModal) root.insertAdjacentHTML('beforeend', stravoModalHTML());
 }
 function toggleRow(id){ ui.open.has(id)?ui.open.delete(id):ui.open.add(id); renderPipeline(); }
 
@@ -1378,8 +1567,59 @@ root.addEventListener('click', e=>{
         }, 400);
         return;
       }
-      case 'tab': ui.tab[id]=a.dataset.s; delete ui.skipAsk[id]; renderPipeline();
+      case 'tab': {
+        const next=a.dataset.s;
+        if(next==='intake'){ ui.tab[id]='audit'; }
+        else ui.tab[id]=next;
+        delete ui.skipAsk[id];
+        if(ui.tab[id]!=='audit'){ delete ui.auditExp[id]; stopAuditPoll(); }
+        renderPipeline();
         root.querySelector(`[data-detail="${id}"] .stab.sel`)?.scrollIntoView({block:'nearest',inline:'nearest'}); return;
+      }
+      case 'auditToggle': {
+        ui.auditExp[id]=!ui.auditExp[id];
+        if(ui.auditExp[id]){
+          loadAuditIntake(id, true);
+          loadAuditIntake(id, false);
+          ensureAuditPoll();
+        } else { stopAuditPoll(); renderPipeline(); }
+        return;
+      }
+      case 'auditSendPortal': {
+        const name=whoName(u.assignee);
+        act('send_portal_link', { unit_id: u.id, unitId: u.id, onboarderName: name, display_name: name }).then((res)=>{
+          u.portalLinkSentAt = (res && res.portal_link_sent_at) || new Date().toISOString();
+          toast(res && res.email_sent===false ? (res.email_error || 'Invite created; email failed') : 'Portal link sent');
+          renderPipeline();
+        });
+        return;
+      }
+      case 'auditViewAll': {
+        ui.auditExp[id]=true;
+        loadAuditIntake(id);
+        toast('Showing latest intake activity');
+        return;
+      }
+      case 'stravoOpen': {
+        ui.stravoModal={ unitId:id, q:'', results:[], loading:false };
+        renderPipeline();
+        root.querySelector('[data-k=stravoQ]')?.focus();
+        return;
+      }
+      case 'stravoClose':
+        if(a.classList.contains('audit-modal-scrim') && e.target!==a) return;
+        ui.stravoModal=null; renderPipeline(); return;
+      case 'stravoLink': {
+        const pid=a.dataset.pid;
+        act('link_stravo_property', { unit_id: id, unitId: id, cleanerPropertyId: pid }).then(()=>{
+          u.cleanerPropertyId=pid;
+          ui.stravoModal=null;
+          toast('Linked to Stravo');
+          if(ui.auditExp[id]) loadAuditIntake(id);
+          else renderPipeline();
+        });
+        return;
+      }
       case 'addTaskOpen': ui.addTask[id]=a.dataset.s; renderPipeline();
         root.querySelector(`[data-detail="${id}"] [data-k=atName]`)?.focus(); return;
       case 'addTaskCancel': delete ui.addTask[id]; renderPipeline(); return;
@@ -1595,9 +1835,28 @@ root.addEventListener('keydown', e=>{
     const n=root.querySelector(`[data-k=note][data-id="${u.id}"]`); if(n) n.focus();
   }
 });
+let stravoSearchTimer=null;
 root.addEventListener('input', e=>{
   const t=e.target;
   if(t.dataset && t.dataset.filter==='q'){ ui.f.q = t.value; renderPipeline(); return; }
+  if(t.dataset && t.dataset.k==='stravoQ' && ui.stravoModal){
+    ui.stravoModal.q=t.value;
+    clearTimeout(stravoSearchTimer);
+    const q=t.value.trim();
+    if(q.length<2){ ui.stravoModal.results=[]; ui.stravoModal.loading=false; renderAll(); return; }
+    ui.stravoModal.loading=true;
+    renderAll();
+    const get = host.get || ((params)=>fetch('/api/admin/pm?'+new URLSearchParams({resource:'onboarding',...params}),{credentials:'include'}).then(r=>r.json()));
+    stravoSearchTimer=setTimeout(()=>{
+      get({ op:'search_stravo_properties', q }).then(data=>{
+        if(!ui.stravoModal || ui.stravoModal.q.trim()!==q) return;
+        ui.stravoModal.results=(data && data.properties) || [];
+        ui.stravoModal.loading=false;
+        renderAll();
+        const inp=root.querySelector('[data-k=stravoQ]'); if(inp){ inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+      }).catch(err=>{ if(ui.stravoModal){ ui.stravoModal.loading=false; renderAll(); } if(host.onError) host.onError(err); });
+    }, 250);
+  }
 });
 root.addEventListener('change', e=>{
   const t=e.target;
@@ -2283,20 +2542,9 @@ $('#pdfScrim').addEventListener('mousedown',e=>{ if(e.target.id==='pdfScrim') cl
 /* =========================================================
    Boot
    ========================================================= */
-function syncIntakeMounts(){
-  if(!host.mountIntake) return;
-  root.querySelectorAll('.intake-mount').forEach((el)=>{
-    host.mountIntake(el, {
-      unitId: el.getAttribute('data-intake-unit') || '',
-      cleanerPropertyId: el.getAttribute('data-cleaner-id') || '',
-      address: el.getAttribute('data-addr') || '',
-    });
-  });
-}
 function renderAll(){
   const run = (fn) => { try { fn(); } catch (err) { console.error(err); if(host.onError) host.onError(err); } };
   run(renderStats); run(renderPipeline); run(renderSchedule); run(renderUpNext); run(renderMiniWeek); run(renderTeamToday);
-  run(syncIntakeMounts);
 }
 root.querySelectorAll('.kbdk').forEach(k=>k.textContent = isMac ? '⌘K' : 'Ctrl K');
 $('#meAv').style.background = TEAM.admin.color;
@@ -2379,7 +2627,7 @@ if(host.open){
     document.removeEventListener('keydown', onCmdK);
     window.removeEventListener('resize', onWinResize);
     window.removeEventListener('scroll', onWinScroll, true);
-    if(host.unmountIntake) try { host.unmountIntake(); } catch(_){}
+    stopAuditPoll();
     root.innerHTML = "";
   } };
 }
