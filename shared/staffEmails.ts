@@ -34,21 +34,24 @@ export async function sendStaffInviteEmail(input: {
     inviteUrl: portalWithCode,
   });
 
+  const roleLabel = input.role?.trim() || "Team member";
   const text = [
     `Welcome to the MRG team, ${input.firstName}`,
     "",
     "This is your MRG team portal to view your tasks and log your hours.",
+    "",
+    `Role: ${roleLabel}`,
+    `Email: ${input.to}`,
     "",
     "Your temporary sign-in code:",
     "",
     `    ${code}`,
     "",
     `Portal: ${portal}`,
-    `Email: ${input.to}`,
     "",
     `Open portal (code ready): ${portalWithCode}`,
     "",
-    `Questions? Reply to this email (${replyTo}).`,
+    "Questions? Contact Shane.",
     "— Mandel Realty Group",
   ].join("\n");
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminRoute } from "../../../lib/adminRoute";
 import type { AdminProductMode } from "../../clients/mode";
+import type { StaffType } from "../../../../shared/pm/teamStore";
 import { pmGet, pmPost, type TaskRow } from "../../clients/api";
 import "../clients/clientsDesign.css";
 import { HubShell } from "../clients/HubShell";
@@ -34,7 +35,7 @@ export type TeamHubAppProps = {
   embedded?: boolean;
 };
 
-type InviteState = null | { name: string; prefilled: boolean };
+type InviteState = null | { name: string; prefilled: boolean; staffType?: StaffType | "" };
 
 type ConfirmState =
   | null
@@ -225,16 +226,17 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
     return c;
   };
 
-  const sendInvite = async (email: string, displayName: string) => {
+  const sendInvite = async (email: string, displayName: string, staffType: string) => {
     setBusy(true);
     try {
       const data = await pmPost<InvitePayload>("staff_invite", {
         op: "send",
         email,
         display_name: displayName,
+        staff_type: staffType,
       });
       setInvite(null);
-      await Promise.all([loadList(), loadRoster()]);
+      await Promise.all([loadList(), loadRoster(), loadPartners()]);
       const code = await copyCode(data.temp_password);
       if (data.email_sent) {
         setToast(code ? `Invite sent. Code ${code} (copied) · ${data.team_url}` : `Invite sent · ${data.team_url}`);
@@ -257,11 +259,17 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
   const resendInvite = async (u: StaffRow) => {
     setBusy(true);
     try {
+      const rosterType =
+        roster.find((r) => sameName(r.name, u.display_name))?.staff_type || "";
+      if (!rosterType) {
+        throw new Error("Set their Staff type first, then resend the invite.");
+      }
       const data = await pmPost<Omit<InvitePayload, "staff_user">>("staff_invite", {
         op: "send",
         email: u.email,
         display_name: u.display_name,
         slug: u.slug,
+        staff_type: rosterType,
       });
       await loadList();
       const code = await copyCode(data.temp_password);
@@ -397,7 +405,11 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
       onInvite={() => setInvite({ name: "", prefilled: false })}
       onOpen={(u) => onSelect(u.id)}
       onSetType={(name, type) => void setType(name, type)}
-      onSendLogin={(name) => setInvite({ name, prefilled: true })}
+      onSendLogin={(name) => {
+        const row = roster.find((r) => sameName(r.name, name));
+        const t = (row?.staff_type || "") as StaffType | "";
+        setInvite({ name, prefilled: true, staffType: t });
+      }}
       onRemove={(row) => {
         void (async () => {
           let units = 0;
@@ -493,9 +505,10 @@ export function TeamHubApp({ route, setRoute, onModeChange, embedded = false }: 
           phone={phone}
           busy={busy}
           initialName={invite.name}
+          initialStaffType={invite.staffType || ""}
           prefilled={invite.prefilled}
           onClose={() => setInvite(null)}
-          onSend={(email, name) => void sendInvite(email, name)}
+          onSend={(email, name, staffType) => void sendInvite(email, name, staffType)}
         />
       ) : null}
       {confirmEl}

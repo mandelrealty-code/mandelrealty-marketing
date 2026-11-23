@@ -1784,14 +1784,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (op === "send") {
           const email = str(body.email);
           const displayName = str(body.display_name) || str(body.name);
+          const staffTypeRaw = str(body.staff_type) || str(body.role);
           if (!email) return res.status(400).json({ error: "email required." });
           if (!displayName) {
             return res.status(400).json({ error: "display_name required." });
+          }
+          const ROLE_EMAIL: Record<string, string> = {
+            booker: "Booker",
+            va: "VA — Back Office",
+            onboarder: "Onboarder",
+            operations: "Operations",
+            partner: "Partner",
+          };
+          const staffType = staffTypeRaw.toLowerCase();
+          if (!ROLE_EMAIL[staffType]) {
+            return res.status(400).json({
+              error: "staff_type required (booker, va, onboarder, operations, or partner).",
+            });
           }
           const invited = await createOrRefreshStaffInvite({
             email,
             displayName,
             slug: str(body.slug) || undefined,
+          });
+          // Roster role — so bootstrap staff_type matches and the portal opens correctly
+          await setPmTeamMemberType({
+            name: invited.user.display_name,
+            staff_type: staffType,
           });
           const mail = await sendStaffInviteEmail({
             to: email,
@@ -1799,11 +1818,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             slug: invited.user.slug,
             tempPassword: invited.tempPassword,
             displayName: invited.user.display_name,
+            role: ROLE_EMAIL[staffType],
           });
           return res.status(200).json({
             ok: true,
             created: invited.created,
             staff_user: publicStaffUser(invited.user),
+            staff_type: staffType,
             team_url: teamPortalUrl(invited.user.slug),
             temp_password: invited.tempPassword,
             email_sent: mail.ok,

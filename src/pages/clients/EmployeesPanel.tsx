@@ -160,6 +160,7 @@ export function EmployeesPanel({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [inviteRole, setInviteRole] = useState("");
 
   const loadList = useCallback(async () => {
     const [staff, hours] = await Promise.all([
@@ -242,10 +243,12 @@ export function EmployeesPanel({
         op: "send",
         email: email.trim(),
         display_name: displayName.trim(),
+        staff_type: inviteRole,
       });
       setInviteOpen(false);
       setEmail("");
       setDisplayName("");
+      setInviteRole("");
       await loadList();
       const code = data.temp_password?.trim();
       if (code) {
@@ -279,6 +282,14 @@ export function EmployeesPanel({
   const resendInvite = async (u: StaffRow) => {
     setBusy(true);
     try {
+      const roster = await pmGet<{ members?: { name: string; staff_type: string }[] }>("team_members");
+      const type =
+        (roster.members ?? []).find(
+          (m) => m.name.trim().toLowerCase() === u.display_name.trim().toLowerCase(),
+        )?.staff_type || "";
+      if (!type) {
+        throw new Error("Set their Staff type first, then resend the invite.");
+      }
       const data = await pmPost<{
         team_url: string;
         temp_password?: string;
@@ -289,6 +300,7 @@ export function EmployeesPanel({
         email: u.email,
         display_name: u.display_name,
         slug: u.slug,
+        staff_type: type,
       });
       await loadList();
       const code = data.temp_password?.trim();
@@ -370,12 +382,30 @@ export function EmployeesPanel({
               className="rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2.5 text-[15px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
             />
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6f6a65]">
+              Role
+            </span>
+            <select
+              aria-label="Role"
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              className="rounded-lg border border-white/10 bg-[#1c1c1c] px-3 py-2.5 text-[15px] text-[#f5f5f5] outline-none focus:border-[#c4a35a]/55"
+            >
+              <option value="">Select a role</option>
+              <option value="booker">Booker</option>
+              <option value="va">VA (Back Office)</option>
+              <option value="onboarder">Onboarder</option>
+              <option value="operations">Operations</option>
+              <option value="partner">Partner (roster-only, no login)</option>
+            </select>
+          </label>
           <button
             type="button"
-            disabled={busy || !email.trim() || !displayName.trim()}
+            disabled={busy || !email.trim() || !displayName.trim() || !inviteRole}
             onClick={() => void sendInvite()}
             className={`w-full py-3.5 text-[15px] font-bold ${
-              busy || !email.trim() || !displayName.trim()
+              busy || !email.trim() || !displayName.trim() || !inviteRole
                 ? "cursor-not-allowed bg-[#c4a35a]/25 text-[#6f6a65]"
                 : "bg-[#c4a35a] text-[#0a0a0a] hover:bg-[#dcc084]"
             }`}
