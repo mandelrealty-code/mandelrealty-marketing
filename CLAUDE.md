@@ -48,6 +48,18 @@ The **Hospitable property ID** is the shared join key across all apps (cleaner a
 The cleaner app Supabase project ID: `hyndmdjvjlsbthlqrxge`  
 The cleaner app URL: `https://portal.stravo.ai`
 
+### Vercel env (cleaner bridge)
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `CLEANER_HUB_SYNC_KEY` | Vercel Production + Preview | Shared secret for `ops-hub-sync` and `/api/webhooks/ops-hub` |
+| `CLEANER_HUB_SYNC_URL` | optional | Override ops-hub-sync URL |
+| `CLEANER_HUB_ANON_KEY` | optional | Gateway JWT when edge function has `verify_jwt` |
+| `CLEANER_SUPABASE_SERVICE_KEY` | Vercel Production + Preview | **Service role key for hyndmdjvjlsbthlqrxge.** Used only for Intake progress (read `onboarding_item_answers` / assignments / profiles). Never expose to the client. |
+| `CLEANER_INTAKE_STORAGE_BUCKET` | optional | Bucket for signing relative intake photo paths (default `onboarding-media`) |
+
+Also set `CLEANER_SUPABASE_SERVICE_KEY=` in `.env.local` for local admin. Admin never writes to the cleaner DB — flag acknowledgements stay in admin `dashboard_actions`.
+
 ---
 
 ## Design rules — non-negotiable
@@ -207,5 +219,7 @@ shared/opsNav.ts                 — OPS_NAV tab definitions
 shared/pm/cleanerHubSync.ts      — calls to ops-hub-sync
 shared/adminApi/opsHubWebhook.ts — handles POST /api/webhooks/ops-hub
 supabase/onboarding_v1.sql       — schema (NOT YET RUN)
+supabase/intake_progress_v1.sql  — docs only (cleaner DB tables; do not run on admin)
+src/pages/onboarding/IntakeProgress.tsx — Intake progress tab UI
 mrg-hub_5.html                   — approved design spec (read this)
 ```

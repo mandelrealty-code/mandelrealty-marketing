@@ -26,6 +26,11 @@ import {
   upsertHandoff as upsertOnboardingHandoff,
   type HandoffRow,
 } from "../pm/onboardingStore.js";
+import {
+  acknowledgeIntakeFlag,
+  getIntakeProgress,
+  getIntakeProgressStream,
+} from "../pm/intakeProgress.js";
 import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
 import {
@@ -580,6 +585,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ tasks });
       }
       if (resource === "onboarding") {
+        const op =
+          typeof req.query.op === "string" ? req.query.op.trim() : "";
+        if (op === "intake_progress") {
+          const unitId =
+            typeof req.query.unitId === "string"
+              ? req.query.unitId.trim()
+              : typeof req.query.unit_id === "string"
+                ? req.query.unit_id.trim()
+                : "";
+          if (!unitId) return res.status(400).json({ error: "unitId required." });
+          const stream =
+            req.query.stream === "1" ||
+            req.query.stream === "true";
+          if (stream) {
+            return res.status(200).json(await getIntakeProgressStream(unitId));
+          }
+          return res.status(200).json(await getIntakeProgress(unitId));
+        }
         return res.status(200).json(await onboardingSnapshot(torontoToday()));
       }
       if (resource === "team_members") {
@@ -1698,6 +1721,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             "str_permit_status",
             "contract_status",
             "hospitable_property_id",
+            "cleaner_property_id",
             "airbnb_url",
             "deliver_to",
             "owner_phone",
@@ -1720,6 +1744,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (body[k] !== undefined) patch[k] = body[k];
           }
           if (Object.keys(patch).length) await updateOnboardingUnitFields(unit, patch);
+          return res.status(200).json({ ok: true });
+        }
+        if (op === "ack_intake_flag") {
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          const flagId = str(body.flag_id) || str(body.flagId);
+          if (!flagId) return res.status(400).json({ error: "flag_id required." });
+          await acknowledgeIntakeFlag(unit, flagId);
           return res.status(200).json({ ok: true });
         }
         if (op === "add_note") {

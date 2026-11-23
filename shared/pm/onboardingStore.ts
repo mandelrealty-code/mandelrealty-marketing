@@ -165,6 +165,8 @@ export type OnboardingUnitView = {
   strPermitStatus: string;
   contractStatus: string;
   hospitablePropertyId: string;
+  /** Property UUID in the cleaner app (portal.stravo.ai). Required for Intake progress. */
+  cleanerPropertyId: string;
   airbnbUrl: string;
   deliverTo: string;
   ownerPhone: string;
@@ -403,6 +405,7 @@ export async function onboardingSnapshot(today: string): Promise<OnboardingSnaps
       strPermitStatus: str(u.str_permit_status) || "Not required",
       contractStatus: str(u.contract_status) || "signed",
       hospitablePropertyId: str(u.hospitable_property_id),
+      cleanerPropertyId: str(u.cleaner_property_id),
       airbnbUrl: str(u.airbnb_url),
       deliverTo: str(u.deliver_to) || "unit",
       ownerPhone: str(u.owner_phone),

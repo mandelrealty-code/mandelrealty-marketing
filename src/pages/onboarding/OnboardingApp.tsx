@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import { pmGet, pmPost } from "../clients/api";
 import { mountOnboarding, ONBOARDING_CSS } from "./engine";
+import { mountIntakeProgress } from "./IntakeProgress";
 
 /**
  * Onboarding, built from the design file as it was drawn (markup, colours and phone layout), with the units, tasks and
@@ -90,6 +91,7 @@ export default function OnboardingApp({
         const root = document.createElement("div");
         root.className = embedded ? "onb embed" : "onb";
         shadow.append(style, root);
+        const intakeByEl = new Map<Element, () => void>();
         const host = {
           data,
           load,
@@ -108,6 +110,22 @@ export default function OnboardingApp({
               setNote("Address suggestions are not set up yet: GOOGLE_MAPS_API_KEY is missing on the server. You can still type the address.");
             }
             return places.predictions ?? [];
+          },
+          mountIntake: (
+            el: Element,
+            props: { unitId: string; cleanerPropertyId?: string; address?: string },
+          ) => {
+            const handle = mountIntakeProgress(el, {
+              unitId: props.unitId,
+              cleanerPropertyId: props.cleanerPropertyId,
+              address: props.address,
+              onOpenLead: (id) => leadRef.current?.(id),
+            });
+            intakeByEl.set(el, handle.unmount);
+          },
+          unmountIntake: () => {
+            for (const unmount of intakeByEl.values()) unmount();
+            intakeByEl.clear();
           },
         };
         mounted = mountOnboarding(root, host);

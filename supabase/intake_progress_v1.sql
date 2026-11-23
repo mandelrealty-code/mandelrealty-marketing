@@ -1,0 +1,73 @@
+-- =============================================================================
+-- Intake Progress v1 — DOCUMENTATION ONLY. Do not run against the ADMIN DB.
+-- =============================================================================
+-- Intake checklist answers live in the CLEANER app Supabase project
+-- (hyndmdjvjlsbthlqrxge / portal.stravo.ai). The admin hub reads them via
+-- REST (CLEANER_SUPABASE_SERVICE_KEY) from shared/adminApi/pm.ts
+-- (op=intake_progress). No new admin tables are required for reads.
+--
+-- Cleaner DB tables referenced (do NOT create these in admin):
+--   -- onboarding_item_answers (cleaner DB)
+--   -- properties (cleaner DB)
+--   -- onboarder_assignments (cleaner DB)
+--   -- profiles (cleaner DB)
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- CLEANER DB: onboarding_item_answers
+-- One row per checklist item per property. Written by the onboarder portal.
+-- Admin only SELECTs these; never INSERT/UPDATE/DELETE from admin.
+-- -----------------------------------------------------------------------------
+-- create table if not exists public.onboarding_item_answers (
+--   id uuid primary key default gen_random_uuid(),
+--   property_id uuid not null references public.properties (id),
+--   item_id text not null,
+--   section_id text not null,          -- e.g. s1 … s18
+--   status text not null default 'pending',
+--     -- pending | answered | skipped | flagged
+--   answer_type text,                  -- text | number | yes_no | photo | …
+--   answer_value text,
+--   flag_type text,
+--   flag_note text,
+--   flag_photo_url text,
+--   answered_by uuid,
+--   answered_at timestamptz,
+--   -- Optional future: acknowledged_at timestamptz  -- if cleaner owns ack
+--   unique (property_id, item_id)
+-- );
+
+-- -----------------------------------------------------------------------------
+-- CLEANER DB: onboarder_assignments
+-- Who is assigned to run intake at a property.
+-- -----------------------------------------------------------------------------
+-- create table if not exists public.onboarder_assignments (
+--   id uuid primary key default gen_random_uuid(),
+--   property_id uuid not null references public.properties (id),
+--   user_id uuid not null references public.profiles (id),
+--   assigned_at timestamptz default now()
+-- );
+
+-- -----------------------------------------------------------------------------
+-- CLEANER DB: profiles (name lookup for answeredBy)
+-- -----------------------------------------------------------------------------
+-- profiles.id, profiles.first_name, profiles.last_name
+
+-- -----------------------------------------------------------------------------
+-- ADMIN DB (optional, run separately if missing): link unit → cleaner property
+-- Admin onboarding_units need the cleaner property UUID to query answers.
+-- Flag acknowledgements stay in admin (dashboard_actions), never written back
+-- to the cleaner DB.
+-- -----------------------------------------------------------------------------
+-- alter table public.onboarding_units
+--   add column if not exists cleaner_property_id text;
+--
+-- create index if not exists onboarding_units_cleaner_property_idx
+--   on public.onboarding_units (cleaner_property_id)
+--   where cleaner_property_id is not null and cleaner_property_id <> '';
+--
+-- Flag ack storage (admin only):
+--   dashboard_actions.type = 'intake_flag_ack'
+--   dashboard_actions.unit_id = onboarding unit id
+--   dashboard_actions.body = answer key (property_id:item_id or answer id)
+--   dashboard_actions.actioned_at = when acknowledged
+-- =============================================================================

@@ -52,7 +52,8 @@ const ICON = {
   cal:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
   file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
   clipx:'<path d="m20.5 11.5-8.6 8.6a5 5 0 0 1-7-7l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l8-8"/>',
-  step:'<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 12h7"/>'
+  step:'<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 12h7"/>',
+  pulse:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>'
 };
 const ic = (n, cls='') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
 const swapIcon = (a,b,cls='sm') => `<span class="swap"><svg class="i ${cls} a" viewBox="0 0 24 24">${ICON[a]}</svg><svg class="i ${cls} b" viewBox="0 0 24 24">${ICON[b]}</svg></span>`;
@@ -347,6 +348,7 @@ function applyHostData(data){
         bmContact: u.buildingManager||'',
         buildingNotes: u.buildingNotes||''
       },
+      cleanerPropertyId: u.cleanerPropertyId||'',
       docs,
       history,
       skipped,
@@ -923,13 +925,24 @@ function stageTasks(u, sid){
 }
 function stageTabs(u, sel){
   const act=getActiveStages(u), cur=STAGES[u.stage].id, curPos=act.indexOf(cur), live=u.status.k==='done';
-  return `<div class="stabs" role="tablist" aria-label="Stages"><button class="stab ho ${sel==='handoff'?'sel':''}" role="tab" aria-selected="${sel==='handoff'}" data-act="tab" data-id="${u.id}" data-s="handoff" style="--sc:var(--ink)">${ic('clip','sm')}Handoff</button>${act.map((id,pos)=>{
+  return `<div class="stabs" role="tablist" aria-label="Stages"><button class="stab ho ${sel==='handoff'?'sel':''}" role="tab" aria-selected="${sel==='handoff'}" data-act="tab" data-id="${u.id}" data-s="handoff" style="--sc:var(--ink)">${ic('clip','sm')}Handoff</button><button class="stab ho ${sel==='intake'?'sel':''}" role="tab" aria-selected="${sel==='intake'}" data-act="tab" data-id="${u.id}" data-s="intake" style="--sc:oklch(0.55 0.11 175)">${ic('pulse','sm')}Intake progress</button>${act.map((id,pos)=>{
     const st=STAGES[SIDX[id]];
     let state = pos<curPos || (live && id===cur) ? 'past' : id===cur ? 'cur' : 'future';
     let mark = state==='past' ? ' ✓' : state==='cur' ? ' →' : '';
     if(isSkipped(u,id)){ mark = id===cur ? ' · N/A →' : ' · N/A'; state += ' na'; }
     return `<button class="stab ${state} ${id===sel?'sel':''}" role="tab" aria-selected="${id===sel}" data-act="tab" data-id="${u.id}" data-s="${id}" style="--sc:${st.c}"><i class="d"></i>${st.name}${mark}</button>`;
   }).join('')}</div>`;
+}
+function intakeHTML(u){
+  return `<div class="dwrap" data-detail="${u.id}">
+    <div class="dhead"><h4>Intake progress<span class="meta">Live checklist from the Stravo portal</span></h4></div>
+    <div class="dbody">
+      ${phasesHTML(u)}
+      ${factsRow(u)}
+      ${stageTabs(u,'intake')}
+      <div class="intake-mount" data-intake-unit="${esc(u.id)}" data-cleaner-id="${esc(u.cleanerPropertyId||'')}" data-addr="${esc(u.addr||'')}"></div>
+    </div>
+  </div>`;
 }
 function skipUI(u, sid, isNA){
   if(isNA || sid==='live' || u.status.k==='done') return '';
@@ -1068,6 +1081,7 @@ function handoffHTML(u){
 }
 function detailHTML(u){
   if(ui.tab[u.id]==='handoff') return handoffHTML(u);
+  if(ui.tab[u.id]==='intake') return intakeHTML(u);
   const s = STAGES[u.stage];
   const act = getActiveStages(u);
   const selId = (ui.tab[u.id] && act.includes(ui.tab[u.id])) ? ui.tab[u.id] : s.id;
@@ -2269,9 +2283,20 @@ $('#pdfScrim').addEventListener('mousedown',e=>{ if(e.target.id==='pdfScrim') cl
 /* =========================================================
    Boot
    ========================================================= */
+function syncIntakeMounts(){
+  if(!host.mountIntake) return;
+  root.querySelectorAll('.intake-mount').forEach((el)=>{
+    host.mountIntake(el, {
+      unitId: el.getAttribute('data-intake-unit') || '',
+      cleanerPropertyId: el.getAttribute('data-cleaner-id') || '',
+      address: el.getAttribute('data-addr') || '',
+    });
+  });
+}
 function renderAll(){
   const run = (fn) => { try { fn(); } catch (err) { console.error(err); if(host.onError) host.onError(err); } };
   run(renderStats); run(renderPipeline); run(renderSchedule); run(renderUpNext); run(renderMiniWeek); run(renderTeamToday);
+  run(syncIntakeMounts);
 }
 root.querySelectorAll('.kbdk').forEach(k=>k.textContent = isMac ? '⌘K' : 'Ctrl K');
 $('#meAv').style.background = TEAM.admin.color;
@@ -2350,5 +2375,11 @@ if(host.open){
     else if(host.open.startLead){ const l=leadById(host.open.startLead); if(l){ if(l.unitId) goToUnit(l.unitId); else openModal('crm', l); } else toast('That CRM lead was not found'); }
   }catch(err){ if(host.onError) host.onError(err); }
 }
-  return { destroy: function () { document.removeEventListener('keydown', onCmdK); window.removeEventListener('resize', onWinResize); window.removeEventListener('scroll', onWinScroll, true); root.innerHTML = ""; } };
+  return { destroy: function () {
+    document.removeEventListener('keydown', onCmdK);
+    window.removeEventListener('resize', onWinResize);
+    window.removeEventListener('scroll', onWinScroll, true);
+    if(host.unmountIntake) try { host.unmountIntake(); } catch(_){}
+    root.innerHTML = "";
+  } };
 }
