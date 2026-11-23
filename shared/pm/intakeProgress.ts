@@ -6,6 +6,12 @@
 import { getSupabaseAdmin } from "../supabase.js";
 import { createDashboardAction } from "../adminApi/dashboard.js";
 
+function db() {
+  const sb = getSupabaseAdmin();
+  if (!sb) throw new Error("Supabase is not configured.");
+  return sb;
+}
+
 export const INTAKE_TOTAL_ITEMS = 140;
 
 /** Fixed 18 sections from Intake_Progress.html (totals sum to 140). */
@@ -222,7 +228,7 @@ async function signIfNeeded(url: string): Promise<string> {
 }
 
 async function loadAckKeys(unitId: string): Promise<Set<string>> {
-  const sb = getSupabaseAdmin();
+  const sb = db();
   const { data, error } = await sb
     .from("dashboard_actions")
     .select("body")
@@ -282,7 +288,7 @@ export async function getUnitIntakeLink(unitId: string): Promise<{
   leadId: string | null;
   ownerPhone: string | null;
 }> {
-  const sb = getSupabaseAdmin();
+  const sb = db();
   const { data, error } = await sb
     .from("onboarding_units")
     .select("id, address, cleaner_property_id, lead_id, owner_phone")
@@ -530,7 +536,7 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
 export async function acknowledgeIntakeFlag(unitId: string, flagId: string): Promise<void> {
   const key = String(flagId || "").trim();
   if (!unitId || !key) throw new Error("unit_id and flag_id required.");
-  const sb = getSupabaseAdmin();
+  const sb = db();
   const { data: existing } = await sb
     .from("dashboard_actions")
     .select("id")
