@@ -204,13 +204,10 @@ async function cleanerGet<T>(pathAndQuery: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** The room id as the onboarder app saved it ("entry", "bedroom_2"). The old 18-section names no longer apply:
+ *  mapping through them turned "entry" into "s8", so photos lost their room number. */
 function normalizeSectionKey(raw: string): string {
-  const s = String(raw || "").trim().toLowerCase();
-  if (!s) return "";
-  const m = /^s?(\d{1,2})$/.exec(s);
-  if (m) return `s${Number(m[1])}`;
-  const byName = INTAKE_SECTIONS.find((x) => x.name.toLowerCase() === s || x.key === s);
-  return byName?.key || s;
+  return String(raw || "").trim().toLowerCase();
 }
 
 /** The question the onboarder answered. Repeated rooms prefix ids ("bedroom_2_bed_frame"), so strip that first. */
@@ -253,18 +250,32 @@ function valueText(v: unknown): string {
   if (Array.isArray(v)) return v.map(valueText).filter(Boolean).join(", ");
   if (typeof v === "object") {
     const o = v as Record<string, unknown>;
-    const url = typeof o.url === "string" ? o.url : typeof o.path === "string" ? o.path : "";
-    if (url) return url.trim();
-    return [o.brand, o.model, o.serial].filter((x) => typeof x === "string" && x).join(" · ");
+    const label = [o.brand, o.model, o.serial].filter((x) => typeof x === "string" && x).join(" · ");
+    if (label) return label;
+    const n = photoPaths(v).length;
+    if (n > 1) return `${n} photos`;
+    if (n === 1) return "Photo";
+    return "";
   }
   return "";
+}
+
+/** Stored photo paths in an answer: { photos: [{ path, video }] }, or the older single { path, url }. Videos left out. */
+function photoPaths(v: unknown): string[] {
+  if (!v || typeof v !== "object") return [];
+  const o = v as { photos?: { path?: string; video?: boolean }[]; path?: string; url?: string };
+  if (Array.isArray(o.photos)) return o.photos.filter((x) => x && x.path && !x.video).map((x) => String(x.path));
+  const one = (typeof o.path === "string" && o.path) || (typeof o.url === "string" && o.url) || "";
+  return one ? [one] : [];
 }
 
 function photoUrlOf(row: AnswerRow): string | null {
   const flag = (row.flag_photo_url || "").trim();
   if (flag) return flag;
+  const first = photoPaths(row.answer_value)[0];
+  if (first) return first;
   const t = String(row.answer_type || "").toLowerCase();
-  const v = valueText(row.answer_value);
+  const v = typeof row.answer_value === "string" ? row.answer_value.trim() : "";
   if ((t === "photo" || t === "photo_ai") && v) return v;
   if (/^https?:\/\//i.test(v) && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(v)) return v;
   return null;
@@ -277,7 +288,7 @@ async function signIfNeeded(url: string): Promise<string> {
   const key = cleanerServiceKey();
   if (!key) return u;
   const bucket =
-    (process.env.CLEANER_INTAKE_STORAGE_BUCKET || "").trim() || "onboarding-media";
+    (process.env.CLEANER_INTAKE_STORAGE_BUCKET || "").trim() || "audit-media"; // the bucket the onboarder app uploads to
   const path = u.replace(/^\//, "");
   try {
     const res = await fetch(`${CLEANER_REST}/storage/v1/object/sign/${bucket}/${path}`, {
@@ -484,18 +495,23 @@ function buildFromAnswers(
       };
     });
 
+  /* Every photo on every item (an item can have several), plus flag photos; newest first. */
   const photosRaw = answers
-    .filter((r) => ["photo", "photo_ai"].includes(String(r.answer_type || "").toLowerCase()) && isAnswered(r))
+    .filter((r) => isAnswered(r))
     .slice()
     .sort((a, b) => String(b.answered_at || "").localeCompare(String(a.answered_at || "")))
-    .map((r): IntakePhoto => ({
-      itemId: r.item_id,
-      sectionId: normalizeSectionKey(r.section_id),
-      sectionLabel: roomLabel(r.section_id),
-      label: itemLabel(r.item_id),
-      url: photoUrlOf(r) || "",
-      answeredAt: r.answered_at,
-    }))
+    .flatMap((r): IntakePhoto[] => {
+      const paths = [...photoPaths(r.answer_value)];
+      if (r.flag_photo_url) paths.push(r.flag_photo_url);
+      return paths.map((url) => ({
+        itemId: r.item_id,
+        sectionId: normalizeSectionKey(r.section_id),
+        sectionLabel: roomLabel(r.section_id),
+        label: itemLabel(r.item_id),
+        url,
+        answeredAt: r.answered_at,
+      }));
+    })
     .filter((p) => p.url);
 
   const flags = answers

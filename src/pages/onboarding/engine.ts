@@ -29,6 +29,9 @@ const AUDIT_CSS = `
 .audit-pc.live{background:rgb(31 111 107 / .1);color:#1f6f6b}
 .audit-pc.ok{background:oklch(0.6 0.13 155 / .14);color:oklch(0.42 0.1 155)}
 .audit-panel{background:#f7f7f8;border-radius:8px;padding:16px;margin:4px 0 12px 28px}
+.tasks li:has(> .audit-panel){flex-wrap:wrap}
+.tasks li > .audit-panel{flex:0 0 calc(100% - 28px);min-width:0}
+.audit-open{margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .audit-prow{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink2);flex-wrap:wrap}
 .audit-prow .r{margin-left:auto;display:flex;gap:6px;align-items:center}
 .audit-prow.sent{color:oklch(0.42 0.1 155)}
@@ -1017,28 +1020,26 @@ function auditPanelHTML(u, live){
   const answered=live?.answeredItems??0, total=live?.totalItems??0, pct=total>0?Math.min(100, Math.round((answered/total)*100)):0;
   const name=live?.answeredBy||whoName(u.assignee)||'Onboarder';
   let status;
-  if(answered>=total) status=`<span class="d g"></span><b>${esc(name)}</b> · Finished the checklist`;
+  if(total>0 && answered>=total) status=`<span class="d g"></span><b>${esc(name)}</b> · Finished the checklist`;
   else if(live?.isActive) status=`<span class="d g"></span><b>${esc(name)}</b> · Active now`;
   else if(answered>0 || live?.lastActivity) status=`<span class="d a"></span><b>${esc(name)}</b> · No activity ${live?.idleMinutes!=null?`${live.idleMinutes}m`:'—'}`;
   else status=`<span class="d n"></span>Not started yet`;
-  const rows=(live?.recentActivity||[]).slice(0,3).map(r=>{
-    if(r.kind==='flag') return `<li><span aria-hidden="true">🚩</span><span>${esc(r.label)}</span><span class="mut">(flagged)</span><span class="t">${esc(auditAgo(r.answeredAt))}</span></li>`;
-    return `<li><span class="dot6"></span><span>${esc(r.label)}</span><span class="mut">→</span><b>${esc(r.answerValue||'—')}</b><span class="t">${esc(auditAgo(r.answeredAt))}</span></li>`;
-  }).join('');
-  const photos=live?.photos||[];
-  const flags=live?.flags||[];
-  const photoChip=photos.length?`<div class="audit-mrow"><span class="audit-chip">📷 ${live.photoCount??photos.length} photos</span>${photos.slice(0,3).map(p=>`<img class="audit-th" src="${esc(p.url)}" alt="">`).join('')}</div>`:'';
-  const flagChip=flags.length?`<div class="audit-mrow"><span class="audit-chip red">🚩 ${flags.length} flag${flags.length===1?'':'s'}</span><span>${esc(flags[0].name)}${flags[0].note?` · ${esc(flags[0].note)}`:''}</span></div>`:'';
+  const flags=(live?.flags||[]).filter(f=>!f.acknowledged);
+  const flagChip=flags.length?`<span class="audit-chip red">${flags.length} flag${flags.length===1?'':'s'} to review</span>`:'<span></span>';
   return `<div class="audit-panel">${sendRow}<div class="audit-hr"></div>
-    <div class="audit-plbl">Live progress<span><b>${answered} / ${total}</b> · ${pct}%</span></div>
+    <div class="audit-plbl">Live progress<span><b>${answered} / ${total||'—'}</b>${total?` · ${pct}%`:''}</span></div>
     <div class="audit-pbar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
     <div class="audit-os">${status}</div>
-    ${rows?`<ul class="audit-acts">${rows}</ul><button type="button" class="btn sm ghost" data-act="auditViewAll" data-id="${u.id}" style="margin-top:8px">View all →</button>`:`<div class="audit-empty" style="margin-top:10px">Nothing yet. Answers appear as ${esc(first)} works.</div>`}
-    ${photoChip}${flagChip}
+    <div class="audit-open">${flagChip}<button type="button" class="btn sm" data-act="auditViewAll" data-id="${u.id}">Open full progress →</button></div>
   </div>`;
 }
 function auditTasksHTML(u, list, ro, view){
   const live=ui.intakeLive[u.id]||null;
+  /* Load progress as soon as the Audit tab shows, so expanding the task is instant. */
+  if(!live && (u.cleanerPropertyId||'').trim()){
+    ui.intakePrefetch=ui.intakePrefetch||{};
+    if(!ui.intakePrefetch[u.id]){ ui.intakePrefetch[u.id]=true; setTimeout(()=>loadAuditIntake(u.id),0); }
+  }
   const answered=live?.answeredItems??0;
   const total=live?.totalItems??0;
   // Done only when the onboarder's whole checklist is done (the total comes from their phone; 0 until setup).
