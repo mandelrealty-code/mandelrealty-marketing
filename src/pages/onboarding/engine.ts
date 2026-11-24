@@ -1597,6 +1597,12 @@ root.addEventListener('click', e=>{
         return;
       }
       case 'auditViewAll': {
+        // Opens the full Intake progress page (Intake_Progress.html) over Onboarding.
+        const vu=units.find(x=>String(x.id)===String(id));
+        if(vu && host.openIntake){
+          host.openIntake({ unitId: String(vu.id), cleanerPropertyId: vu.cleanerPropertyId||'', address: vu.addr||vu.address||'' });
+          return;
+        }
         ui.auditExp[id]=true;
         loadAuditIntake(id);
         toast('Showing latest intake activity');

@@ -45,6 +45,7 @@ type Flag = {
   photoUrl: string | null;
   answeredAt: string | null;
   acknowledged: boolean;
+  acknowledgedBy?: string | null;
 };
 
 type IntakeData = {
@@ -55,6 +56,7 @@ type IntakeData = {
   answeredItems: number;
   progress: number;
   lastActivity: string | null;
+  completedAt?: string | null;
   answeredBy: string | null;
   isActive: boolean;
   idleMinutes: number | null;
@@ -198,6 +200,16 @@ font-family:Inter,system-ui,-apple-system,sans-serif;color:var(--ink);-webkit-fo
   .ip .stats{flex-wrap:wrap}
 }
 @media (max-width:768px){
+  .ip .ch{flex-wrap:wrap}
+  .ip .legend{width:100%;gap:10px 14px}
+  .ip .stats{width:100%}
+  .ip .stat{flex:1;min-width:0}
+  .ip .ring{width:104px;height:104px}
+  .ip .ring span{width:86px;height:86px;font-size:24px}
+  .ip .pgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ip .ph,.ip .pmore{width:100%;height:auto;aspect-ratio:1}
+  /* Not pinned on a phone: a tall pinned bar would cover the list. */
+  .ip .sticky{position:static;background:none;padding-top:0}
   .ip .sgrid{grid-template-columns:1fr}
   .ip .card{padding:16px;border-radius:20px}
   .ip .sbar{flex-direction:column;border-radius:20px;align-items:stretch;padding:14px}
@@ -227,6 +239,14 @@ function Ic({ n, s = 18, sw = 1.8 }: { n: string; s?: number; sw?: number }) {
       <path d={P[n] || ""} />
     </svg>
   );
+}
+
+/** "Nov 23, 2:34 PM" */
+function stamp(at: string | null | undefined): string {
+  if (!at) return "";
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
 }
 
 function ago(at: string | null | undefined): string {
@@ -274,6 +294,7 @@ export default function IntakeProgress({
   const [loading, setLoading] = useState(linked);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [stream, setStream] = useState<StreamData | null>(null);
+  const [allActivity, setAllActivity] = useState(false);
   const visibleRef = useRef(true);
 
   const load = async () => {
@@ -399,7 +420,10 @@ export default function IntakeProgress({
     ) : status === "none" ? (
       <span className="status none"><span className="dot" />Not started</span>
     ) : (
-      <span className="status done"><Ic n="check" s={14} sw={2.6} />Completed</span>
+      <span className="status done">
+        <Ic n="check" s={14} sw={2.6} />
+        Completed{stamp(d?.completedAt || lastActivity) ? ` ${stamp(d?.completedAt || lastActivity)}` : ""}
+      </span>
     );
 
   const lastLine =
@@ -419,7 +443,9 @@ export default function IntakeProgress({
   const photos = d?.photos || [];
   const flags = d?.flags || [];
   const openFlags = flags.filter((f) => !f.acknowledged).length;
-  const feed = d?.recentActivity || [];
+  const feedAll = d?.recentActivity || [];
+  /* The design shows the 10 latest; "View all activity" opens the rest. */
+  const feed = allActivity ? feedAll : feedAll.slice(0, 10);
   const photoCount = d?.photoCount ?? photos.length;
 
   const ackFlag = async (flagId: string) => {
@@ -435,6 +461,7 @@ export default function IntakeProgress({
             }
           : prev,
       );
+      void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not acknowledge flag.");
     }
@@ -648,6 +675,12 @@ export default function IntakeProgress({
                     </div>
                   );
                 })}
+                {feedAll.length > 10 ? (
+                  <button type="button" className="lnk" style={{ marginTop: 8, alignSelf: "flex-start" }} onClick={() => setAllActivity((v) => !v)}>
+                    {allActivity ? "Show latest only" : "View all activity"}
+                    <Ic n="arrow" s={14} sw={2} />
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="empty">
@@ -663,6 +696,12 @@ export default function IntakeProgress({
                 <h2>
                   Photos <span style={{ fontSize: 15, color: "var(--muted)" }}>({photoCount})</span>
                 </h2>
+                {photos.length ? (
+                  <button type="button" className="lnk" onClick={() => setOverlay({ t: "lb", i: 0 })}>
+                    View all
+                    <Ic n="arrow" s={14} sw={2} />
+                  </button>
+                ) : null}
               </div>
               {photos.length ? (
                 <div className="pgrid">
@@ -751,7 +790,7 @@ export default function IntakeProgress({
                       {f.acknowledged ? (
                         <span style={{ fontSize: 13, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
                           <Ic n="check" s={14} sw={2.4} />
-                          Acknowledged
+                          {f.acknowledgedBy ? `Acknowledged by ${f.acknowledgedBy}` : "Acknowledged"}
                         </span>
                       ) : (
                         <button type="button" className="btn" onClick={() => void ackFlag(f.id)}>
@@ -935,7 +974,7 @@ export default function IntakeProgress({
                 {f.acknowledged ? (
                   <span style={{ flex: 1, fontSize: 13, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
                     <Ic n="check" s={14} sw={2.4} />
-                    Acknowledged
+                    {f.acknowledgedBy ? `Acknowledged by ${f.acknowledgedBy}` : "Acknowledged"}
                   </span>
                 ) : (
                   <button type="button" className="btn" style={{ flex: 1, justifyContent: "center" }} onClick={() => void ackFlag(f.id)}>

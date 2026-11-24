@@ -5,6 +5,7 @@
 
 import { getSupabaseAdmin } from "../supabase.js";
 import { createDashboardAction } from "../adminApi/dashboard.js";
+import { ONBOARDER_ITEM_LABELS } from "./onboarderItemLabels.js";
 
 function db() {
   const sb = getSupabaseAdmin();
@@ -143,6 +144,8 @@ export type IntakeFlag = {
   photoUrl: string | null;
   answeredAt: string | null;
   acknowledged: boolean;
+  /** Partner who acknowledged it ("Shane"), when known. */
+  acknowledgedBy: string | null;
 };
 
 export type IntakeProgressPayload = {
@@ -153,6 +156,8 @@ export type IntakeProgressPayload = {
   answeredItems: number;
   progress: number;
   lastActivity: string | null;
+  /** When the checklist reached its total (the last answer's time), or null while it's still going. */
+  completedAt: string | null;
   answeredBy: string | null;
   isActive: boolean;
   idleMinutes: number | null;
@@ -208,7 +213,11 @@ function normalizeSectionKey(raw: string): string {
   return byName?.key || s;
 }
 
+/** The question the onboarder answered. Repeated rooms prefix ids ("bedroom_2_bed_frame"), so strip that first. */
 function itemLabel(itemId: string): string {
+  const id = String(itemId || "");
+  const known = ONBOARDER_ITEM_LABELS[id] || ONBOARDER_ITEM_LABELS[id.replace(/^(bedroom|bathroom)_\d+_/, "")];
+  if (known) return known;
   const raw = String(itemId || "").replace(/^item[_-]?/i, "").replace(/[_-]+/g, " ").trim();
   if (!raw) return "Checklist item";
   return raw.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -291,21 +300,27 @@ async function signIfNeeded(url: string): Promise<string> {
   }
 }
 
-async function loadAckKeys(unitId: string): Promise<Set<string>> {
+/** Acknowledged flag keys → who acknowledged ("" when not recorded). */
+async function loadAckKeys(unitId: string): Promise<Map<string, string>> {
   const sb = db();
   const { data, error } = await sb
     .from("dashboard_actions")
-    .select("body")
+    .select("body, title")
     .eq("type", "intake_flag_ack")
     .eq("unit_id", unitId)
     .not("actioned_at", "is", null);
   if (error) {
-    if (/dashboard_actions|does not exist|schema cache/i.test(error.message || "")) return new Set();
+    if (/dashboard_actions|does not exist|schema cache/i.test(error.message || "")) return new Map();
     throw error;
   }
-  return new Set(
-    ((data ?? []) as { body?: string }[]).map((r) => String(r.body || "").trim()).filter(Boolean),
-  );
+  const out = new Map<string, string>();
+  for (const r of (data ?? []) as { body?: string; title?: string }[]) {
+    const key = String(r.body || "").trim();
+    if (!key) continue;
+    const m = /^Acknowledged by (.+)$/.exec(String(r.title || "").trim());
+    out.set(key, m ? m[1]!.trim() : "");
+  }
+  return out;
 }
 
 /** All answers for the property. Pages through, because the cleaner DB returns at most 1,000 rows per request. */
@@ -393,7 +408,7 @@ export async function getUnitIntakeLink(unitId: string): Promise<{
 
 function buildFromAnswers(
   answers: AnswerRow[],
-  acks: Set<string>,
+  acks: Map<string, string>,
   meta: {
     unitId: string;
     address: string;
@@ -450,7 +465,7 @@ function buildFromAnswers(
     .filter((r) => isAnswered(r) && r.answered_at)
     .slice()
     .sort((a, b) => String(b.answered_at).localeCompare(String(a.answered_at)))
-    .slice(0, 20)
+    .slice(0, 100)
     .map((r): IntakeActivityRow => {
       const kind = activityKind(r);
       const photo = photoUrlOf(r);
@@ -498,6 +513,7 @@ function buildFromAnswers(
         photoUrl: photoUrlOf(r),
         answeredAt: r.answered_at,
         acknowledged: acks.has(id) || acks.has(r.item_id),
+        acknowledgedBy: (acks.get(id) ?? acks.get(r.item_id) ?? "") || null,
       };
     });
 
@@ -514,6 +530,7 @@ function buildFromAnswers(
     answeredItems,
     progress: Math.min(100, progress),
     lastActivity,
+    completedAt: totalItems > 0 && answeredItems >= totalItems ? lastActivity : null,
     answeredBy: meta.answeredBy,
     isActive,
     idleMinutes,
@@ -540,6 +557,7 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
       answeredItems: 0,
       progress: 0,
       lastActivity: null,
+      completedAt: null,
       answeredBy: null,
       isActive: false,
       idleMinutes: null,
@@ -699,7 +717,8 @@ export async function markPortalLinkSent(unitId: string): Promise<string> {
   return now;
 }
 
-export async function acknowledgeIntakeFlag(unitId: string, flagId: string): Promise<void> {
+export async function acknowledgeIntakeFlag(unitId: string, flagId: string, by = ""): Promise<void> {
+  const title = by.trim() ? `Acknowledged by ${by.trim()}` : "Intake flag acknowledged";
   const key = String(flagId || "").trim();
   if (!unitId || !key) throw new Error("unit_id and flag_id required.");
   const sb = db();
@@ -715,14 +734,14 @@ export async function acknowledgeIntakeFlag(unitId: string, flagId: string): Pro
   if (existing?.id) {
     await sb
       .from("dashboard_actions")
-      .update({ actioned_at: now })
+      .update({ actioned_at: now, title })
       .eq("id", existing.id);
     return;
   }
   const made = await createDashboardAction({
     type: "intake_flag_ack",
     unitId,
-    title: "Intake flag acknowledged",
+    title,
     body: key,
   });
   if (made?.id) {

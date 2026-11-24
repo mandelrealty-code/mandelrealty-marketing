@@ -40,6 +40,7 @@ import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/
 import {
   getSessionFromRequest,
   isAdminConfigured,
+  loadPartnerFromSessionToken,
   verifyAdminSessionToken,
 } from "../adminAuth.js";
 import { loadClientChecklist } from "../pm/clientChecklist.js";
@@ -1764,7 +1765,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!unit) return res.status(400).json({ error: "unit_id required." });
           const flagId = str(body.flag_id) || str(body.flagId);
           if (!flagId) return res.status(400).json({ error: "flag_id required." });
-          await acknowledgeIntakeFlag(unit, flagId);
+          /* Partner sign-ins know who you are; the shared admin password does not. */
+          let by = "";
+          try {
+            const partner = await loadPartnerFromSessionToken(getSessionFromRequest(req.headers.cookie));
+            by = (partner?.name || "").trim().split(/\s+/)[0] || "";
+          } catch {
+            by = "";
+          }
+          await acknowledgeIntakeFlag(unit, flagId, by);
           return res.status(200).json({ ok: true });
         }
         if (op === "link_stravo_property") {
