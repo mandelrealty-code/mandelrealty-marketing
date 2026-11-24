@@ -12,7 +12,54 @@ function db() {
   return sb;
 }
 
-export const INTAKE_TOTAL_ITEMS = 140;
+/**
+ * Fallback only. The real total comes from the onboarder's phone: the cleaner app saves what the onboarder sees
+ * (answered / total, per room) in one summary row, PROGRESS_ITEM_ID, and admin shows those numbers. Until that row
+ * exists (setup not finished yet) admin shows 0 / 0.
+ */
+export const INTAKE_TOTAL_ITEMS = 0;
+/** Summary row written by the cleaner app (useOnboarderChecklist.publishProgress). Never an answer. */
+const PROGRESS_ITEM_ID = "__progress";
+
+type ProgressSnapshot = {
+  total: number;
+  answered: number;
+  sections: { id: string; name: string; total: number; answered: number }[];
+};
+
+/** Rows that are not checklist answers: the progress summary and the Screen B setup questions. */
+function isChecklistRow(row: { item_id: string }): boolean {
+  const id = String(row.item_id || "");
+  return id !== PROGRESS_ITEM_ID && id !== "setup_complete" && !id.startsWith("setup_");
+}
+
+function readSnapshot(answers: AnswerRow[]): ProgressSnapshot | null {
+  const row = answers.find((r) => r.item_id === PROGRESS_ITEM_ID);
+  let v: unknown = row?.answer_value;
+  if (typeof v === "string") {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const total = Number(o.total);
+  const answered = Number(o.answered);
+  if (!Number.isFinite(total) || !Number.isFinite(answered)) return null;
+  const sections = Array.isArray(o.sections)
+    ? (o.sections as Record<string, unknown>[])
+        .map((x) => ({
+          id: String(x.id || ""),
+          name: String(x.name || x.id || ""),
+          total: Number(x.total) || 0,
+          answered: Number(x.answered) || 0,
+        }))
+        .filter((x) => x.id)
+    : [];
+  return { total, answered, sections };
+}
 
 /** Fixed 18 sections from Intake_Progress.html (totals sum to 140). */
 export const INTAKE_SECTIONS: { key: string; name: string; total: number; required?: boolean }[] = [
@@ -54,7 +101,7 @@ type AnswerRow = {
   section_id: string;
   status: string;
   answer_type: string | null;
-  answer_value: string | null;
+  answer_value: unknown;
   flag_type: string | null;
   flag_note: string | null;
   flag_photo_url: string | null;
@@ -117,12 +164,14 @@ export type IntakeProgressPayload = {
   flags: IntakeFlag[];
   leadId: string | null;
   ownerPhone: string | null;
-  sections: typeof INTAKE_SECTIONS;
+  sections: { key: string; name: string; total: number; required?: boolean }[];
 };
 
 export type IntakeStreamPayload = {
   lastActivityAt: string | null;
   answeredItems: number;
+  /** The total the onboarder sees on their phone (0 until setup is done). */
+  totalItems: number;
   isActive: boolean;
 };
 
@@ -187,12 +236,27 @@ function activityKind(row: AnswerRow): IntakeActivityRow["kind"] {
   return "ans";
 }
 
+/** answer_value is jsonb: "yes", "2", ["Gym"], or { url, path } for photos. Plain text for display. */
+function valueText(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(valueText).filter(Boolean).join(", ");
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const url = typeof o.url === "string" ? o.url : typeof o.path === "string" ? o.path : "";
+    if (url) return url.trim();
+    return [o.brand, o.model, o.serial].filter((x) => typeof x === "string" && x).join(" · ");
+  }
+  return "";
+}
+
 function photoUrlOf(row: AnswerRow): string | null {
   const flag = (row.flag_photo_url || "").trim();
   if (flag) return flag;
   const t = String(row.answer_type || "").toLowerCase();
-  const v = (row.answer_value || "").trim();
-  if (t === "photo" && v) return v;
+  const v = valueText(row.answer_value);
+  if ((t === "photo" || t === "photo_ai") && v) return v;
   if (/^https?:\/\//i.test(v) && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(v)) return v;
   return null;
 }
@@ -244,12 +308,20 @@ async function loadAckKeys(unitId: string): Promise<Set<string>> {
   );
 }
 
+/** All answers for the property. Pages through, because the cleaner DB returns at most 1,000 rows per request. */
 async function fetchAnswers(propertyId: string): Promise<AnswerRow[]> {
-  const q =
-    `onboarding_item_answers?property_id=eq.${encodeURIComponent(propertyId)}` +
-    `&select=id,item_id,section_id,status,answer_type,answer_value,flag_type,flag_note,flag_photo_url,answered_by,answered_at` +
-    `&order=answered_at.desc.nullslast`;
-  return cleanerGet<AnswerRow[]>(q);
+  const PAGE = 1000;
+  const out: AnswerRow[] = [];
+  for (let offset = 0; offset < 20000; offset += PAGE) {
+    const q =
+      `onboarding_item_answers?property_id=eq.${encodeURIComponent(propertyId)}` +
+      `&select=id,item_id,section_id,status,answer_type,answer_value,flag_type,flag_note,flag_photo_url,answered_by,answered_at` +
+      `&order=answered_at.desc.nullslast,item_id.asc&limit=${PAGE}&offset=${offset}`;
+    const page = await cleanerGet<AnswerRow[]>(q);
+    out.push(...page);
+    if (page.length < PAGE) break;
+  }
+  return out;
 }
 
 async function fetchOnboarderName(propertyId: string): Promise<string | null> {
@@ -275,11 +347,7 @@ async function fetchOnboarderName(propertyId: string): Promise<string | null> {
 }
 
 function emptySectionProgress(): IntakeProgressPayload["sectionProgress"] {
-  const out: IntakeProgressPayload["sectionProgress"] = {};
-  for (const s of INTAKE_SECTIONS) {
-    out[s.key] = { total: s.total, answered: 0, name: s.name, required: s.required };
-  }
-  return out;
+  return {};
 }
 
 export async function getUnitIntakeLink(unitId: string): Promise<{
@@ -335,21 +403,23 @@ function buildFromAnswers(
     ownerPhone: string | null;
   },
 ): IntakeProgressPayload {
+  const snapshot = readSnapshot(answers);
+  answers = answers.filter(isChecklistRow);
+  const names = new Map((snapshot?.sections ?? []).map((x) => [x.id, x.name] as const));
+  const roomLabel = (id: string) => names.get(id) || sectionLabel(id);
   const sectionProgress = emptySectionProgress();
+  const sections: IntakeProgressPayload["sections"] = [];
+  for (const sec of snapshot?.sections ?? []) {
+    sectionProgress[sec.id] = { total: sec.total, answered: Math.min(sec.total, sec.answered), name: sec.name };
+    sections.push({ key: sec.id, name: sec.name, total: sec.total });
+  }
   let answeredItems = 0;
   let lastActivity: string | null = null;
   let firstActivity: string | null = null;
 
   for (const row of answers) {
-    const key = normalizeSectionKey(row.section_id);
     if (isAnswered(row)) {
       answeredItems += 1;
-      if (key && sectionProgress[key]) {
-        sectionProgress[key]!.answered = Math.min(
-          sectionProgress[key]!.total,
-          sectionProgress[key]!.answered + 1,
-        );
-      }
       const at = row.answered_at;
       if (at) {
         if (!lastActivity || at > lastActivity) lastActivity = at;
@@ -388,7 +458,7 @@ function buildFromAnswers(
         label: itemLabel(r.item_id),
         status: r.status,
         answerType: r.answer_type,
-        answerValue: r.answer_value,
+        answerValue: valueText(r.answer_value) || null,
         flagType: r.flag_type,
         flagNote: r.flag_note,
         photoUrl: photo,
@@ -398,13 +468,13 @@ function buildFromAnswers(
     });
 
   const photosRaw = answers
-    .filter((r) => String(r.answer_type || "").toLowerCase() === "photo" && isAnswered(r))
+    .filter((r) => ["photo", "photo_ai"].includes(String(r.answer_type || "").toLowerCase()) && isAnswered(r))
     .slice()
     .sort((a, b) => String(b.answered_at || "").localeCompare(String(a.answered_at || "")))
     .map((r): IntakePhoto => ({
       itemId: r.item_id,
       sectionId: normalizeSectionKey(r.section_id),
-      sectionLabel: sectionLabel(r.section_id),
+      sectionLabel: roomLabel(r.section_id),
       label: itemLabel(r.item_id),
       url: photoUrlOf(r) || "",
       answeredAt: r.answered_at,
@@ -419,7 +489,7 @@ function buildFromAnswers(
         id,
         itemId: r.item_id,
         sectionId: normalizeSectionKey(r.section_id),
-        sectionLabel: sectionLabel(r.section_id),
+        sectionLabel: roomLabel(r.section_id),
         name: itemLabel(r.item_id),
         type: (r.flag_type || "Flagged").trim() || "Flagged",
         note: (r.flag_note || "").trim(),
@@ -429,13 +499,16 @@ function buildFromAnswers(
       };
     });
 
-  const progress = Math.round((answeredItems / INTAKE_TOTAL_ITEMS) * 100);
+  /* What the onboarder sees on the phone. Without the summary yet, fall back to the raw count of answers. */
+  const totalItems = snapshot ? snapshot.total : INTAKE_TOTAL_ITEMS;
+  if (snapshot) answeredItems = snapshot.answered;
+  const progress = totalItems > 0 ? Math.round((answeredItems / totalItems) * 100) : 0;
 
   return {
     unitId: meta.unitId,
     address: meta.address,
     cleanerPropertyId: meta.cleanerPropertyId,
-    totalItems: INTAKE_TOTAL_ITEMS,
+    totalItems,
     answeredItems,
     progress: Math.min(100, progress),
     lastActivity,
@@ -450,7 +523,7 @@ function buildFromAnswers(
     flags,
     leadId: meta.leadId,
     ownerPhone: meta.ownerPhone,
-    sections: INTAKE_SECTIONS,
+    sections,
   };
 }
 
@@ -476,7 +549,7 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
       flags: [],
       leadId: link.leadId,
       ownerPhone: link.ownerPhone,
-      sections: INTAKE_SECTIONS,
+      sections: [],
     };
   }
 
@@ -516,9 +589,11 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
 export async function getIntakeProgressStream(unitId: string): Promise<IntakeStreamPayload> {
   const link = await getUnitIntakeLink(unitId);
   if (!link.cleanerPropertyId) {
-    return { lastActivityAt: null, answeredItems: 0, isActive: false };
+    return { lastActivityAt: null, answeredItems: 0, totalItems: INTAKE_TOTAL_ITEMS, isActive: false };
   }
-  const answers = await fetchAnswers(link.cleanerPropertyId);
+  const all = await fetchAnswers(link.cleanerPropertyId);
+  const snapshot = readSnapshot(all);
+  const answers = all.filter(isChecklistRow);
   let answeredItems = 0;
   let lastActivityAt: string | null = null;
   for (const row of answers) {
@@ -530,7 +605,12 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
   }
   const lastMs = lastActivityAt ? Date.parse(lastActivityAt) : NaN;
   const isActive = Number.isFinite(lastMs) && Date.now() - lastMs <= 5 * 60 * 1000;
-  return { lastActivityAt, answeredItems, isActive };
+  return {
+    lastActivityAt,
+    answeredItems: snapshot ? snapshot.answered : answeredItems,
+    totalItems: snapshot ? snapshot.total : INTAKE_TOTAL_ITEMS,
+    isActive,
+  };
 }
 
 export type StravoPropertyHit = {

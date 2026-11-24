@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { pmGet, pmPost } from "../clients/api";
 
-const TOTAL = 140;
+/** The total comes from the onboarder's phone (0 until they finish setup). */
+const pctOf = (answered: number, total: number) => (total > 0 ? Math.min(100, Math.round((answered / total) * 100)) : 0);
 
 type SectionProg = { total: number; answered: number; name: string; required?: boolean };
 
@@ -69,6 +70,7 @@ type IntakeData = {
 };
 
 type StreamData = {
+  totalItems?: number;
   lastActivityAt: string | null;
   answeredItems: number;
   isActive: boolean;
@@ -326,9 +328,10 @@ export default function IntakeProgress({
               ? {
                   ...prev,
                   answeredItems: s.answeredItems,
+                  totalItems: s.totalItems ?? prev.totalItems,
                   isActive: s.isActive,
                   lastActivity: s.lastActivityAt,
-                  progress: Math.min(100, Math.round((s.answeredItems / TOTAL) * 100)),
+                  progress: pctOf(s.answeredItems, s.totalItems ?? prev.totalItems),
                 }
               : prev,
           );
@@ -372,8 +375,9 @@ export default function IntakeProgress({
   const answered = stream?.answeredItems ?? d?.answeredItems ?? 0;
   const isActive = stream?.isActive ?? d?.isActive ?? false;
   const lastActivity = stream?.lastActivityAt ?? d?.lastActivity ?? null;
-  const pct = Math.min(100, Math.round((answered / TOTAL) * 100));
-  const complete = answered >= TOTAL;
+  const total = stream?.totalItems ?? d?.totalItems ?? 0;
+  const pct = pctOf(answered, total);
+  const complete = total > 0 && answered >= total;
   const name = d?.answeredBy || "Onboarder";
   const idle = d?.idleMinutes;
   const status: "active" | "idle" | "none" | "done" = complete
@@ -477,7 +481,7 @@ export default function IntakeProgress({
                 <span>{pct}%</span>
               </div>
               <small>
-                {answered} / {TOTAL} items
+                {answered} / {total} items
               </small>
             </div>
             <div style={{ minWidth: 0 }}>
@@ -778,7 +782,7 @@ export default function IntakeProgress({
               <p>
                 <Ic n="check" s={20} sw={2.6} />
                 <span>
-                  <b>Checklist complete</b> — {TOTAL}/{TOTAL} items answered
+                  <b>Checklist complete</b> — {total}/{total} items answered
                   {openFlags
                     ? ` · ${openFlags} flag${openFlags > 1 ? "s" : ""} need review`
                     : " · all flags reviewed"}
@@ -807,7 +811,7 @@ export default function IntakeProgress({
                         ? `Paused · no activity for ${idle ?? "—"} min`
                         : "In progress"}
                   </b>{" "}
-                  · {answered}/{TOTAL} complete
+                  · {answered}/{total} complete
                 </span>
               </p>
               <button type="button" className="btn" onClick={() => void messageOnboarder()}>

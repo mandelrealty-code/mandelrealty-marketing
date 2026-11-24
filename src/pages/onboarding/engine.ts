@@ -1014,7 +1014,7 @@ function auditPanelHTML(u, live){
   if(!linked){
     return `<div class="audit-panel">${sendRow}<div class="audit-hr"></div><div class="audit-empty">Link to Stravo first. Live progress shows here once the onboarder starts.</div></div>`;
   }
-  const answered=live?.answeredItems??0, total=live?.totalItems??140, pct=Math.min(100, Math.round((answered/total)*100));
+  const answered=live?.answeredItems??0, total=live?.totalItems??0, pct=total>0?Math.min(100, Math.round((answered/total)*100)):0;
   const name=live?.answeredBy||whoName(u.assignee)||'Onboarder';
   let status;
   if(answered>=total) status=`<span class="d g"></span><b>${esc(name)}</b> · Finished the checklist`;
@@ -1112,8 +1112,8 @@ function loadAuditIntake(unitId, streamOnly){
         answeredItems: data.answeredItems ?? prev.answeredItems ?? 0,
         isActive: !!data.isActive,
         lastActivity: data.lastActivityAt ?? prev.lastActivity ?? null,
-        totalItems: prev.totalItems || 140,
-        progress: Math.min(100, Math.round(((data.answeredItems ?? 0)/140)*100)),
+        totalItems: data.totalItems ?? prev.totalItems ?? 0,
+        progress: (data.totalItems ?? prev.totalItems) > 0 ? Math.min(100, Math.round(((data.answeredItems ?? 0)/(data.totalItems ?? prev.totalItems))*100)) : 0,
       };
     } else {
       ui.intakeLive[unitId]=data;
