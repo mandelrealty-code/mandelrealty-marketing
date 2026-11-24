@@ -642,14 +642,27 @@ export function TeamApp() {
   }
 
   if (error && !boot) {
+    /* Staff never see setup or database details here. A removed staff member (or a mistyped link) gets a plain
+       "not active" message; anything else is a temporary problem they can retry. */
+    const gone = /not found|not active|deactivated|removed/i.test(error);
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#0a0a0a] px-6 text-center">
         <MrgMark />
-        <p className="text-[#cf7f7b]">{error}</p>
-        <p className="max-w-sm text-sm text-[#6f6a65]">
-          Ask your MRG manager to resend the team invite. Operators must run{" "}
-          <code className="text-[#9a9590]">staff_portal_v1.sql</code> in Supabase.
+        <p className="text-[#e6e2dc]">
+          {gone ? "This team link isn’t active anymore." : "We couldn’t open your team portal right now."}
         </p>
+        <p className="max-w-sm text-sm text-[#6f6a65]">
+          {gone ? "Ask your MRG manager for a new invite." : "Check your connection and try again."}
+        </p>
+        {!gone ? (
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-2 h-10 rounded-full border border-white/15 px-5 text-sm font-semibold text-[#e6e2dc]"
+          >
+            Try again
+          </button>
+        ) : null}
       </div>
     );
   }
