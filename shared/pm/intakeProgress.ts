@@ -406,7 +406,9 @@ function buildFromAnswers(
   const snapshot = readSnapshot(answers);
   answers = answers.filter(isChecklistRow);
   const names = new Map((snapshot?.sections ?? []).map((x) => [x.id, x.name] as const));
-  const roomLabel = (id: string) => names.get(id) || sectionLabel(id);
+  const order = new Map((snapshot?.sections ?? []).map((x, i) => [x.id, i + 1] as const));
+  /** "Section 9 · Living Room", numbered in the onboarder's walking order. */
+  const roomLabel = (id: string) => (names.has(id) ? `Section ${order.get(id)} · ${names.get(id)}` : sectionLabel(id));
   const sectionProgress = emptySectionProgress();
   const sections: IntakeProgressPayload["sections"] = [];
   for (const sec of snapshot?.sections ?? []) {

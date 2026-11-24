@@ -520,7 +520,7 @@ export default function IntakeProgress({
         <div className="card">
           <div className="ch">
             <h2>
-              Sections <span style={{ fontSize: 14, color: "var(--muted)" }}>{doneSecs} of 18 complete</span>
+              Sections <span style={{ fontSize: 14, color: "var(--muted)" }}>{doneSecs} of {sections.length} complete</span>
             </h2>
             <div className="legend">
               <span><i style={{ background: "var(--teal)" }} />Complete</span>
@@ -682,7 +682,9 @@ export default function IntakeProgress({
                         </button>
                       );
                     }
-                    const secNum = p.sectionId.replace(/^s/i, "") || "?";
+                    /* "S3": the room's position in the onboarder's walk. */
+                    const secIdx = sections.findIndex((x) => x.key === p.sectionId);
+                    const secNum = secIdx >= 0 ? String(secIdx + 1) : "?";
                     return (
                       <button
                         key={p.itemId + i}

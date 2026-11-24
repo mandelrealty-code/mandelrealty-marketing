@@ -1040,16 +1040,18 @@ function auditPanelHTML(u, live){
 function auditTasksHTML(u, list, ro, view){
   const live=ui.intakeLive[u.id]||null;
   const answered=live?.answeredItems??0;
-  const complete=answered>=140;
+  const total=live?.totalItems??0;
+  // Done only when the onboarder's whole checklist is done (the total comes from their phone; 0 until setup).
+  const complete=total>0 && answered>=total;
   const expanded=!!ui.auditExp[u.id];
   const tasks=list.map((t,i)=>{
     const auditTask=isAuditChecklistTask(t);
     const done=auditTask ? (t.done || complete) : t.done;
     const dueTxt = t.na ? '' : !t.due ? '' : `<span class="tdue ${!done&&diff(t.due)<0?'late':''}">${!done&&diff(t.due)===0?'Today':fmt(t.due)}</span>`;
     if(auditTask){
-      const chip=complete?`<span class="audit-pc ok">Complete</span>`:`<span class="audit-pc ${answered?'live':''}">${answered} / 140</span>`;
+      const chip=complete?`<span class="audit-pc ok">Complete</span>`:`<span class="audit-pc ${answered?'live':''}">${answered} / ${total||'—'}</span>`;
       return `<li class="${done?'done':''}">
-        <label title="Checks itself at 140 / 140"><input type="checkbox" disabled ${done?'checked':''}><span class="tn">${esc(t.name)}</span></label>
+        <label title="Checks itself when the onboarder's checklist is complete"><input type="checkbox" disabled ${done?'checked':''}><span class="tn">${esc(t.name)}</span></label>
         ${avatar(t.who,u,'sm')}${dueTxt}${chip}
         <button type="button" class="audit-exp" data-act="auditToggle" data-id="${u.id}" aria-expanded="${expanded}" aria-label="${expanded?'Collapse':'Expand'} audit progress">${ic('chev','sm')}</button>
         ${expanded?auditPanelHTML(u, live):''}
@@ -1120,7 +1122,7 @@ function loadAuditIntake(unitId, streamOnly){
     }
     const live=ui.intakeLive[unitId];
     const auditTask=(u.tasks||[]).find(isAuditChecklistTask);
-    if(live && live.answeredItems>=140 && auditTask && !auditTask.done && auditTask.id){
+    if(live && live.totalItems>0 && live.answeredItems>=live.totalItems && auditTask && !auditTask.done && auditTask.id){
       act('toggle_task', { id: auditTask.id, done: true, done_by: 'System' });
       return;
     }
