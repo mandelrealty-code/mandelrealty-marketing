@@ -35,6 +35,7 @@ import {
   markPortalLinkSent,
   searchStravoProperties,
 } from "../pm/intakeProgress.js";
+import { getClientReview, getGoLive, markReviewSent, setGoLiveTick, signOffGoLive, waiveReviewItem } from "../pm/ownerReview.js";
 import { torontoToday } from "../copilot/time.js";
 import { boardAction, boardOpen, boardPayload, TasksNotReady } from "../copilot/taskBoardApi.js";
 import {
@@ -607,6 +608,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json(await getIntakeProgressStream(unitId));
           }
           return res.status(200).json(await getIntakeProgress(unitId));
+        }
+        if (op === "unit_review") {
+          const unitId = typeof req.query.unitId === "string" ? req.query.unitId.trim() : "";
+          if (!unitId) return res.status(400).json({ error: "unitId required." });
+          const [review, golive] = await Promise.all([getClientReview(unitId), getGoLive(unitId)]);
+          let me = "Admin";
+          try {
+            const partner = await loadPartnerFromSessionToken(getSessionFromRequest(req.headers.cookie));
+            me = (partner?.name || "").trim().split(/\s+/)[0] || "Admin";
+          } catch {
+            me = "Admin";
+          }
+          return res.status(200).json({ review, golive, me });
         }
         if (op === "search_stravo_properties") {
           const q =
@@ -1760,6 +1774,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           if (Object.keys(patch).length) await updateOnboardingUnitFields(unit, patch);
           return res.status(200).json({ ok: true });
+        }
+        if (op === "review_send" || op === "review_waive" || op === "golive_tick" || op === "golive_signoff") {
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          /* Partner sign-ins know who you are; the shared admin password signs as "Admin". */
+          let by = "Admin";
+          try {
+            const partner = await loadPartnerFromSessionToken(getSessionFromRequest(req.headers.cookie));
+            by = (partner?.name || "").trim().split(/\s+/)[0] || "Admin";
+          } catch {
+            by = "Admin";
+          }
+          if (op === "review_send") return res.status(200).json(await markReviewSent(unit, by));
+          if (op === "review_waive") {
+            await waiveReviewItem(unit, str(body.item_id), str(body.reason), by);
+            return res.status(200).json({ ok: true });
+          }
+          if (op === "golive_tick") {
+            const st = str(body.state);
+            await setGoLiveTick(unit, str(body.key), st === "done" || st === "yes" || st === "no" ? st : null, by);
+            return res.status(200).json({ ok: true, by });
+          }
+          return res.status(200).json(await signOffGoLive(unit, by));
         }
         if (op === "ack_intake_flag") {
           if (!unit) return res.status(400).json({ error: "unit_id required." });

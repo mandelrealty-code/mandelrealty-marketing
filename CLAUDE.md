@@ -58,7 +58,7 @@ The cleaner app URL: `https://portal.stravo.ai`
 | `CLEANER_SUPABASE_SERVICE_KEY` | Vercel Production + Preview | **Service role key for hyndmdjvjlsbthlqrxge.** Used only for Intake progress (read `onboarding_item_answers` / assignments / profiles). Never expose to the client. |
 | `CLEANER_INTAKE_STORAGE_BUCKET` | optional | Bucket for signing relative intake photo paths (default `onboarding-media`) |
 
-Also set `CLEANER_SUPABASE_SERVICE_KEY=` in `.env.local` for local admin. Admin never writes to the cleaner DB — flag acknowledgements stay in admin `dashboard_actions`.
+Also set `CLEANER_SUPABASE_SERVICE_KEY=` in `.env.local` for local admin. Flag acknowledgements stay in admin `dashboard_actions`. The only cleaner-DB writes are the Client review tab's (Sprint 7B, `shared/pm/ownerReview.ts`): `owner_reports.sent_at/sent_by` (Send to client) and `owner_report_items.status='waived'` + reason/time/who (Waive). Go-live ticks and sign-off live in the admin DB (`supabase/onboarding_golive_v1.sql`).
 
 ---
 

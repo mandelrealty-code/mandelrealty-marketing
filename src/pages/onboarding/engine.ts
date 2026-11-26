@@ -988,6 +988,13 @@ function stageTabs(u, sel){
     return `<button class="stab ${state} ${id===sel?'sel':''}" role="tab" aria-selected="${id===sel}" data-act="tab" data-id="${u.id}" data-s="${id}" style="--sc:${st.c}"><i class="d"></i>${st.name}${mark}</button>`;
   }).join('')}</div>`;
 }
+/* What the unit page overlay (OnboardingApp → UnitPage) needs for its header. */
+function unitTarget(u, tab){
+  const act=getActiveStages(u);
+  return { unitId:String(u.id), cleanerPropertyId:u.cleanerPropertyId||'', address:u.addr||u.address||'', tab,
+    type:formatType(u.type||''), owner:u.owner&&u.owner!=='—'?u.owner:'', plan:u.plan||'',
+    step:`Step ${act.indexOf(STAGES[u.stage].id)+1} of ${act.length}` };
+}
 function auditAgo(at){
   if(!at) return '';
   const ms=Date.parse(at); if(!Number.isFinite(ms)) return '';
@@ -1282,7 +1289,9 @@ function detailHTML(u){
   const stageNote = selId==='photo' ? ' · Ryan shoots the final photos' : '';
   const deliverPills = selId==='procurement' ? `<div class="delivrow"><span class="meta">Deliver to:</span>${[['unit','Unit address'],['ryan',"Ryan's address"],['shane',"Shane's address"]].map(([k,t])=>{ const on=(u.deliverTo||'unit')===k;
       return view==='past' ? (on?`<span class="dpill on">${t}</span>`:'') : `<button class="dpill ${on?'on':''}" data-act="deliverTo" data-v="${k}" data-id="${u.id}" aria-pressed="${on}">${t}</button>`; }).join('')}</div>` : '';
-  const stageSub = selId==='app' ? `<span class="stagenote">Onboarder's second visit to the property · ${appLink()}</span>`
+  const stageSub = selId==='client' ? `<button class="hilink" data-act="openUnitTab" data-tab="review" data-id="${u.id}">${ic('clip','sm')}Open client review →</button>`
+    : selId==='live' ? `<button class="hilink" data-act="openUnitTab" data-tab="golive" data-id="${u.id}">${ic('check','sm')}Open go-live check →</button>`
+    : selId==='app' ? `<span class="stagenote">Onboarder's second visit to the property · ${appLink()}</span>`
     : selId==='furniture' ? `${u.furniture==='client'?`<span class="stagenote">Client budget: ${money(u.furnitureBudget||0)}</span>`:''}${u.docs.some(d=>/floor[\s_-]?plan|magicplan/i.test(d.name))
           ? `<button class="hilink" data-act="toDocs" data-id="${u.id}">${ic('file','sm')}Floor plan available in Docs →</button>`
           : `<span class="warnline">${ic('alert','sm')}No floor plan on file — upload in Docs before sourcing</span>`}`
@@ -1601,7 +1610,7 @@ root.addEventListener('click', e=>{
         // Opens the full Intake progress page (Intake_Progress.html) over Onboarding.
         const vu=units.find(x=>String(x.id)===String(id));
         if(vu && host.openIntake){
-          host.openIntake({ unitId: String(vu.id), cleanerPropertyId: vu.cleanerPropertyId||'', address: vu.addr||vu.address||'' });
+          host.openIntake(unitTarget(vu, 'audit'));
           return;
         }
         ui.auditExp[id]=true;
@@ -1642,6 +1651,12 @@ root.addEventListener('click', e=>{
       }
       case 'deliverTo': u.deliverTo=a.dataset.v; act('update_unit', { unit_id: u.id, deliver_to: a.dataset.v }); toast(`Deliveries go to ${a.textContent}`); return;
       case 'clearFilters': ui.f={stage:'',who:'',plan:'',attn:false,q:''}; renderPipeline(); return;
+      case 'openUnitTab': {
+        // Client review / Go-live check pages, over Onboarding (same overlay as Intake progress).
+        const vu=units.find(x=>String(x.id)===String(id));
+        if(vu && host.openIntake) host.openIntake(unitTarget(vu, a.dataset.tab==='golive'?'golive':'review'));
+        return;
+      }
       case 'toDocs': root.querySelector(`.tablebox #docs-${id}, [data-card="${id}"] #docs-${id}`)?.scrollIntoView({behavior:'smooth',block:'center'}); return;
       case 'histAll': ui.histAll.has(id)?ui.histAll.delete(id):ui.histAll.add(id); renderPipeline(); return;
       case 'taskNA': {

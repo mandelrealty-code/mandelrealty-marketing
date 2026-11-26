@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AdminProductMode } from "../clients/mode";
 import { pmGet, pmPost } from "../clients/api";
 import { mountOnboarding, ONBOARDING_CSS } from "./engine";
-import IntakeProgress from "./IntakeProgress";
+import UnitPage, { type UnitTarget } from "./UnitPage";
 
 /**
  * Onboarding, built from the design file as it was drawn (markup, colours and phone layout), with the units, tasks and
@@ -60,8 +60,8 @@ export default function OnboardingApp({
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
-  /** The full Intake progress page, opened from "View all →" on a unit's Audit task. */
-  const [intake, setIntake] = useState<{ unitId: string; cleanerPropertyId: string; address: string } | null>(null);
+  /** The unit page (Audit / Client review / Go-live check), opened over Onboarding from a unit's stage. */
+  const [intake, setIntake] = useState<UnitTarget | null>(null);
   const [note, setNote] = useState("");
   const warnedPlaces = useRef(false);
   const [ready, setReady] = useState(false);
@@ -101,7 +101,7 @@ export default function OnboardingApp({
           go: (mode: string, patch?: Record<string, unknown>) =>
             modeRef.current(mode as AdminProductMode, patch as Parameters<typeof modeRef.current>[1]),
           openLead: (id: string) => leadRef.current?.(id),
-          openIntake: (target: { unitId: string; cleanerPropertyId: string; address: string }) => setIntake(target),
+          openIntake: (target: UnitTarget) => setIntake(target),
           openCrmLeadForm: () => newLeadRef.current?.(),
           open: takeOpenRequest(),
           onError: (e: unknown) => setError(e instanceof Error ? e.message : "That did not work."),
@@ -152,40 +152,15 @@ export default function OnboardingApp({
       {!ready && !error ? <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif", color: "#6b6b66" }}>Loading Onboarding…</div> : null}
       <div ref={holder} style={{ flex: 1, minHeight: 0, height: "100%" }} />
       {intake ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Intake progress · ${intake.address}`}
-          style={{ position: "absolute", inset: 0, zIndex: 40, background: "#f2f2ef", overflowY: "auto", fontFamily: "Inter, system-ui, sans-serif" }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setIntake(null);
+        <UnitPage
+          key={`${intake.unitId}:${intake.tab ?? "audit"}`}
+          target={intake}
+          onClose={() => setIntake(null)}
+          onOpenLead={(id) => {
+            setIntake(null);
+            leadRef.current?.(id);
           }}
-        >
-          <div style={{ maxWidth: 1180, margin: "0 auto", padding: "20px clamp(16px, 3vw, 32px) 40px" }}>
-            <button
-              type="button"
-              autoFocus
-              onClick={() => setIntake(null)}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, border: 0, background: "none", padding: "6px 0", cursor: "pointer", color: "#55554f", fontSize: 14, fontWeight: 500 }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
-              Onboarding
-            </button>
-            <div style={{ margin: "6px 0 18px" }}>
-              <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600, letterSpacing: "-0.02em", color: "#18181b" }}>{intake.address || "Unit"}</h1>
-              <div style={{ fontSize: 14, color: "#55554f", marginTop: 4 }}>Intake progress</div>
-            </div>
-            <IntakeProgress
-              unitId={intake.unitId}
-              cleanerPropertyId={intake.cleanerPropertyId}
-              address={intake.address}
-              onOpenLead={(id) => {
-                setIntake(null);
-                leadRef.current?.(id);
-              }}
-            />
-          </div>
-        </div>
+        />
       ) : null}
     </div>
   );
