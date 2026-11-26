@@ -627,6 +627,30 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
   if (!link.cleanerPropertyId) {
     return { lastActivityAt: null, answeredItems: 0, totalItems: INTAKE_TOTAL_ITEMS, isActive: false };
   }
+  /* Light path (polled every 20 s): just the phone's progress summary and the latest answer time, two tiny reads,
+     instead of every answer for the property. Falls back to the full read before the summary exists (setup). */
+  const pid = encodeURIComponent(link.cleanerPropertyId);
+  const [summaryRows, latestRows] = await Promise.all([
+    cleanerGet<AnswerRow[]>(
+      `onboarding_item_answers?property_id=eq.${pid}&item_id=eq.${PROGRESS_ITEM_ID}&select=item_id,answer_value&limit=1`,
+    ),
+    cleanerGet<{ answered_at: string | null }[]>(
+      `onboarding_item_answers?property_id=eq.${pid}&item_id=neq.${PROGRESS_ITEM_ID}&answered_at=not.is.null` +
+        `&select=answered_at&order=answered_at.desc&limit=1`,
+    ),
+  ]);
+  const summary = readSnapshot(summaryRows);
+  if (summary) {
+    const latest = latestRows[0]?.answered_at ?? null;
+    const latestMs = latest ? Date.parse(latest) : NaN;
+    return {
+      lastActivityAt: latest,
+      answeredItems: summary.answered,
+      totalItems: summary.total,
+      isActive: Number.isFinite(latestMs) && Date.now() - latestMs <= 5 * 60 * 1000,
+    };
+  }
+
   const all = await fetchAnswers(link.cleanerPropertyId);
   const snapshot = readSnapshot(all);
   const answers = all.filter(isChecklistRow);

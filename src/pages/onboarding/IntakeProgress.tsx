@@ -1,6 +1,6 @@
 /**
  * Intake Progress — matches Intake_Progress.html (content pane only).
- * Polls stream every 10s when visible; full refresh every 60s.
+ * Polls the light stream every 20s when visible; full refresh every 2 min (keeps load off the small cleaner DB).
  */
 import { useEffect, useRef, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -358,12 +358,12 @@ export default function IntakeProgress({
           );
         })
         .catch(() => undefined);
-    }, 10_000);
+    }, 20_000);
 
     const fullTimer = window.setInterval(() => {
       if (!visibleRef.current || document.visibilityState !== "visible") return;
       void load();
-    }, 60_000);
+    }, 120_000);
 
     return () => {
       document.removeEventListener("visibilitychange", onVis);

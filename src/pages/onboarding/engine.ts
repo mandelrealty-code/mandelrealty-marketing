@@ -1102,10 +1102,10 @@ function ensureAuditPoll(){
     if(document.visibilityState!=='visible') return;
     const u=unitById(openId); if(!u || !ui.auditExp[openId]){ stopAuditPoll(); return; }
     n+=1;
-    // Stream every 10s; full payload every 60s.
+    // Light check every 20s; full payload every 2 min (the cleaner database is small, keep the load down).
     loadAuditIntake(openId, n%6!==0);
   };
-  auditPollTimer=setInterval(tick, 10000);
+  auditPollTimer=setInterval(tick, 20000);
 }
 function loadAuditIntake(unitId, streamOnly){
   const u=unitById(unitId); if(!u) return Promise.resolve();
