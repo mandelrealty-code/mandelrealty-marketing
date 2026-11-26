@@ -206,6 +206,14 @@ async function cleanerGet<T>(pathAndQuery: string): Promise<T> {
 
 /** The room id as the onboarder app saved it ("entry", "bedroom_2"). The old 18-section names no longer apply:
  *  mapping through them turned "entry" into "s8", so photos lost their room number. */
+/** Flag codes in words. "auto" = a yellow flag the checklist sets from an answer (rule 11), for Ryan and Shane. */
+const FLAG_TYPE_LABEL: Record<string, string> = {
+  auto: "Flag",
+  needs_repair: "Needs repair",
+  damaged: "Damaged",
+  missing: "Missing",
+};
+
 function normalizeSectionKey(raw: string): string {
   return String(raw || "").trim().toLowerCase();
 }
@@ -524,8 +532,9 @@ function buildFromAnswers(
         sectionId: normalizeSectionKey(r.section_id),
         sectionLabel: roomLabel(r.section_id),
         name: itemLabel(r.item_id),
-        type: (r.flag_type || "Flagged").trim() || "Flagged",
-        note: (r.flag_note || "").trim(),
+        type: FLAG_TYPE_LABEL[(r.flag_type || "").trim()] ?? ((r.flag_type || "Flagged").trim() || "Flagged"),
+        /* Checklist v2 sets some flags from the answer itself; their note starts "(auto) ". */
+        note: (r.flag_note || "").replace(/^\(auto\)\s*/, "").trim(),
         photoUrl: photoUrlOf(r),
         answeredAt: r.answered_at,
         acknowledged: acks.has(id) || acks.has(r.item_id),
