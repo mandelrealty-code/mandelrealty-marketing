@@ -160,7 +160,10 @@ export type IntakeProgressPayload = {
   lastActivity: string | null;
   /** When the checklist reached its total (the last answer's time), or null while it's still going. */
   completedAt: string | null;
+  /** Who gave the most recent answer (falls back to the newest assigned onboarder before any answer). */
   answeredBy: string | null;
+  /** Everyone assigned to the property as onboarder, newest first. */
+  assignedOnboarders: string[];
   isActive: boolean;
   idleMinutes: number | null;
   photoCount: number;
@@ -185,6 +188,8 @@ export type IntakeStreamPayload = {
   totalItems: number;
   isActive: boolean;
   skippedMedia?: number;
+  /** Who gave the most recent answer. */
+  answeredBy?: string | null;
 };
 
 async function cleanerGet<T>(pathAndQuery: string): Promise<T> {
@@ -365,25 +370,28 @@ async function fetchAnswers(propertyId: string): Promise<AnswerRow[]> {
   return out;
 }
 
-async function fetchOnboarderName(propertyId: string): Promise<string | null> {
+/** Everyone assigned to the property as onboarder, newest first ("Ryan M", "Mark B"). */
+async function fetchAssignedOnboarders(propertyId: string): Promise<string[]> {
   try {
-    const assigns = await cleanerGet<
-      { user_id: string; assigned_at: string | null }[]
-    >(
+    const assigns = await cleanerGet<{ user_id: string; assigned_at: string | null }[]>(
       `onboarder_assignments?property_id=eq.${encodeURIComponent(propertyId)}` +
-        `&select=user_id,assigned_at&order=assigned_at.desc.nullslast&limit=1`,
+        `&select=user_id,assigned_at&order=assigned_at.desc.nullslast`,
     );
-    const userId = assigns[0]?.user_id;
-    if (!userId) return null;
-    const profiles = await cleanerGet<{ first_name?: string; last_name?: string }[]>(
-      `profiles?id=eq.${encodeURIComponent(userId)}&select=first_name,last_name`,
+    const ids = [...new Set(assigns.map((a) => a.user_id).filter(Boolean))];
+    if (!ids.length) return [];
+    const profiles = await cleanerGet<{ id: string; first_name?: string; last_name?: string; full_name?: string }[]>(
+      `profiles?id=in.(${ids.map(encodeURIComponent).join(",")})&select=id,first_name,last_name,full_name`,
     );
-    const p = profiles[0];
-    if (!p) return null;
-    const name = [p.first_name, p.last_name].map((x) => String(x || "").trim()).filter(Boolean).join(" ");
-    return name || null;
+    const byId = new Map(profiles.map((p) => [p.id, p]));
+    return ids
+      .map((id) => {
+        const p = byId.get(id);
+        if (!p) return "";
+        return [p.first_name, p.last_name].map((x) => String(x || "").trim()).filter(Boolean).join(" ") || String(p.full_name || "").trim();
+      })
+      .filter(Boolean);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -439,7 +447,7 @@ function buildFromAnswers(
     unitId: string;
     address: string;
     cleanerPropertyId: string;
-    answeredBy: string | null;
+    assigned: string[];
     leadId: string | null;
     ownerPhone: string | null;
   },
@@ -459,13 +467,17 @@ function buildFromAnswers(
   let answeredItems = 0;
   let lastActivity: string | null = null;
   let firstActivity: string | null = null;
+  let lastBy: string | null = null;
 
   for (const row of answers) {
     if (isAnswered(row)) {
       answeredItems += 1;
       const at = row.answered_at;
       if (at) {
-        if (!lastActivity || at > lastActivity) lastActivity = at;
+        if (!lastActivity || at > lastActivity) {
+          lastActivity = at;
+          lastBy = (row.answered_by || "").trim() || lastBy;
+        }
         if (!firstActivity || at < firstActivity) firstActivity = at;
       }
     }
@@ -563,7 +575,8 @@ function buildFromAnswers(
     progress: Math.min(100, progress),
     lastActivity,
     completedAt: totalItems > 0 && answeredItems >= totalItems ? lastActivity : null,
-    answeredBy: meta.answeredBy,
+    answeredBy: lastBy || meta.assigned[0] || null,
+    assignedOnboarders: meta.assigned,
     isActive,
     idleMinutes,
     photoCount: photosRaw.length,
@@ -593,6 +606,7 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
       lastActivity: null,
       completedAt: null,
       answeredBy: null,
+      assignedOnboarders: [],
       isActive: false,
       idleMinutes: null,
       photoCount: 0,
@@ -609,9 +623,9 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
     };
   }
 
-  const [answers, answeredBy, acks, propertyName] = await Promise.all([
+  const [answers, assigned, acks, propertyName] = await Promise.all([
     fetchAnswers(link.cleanerPropertyId),
-    fetchOnboarderName(link.cleanerPropertyId),
+    fetchAssignedOnboarders(link.cleanerPropertyId),
     loadAckKeys(unitId),
     cleanerPropertyName(link.cleanerPropertyId),
   ]);
@@ -620,7 +634,7 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
     unitId,
     address: link.address,
     cleanerPropertyId: link.cleanerPropertyId,
-    answeredBy,
+    assigned,
     leadId: link.leadId,
     ownerPhone: link.ownerPhone,
   });
@@ -657,9 +671,9 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
     cleanerGet<AnswerRow[]>(
       `onboarding_item_answers?property_id=eq.${pid}&item_id=eq.${PROGRESS_ITEM_ID}&select=item_id,answer_value&limit=1`,
     ),
-    cleanerGet<{ answered_at: string | null }[]>(
+    cleanerGet<{ answered_at: string | null; answered_by: string | null }[]>(
       `onboarding_item_answers?property_id=eq.${pid}&item_id=neq.${PROGRESS_ITEM_ID}&answered_at=not.is.null` +
-        `&select=answered_at&order=answered_at.desc&limit=1`,
+        `&select=answered_at,answered_by&order=answered_at.desc&limit=1`,
     ),
   ]);
   const summary = readSnapshot(summaryRows);
@@ -671,6 +685,7 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
       answeredItems: summary.answered,
       totalItems: summary.total,
       skippedMedia: summary.skippedMedia,
+      answeredBy: (latestRows[0]?.answered_by || "").trim() || null,
       isActive: Number.isFinite(latestMs) && Date.now() - latestMs <= 5 * 60 * 1000,
     };
   }

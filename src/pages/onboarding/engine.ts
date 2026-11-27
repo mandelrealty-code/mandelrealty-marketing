@@ -1120,6 +1120,7 @@ function loadAuditIntake(unitId, streamOnly){
       ui.intakeLive[unitId]={
         ...prev,
         answeredItems: data.answeredItems ?? prev.answeredItems ?? 0,
+        answeredBy: data.answeredBy || prev.answeredBy || null,
         isActive: !!data.isActive,
         lastActivity: data.lastActivityAt ?? prev.lastActivity ?? null,
         totalItems: data.totalItems ?? prev.totalItems ?? 0,

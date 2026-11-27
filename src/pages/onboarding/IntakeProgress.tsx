@@ -58,6 +58,8 @@ type IntakeData = {
   lastActivity: string | null;
   completedAt?: string | null;
   answeredBy: string | null;
+  /** Everyone assigned to the property as onboarder, newest first. */
+  assignedOnboarders?: string[];
   isActive: boolean;
   idleMinutes: number | null;
   photoCount: number;
@@ -80,6 +82,7 @@ type StreamData = {
   lastActivityAt: string | null;
   answeredItems: number;
   isActive: boolean;
+  answeredBy?: string | null;
 };
 
 type Overlay =
@@ -409,7 +412,9 @@ export default function IntakeProgress({
   const total = stream?.totalItems ?? d?.totalItems ?? 0;
   const pct = pctOf(answered, total);
   const complete = total > 0 && answered >= total;
-  const name = d?.answeredBy || "Onboarder";
+  /* Who gave the latest answer (not just who was assigned last), plus everyone assigned. */
+  const name = stream?.answeredBy || d?.answeredBy || "Onboarder";
+  const assigned = d?.assignedOnboarders ?? [];
   const idle = d?.idleMinutes;
   const status: "active" | "idle" | "none" | "done" = complete
     ? "done"
@@ -548,6 +553,11 @@ export default function IntakeProgress({
                 <b>{name}</b>
                 {statusPill}
               </div>
+              {assigned.length > 1 || (assigned.length === 1 && assigned[0] !== name) ? (
+                <div style={{ fontSize: 12.5, color: "var(--muted)", margin: "-4px 0 8px" }}>
+                  Assigned: {assigned.join(", ")}
+                </div>
+              ) : null}
               <div className="last">
                 <Ic n={status === "done" ? "check" : "pulse"} s={14} sw={2} />
                 {lastLine}
