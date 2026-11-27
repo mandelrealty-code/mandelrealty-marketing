@@ -29,6 +29,10 @@ export type ReviewItem = {
   waivedReason: string | null;
   waivedAt: string | null;
   waivedBy: string | null;
+  /** v3: added back to client review ("We couldn't find it"). */
+  reopened: boolean;
+  /** Added back and the client hasn't answered it again yet. */
+  reopenPending: boolean;
 };
 
 export type ReviewReport = {
@@ -46,6 +50,8 @@ export type ReviewReport = {
   ccHolderName: string | null;
   ccLast4: string | null;
   ccAuthorizedAt: string | null;
+  /** Optional "Don't spend more than" from the authorization. */
+  ccSpendingCap: number | null;
   totalToPurchase: number;
   url: string;
 };
@@ -59,6 +65,8 @@ export type PartARow = {
   /** inst: manual "installed" tick · find: Confirmed / Couldn't find · waived: auto green · blocked: red, not tickable */
   kind: "inst" | "find" | "waived" | "blocked";
   group: string;
+  /** "Couldn't find it" sent this line back to the client. */
+  reopened?: boolean;
 };
 
 export const RESPONDED = ["client_responded", "complete"];
@@ -135,6 +143,11 @@ export function partARows(items: ReviewItem[]): PartARow[] {
   for (const i of items) {
     const key = `a:${i.id}`;
     const room = i.sectionName;
+    /* Couldn't find it: back with the client until they answer (Buy / I'll supply / Decline). */
+    if (i.reopenPending) {
+      out.push({ key, label: i.name, sub: `Couldn't find it · waiting for the client`, kind: "find", group: "Find and confirm", reopened: true });
+      continue;
+    }
     if (i.decision === "buy") out.push({ key, label: i.qty > 1 ? `${i.name} × ${i.qty}` : i.name, sub: `Purchased · ${room}`, kind: "inst", group: "Purchased and supplied" });
     else if (i.decision === "supply") out.push({ key, label: i.name, sub: `Client supplied · ${room}`, kind: "inst", group: "Purchased and supplied" });
     else if (i.decision === "already_there")
@@ -154,7 +167,7 @@ export function partARows(items: ReviewItem[]): PartARow[] {
 }
 
 export const partARowOk = (r: PartARow, ticks: Record<string, GoLiveTick>) =>
-  r.kind === "waived" ? true : r.kind === "blocked" ? false : r.kind === "find" ? ticks[r.key]?.state === "yes" : !!ticks[r.key];
+  r.kind === "waived" ? true : r.kind === "blocked" ? false : r.kind === "find" ? ticks[r.key]?.state === "yes" : ticks[r.key]?.state === "done";
 
 /** Part A is green only once a report exists and every row is settled. */
 export function partAOk(report: ReviewReport | null, items: ReviewItem[], ticks: Record<string, GoLiveTick>): boolean {

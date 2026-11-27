@@ -86,7 +86,6 @@ function ago(iso: string | null): string {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const REASON: Record<string, string> = { missing: "Missing", broken: "Broken", damaged: "Damaged", needs_repair: "Needs repair" };
 const reasonText = (i: ReviewItem) => (i.reason === "short" ? `Short by ${i.shortBy ?? ""}`.trim() : REASON[i.reason] ?? i.reason);
-const lineTotal = (i: ReviewItem) => (i.suggestedPrice ?? 0) * i.qty;
 
 function useToast(): [ReactNode, (m: string) => void] {
   const [msg, setMsg] = useState("");
@@ -277,9 +276,10 @@ function ClientReview({
   const main = items.filter((i) => !i.isOptional);
   const optional = items.filter((i) => i.isOptional);
   const buys = items.filter((i) => i.decision === "buy");
-  const sub = buys.reduce((n, i) => n + lineTotal(i), 0);
   const declined = essentials.filter((i) => i.decision === "declined");
   const answered = main.filter((i) => i.decision).length;
+  /** Lines added back from the Go-live check ("Couldn't find it") that the client hasn't answered yet. */
+  const reopenPending = items.filter((i) => i.reopenPending);
 
   const send = async () => {
     setBusy(true);
@@ -310,7 +310,46 @@ function ClientReview({
       {busy ? "Sending…" : <>Send to client <Ic n="arrow" c="sm" /></>}
     </button>
   );
-  if (responded) {
+  if (responded && reopenPending.length && !report.sentAt) {
+    banner = (
+      <div className="ban a" role="status">
+        <span className="bi">
+          <Ic n="link" c="sm" />
+        </span>
+        <div>
+          <b>
+            {plural(reopenPending.length, "line")} added back to client review · send again
+          </b>
+          <p>
+            The client only sees {reopenPending.length === 1 ? "it" : "them"} after you press Send. Nothing is sent
+            automatically: send the link yourself by WhatsApp or email.
+          </p>
+        </div>
+        <span className="r">{sendBtn}</span>
+      </div>
+    );
+  } else if (responded && reopenPending.length && report.sentAt) {
+    banner = (
+      <div className="ban a" role="status">
+        <span className="bi">
+          <Ic n="clock" c="sm" />
+        </span>
+        <div>
+          <b>
+            Waiting for the client on {plural(reopenPending.length, "added-back line")} · Sent {when(report.sentAt)}
+          </b>
+          <p>Sent {ago(report.sentAt)}. No automatic reminders.</p>
+          <span className="url">{report.url}</span>
+        </div>
+        <span className="r">
+          <button type="button" className="btn" onClick={() => void copy()}>
+            <Ic n="copy" c="sm" />
+            Copy link
+          </button>
+        </span>
+      </div>
+    );
+  } else if (responded) {
     const c = (d: string) => items.filter((i) => i.decision === d).length;
     const waived = declined.filter((i) => i.waived).length;
     const parts = [
@@ -452,26 +491,18 @@ function ClientReview({
                           {i.name}
                           {i.isEssential ? <small>Essential</small> : null}
                           <span className="why">{reasonText(i)}</span>
+                          {i.reopened ? (
+                            <span className="chip" style={tone(65, 0.14)}>
+                              Added back to client review
+                            </span>
+                          ) : null}
                         </span>
                         {pill(i)}
                         {i.decision === "buy" ? (
                           <div className="pr">
                             <Ic n="cart" c="xs" />
-                            {i.suggestedProduct || i.suggestedPrice != null ? (
-                              <>
-                                <span>{i.suggestedProduct || i.name}</span>
-                                {i.suggestedPrice != null ? (
-                                  <>
-                                    <span className="mut">
-                                      {money(i.suggestedPrice)} × {i.qty}
-                                    </span>
-                                    <b>{money(lineTotal(i))}</b>
-                                  </>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span className="mut">Qty {i.qty} · Price confirmed by MRG</span>
-                            )}
+                            {/* No prices until a product catalogue exists: MRG sends the client a quote first. */}
+                            <span className="mut">Qty {i.qty} · quote to follow</span>
                           </div>
                         ) : null}
                         {i.note || i.decision === "declined" ? (
@@ -498,7 +529,7 @@ function ClientReview({
                         "No decisions yet"
                       ) : B.length ? (
                         <>
-                          {plural(B.length, "item")} to buy in this room · <b>{money(B.reduce((n, i) => n + lineTotal(i), 0))}</b>
+                          {plural(B.length, "item")} to buy in this room
                         </>
                       ) : (
                         "Nothing to buy in this room"
@@ -518,8 +549,8 @@ function ClientReview({
               {responded ? (
                 <>
                   <div className="t">
-                    <span>Total to purchase: {money(sub)} + HST =</span>
-                    <b>{money(report.totalToPurchase || sub * 1.13)}</b>
+                    <span>{plural(buys.length, "item")} to buy</span>
+                    <b className="mut">Quote to follow</b>
                   </div>
                   <div className="cc">
                     <Ic n="card" c="xs" />
@@ -531,6 +562,9 @@ function ClientReview({
                           authorized
                         </span>
                         <span className="mut">{when(report.ccAuthorizedAt)}</span>
+                        <span className="mut" style={{ flexBasis: "100%" }}>
+                          {report.ccSpendingCap != null ? `Spending cap: ${money(report.ccSpendingCap)}` : "No spending cap set"}
+                        </span>
                       </>
                     ) : (
                       "No card authorized"
@@ -540,7 +574,7 @@ function ClientReview({
               ) : (
                 <>
                   <div className="t">
-                    <span>Total to purchase</span>
+                    <span>Items to buy</span>
                     <b className="mut">Awaiting client</b>
                   </div>
                   <div className="cc">
@@ -576,7 +610,7 @@ function ClientReview({
                     Buy
                   </span>
                   <b>
-                    {plural(buys.length, "item")} · {money(sub)}
+                    {plural(buys.length, "item")}
                   </b>
                 </div>
                 <div className="kv2">
@@ -949,6 +983,7 @@ function GoLiveCheck({
             {a.label}
             <small>{a.sub}</small>
           </span>
+          {a.reopened ? <span className="pc r">Added back to client review</span> : null}
           {t ? whoMeta(a.key) : null}
           <div className="tg" role="group" aria-label={a.label}>
             <button type="button" aria-pressed={t?.state === "yes"} disabled={locked} onClick={() => void setTick(a.key, t?.state === "yes" ? null : "yes", p)}>

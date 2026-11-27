@@ -30,6 +30,7 @@ const OWNER_SITE = "https://portal.stravo.ai";
 
 const V1_SQL = "Run property-cleaner-hub/supabase/owner_report_v1.sql in the cleaner Supabase first.";
 const V2_SQL = "Run property-cleaner-hub/supabase/owner_report_v2_admin.sql in the cleaner Supabase first.";
+const V3_SQL = "Run property-cleaner-hub/supabase/owner_report_v3.sql in the cleaner Supabase first.";
 const GOLIVE_SQL = "Run supabase/onboarding_golive_v1.sql in the admin Supabase first.";
 
 function cleanerKey(): string {
@@ -41,6 +42,7 @@ function cleanerKey(): string {
 /** Turns PostgREST "missing table / column" errors into the SQL file to run. */
 function explain(status: number, text: string, columnSql = V2_SQL): Error {
   if (/owner_report/i.test(text) && /(relation|table).*(does not exist|could not find)|PGRST205|42P01/i.test(text)) return new Error(V1_SQL);
+  if (/column|PGRST204|42703/i.test(text) && /reopen|spending_cap/i.test(text)) return new Error(V3_SQL);
   if (/column|PGRST204|42703/i.test(text) && /sent_at|sent_by|waived|status/i.test(text)) return new Error(columnSql);
   return new Error(`Cleaner REST ${status}: ${text.slice(0, 200)}`);
 }
@@ -89,6 +91,7 @@ function toReport(r: Record<string, unknown>): ReviewReport {
     ccHolderName: s(r.cc_holder_name),
     ccLast4: s(r.cc_last4),
     ccAuthorizedAt: s(r.cc_authorized_at),
+    ccSpendingCap: n(r.cc_spending_cap),
     totalToPurchase: n(r.total_to_purchase) ?? 0,
     url: s(r.report_url) || `${OWNER_SITE}/report/${String(r.id)}`,
   };
@@ -116,6 +119,8 @@ function toItem(r: Record<string, unknown>): ReviewItem {
     waivedReason: s(r.waived_reason),
     waivedAt: s(r.waived_at),
     waivedBy: s(r.waived_by),
+    reopened: !!r.reopened_at,
+    reopenPending: !!r.reopened_at && !r.reopen_answered_at,
   };
 }
 
@@ -176,7 +181,7 @@ export async function getClientReview(unitId: string): Promise<ClientReviewPaylo
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "";
-    if (msg === V1_SQL || msg === V2_SQL) out.setupError = msg;
+    if (msg === V1_SQL || msg === V2_SQL || msg === V3_SQL) out.setupError = msg;
     else throw e;
   }
   out.laundry = await loadLaundry(link.cleanerPropertyId);
@@ -209,7 +214,13 @@ export async function markReviewSent(unitId: string, by: string): Promise<{ sent
   if (!link.cleanerPropertyId) throw new Error("Link this unit to Stravo first.");
   const { report } = await reportFor(link.cleanerPropertyId);
   if (!report) throw new Error("No owner report yet. The onboarder submits it from the checklist wrap-up.");
-  if (RESPONDED.includes(report.status)) throw new Error("The client has already responded.");
+  if (RESPONDED.includes(report.status)) {
+    /* After the client responded, Send is only for lines added back ("Couldn't find it"). */
+    const pending = await cleaner<unknown[]>(
+      `owner_report_items?report_id=eq.${report.id}&reopened_at=not.is.null&reopen_answered_at=is.null&select=id`,
+    );
+    if (!pending.length) throw new Error("The client has already responded.");
+  }
   const now = new Date().toISOString();
   await cleaner(`owner_reports?id=eq.${report.id}`, { method: "PATCH", body: { sent_at: now, sent_by: by || "Admin" } });
   return { sentAt: now, url: report.url };
@@ -231,6 +242,30 @@ export async function waiveReviewItem(unitId: string, itemRowId: string, reason:
   if (!rows.length) throw new Error("Only a declined Essential can be waived.");
 }
 
+/**
+ * "Couldn't find it" on a Part A "already there" line: reopen that one line for the client ("We couldn't find it.
+ * Buy it?") and clear sent_at, so the client only sees it after admin presses Send again. Undo (the line was found
+ * after all) puts it back to "already there" while the client hasn't answered it yet.
+ */
+async function setReopen(unitId: string, itemRowId: string, reopen: boolean): Promise<void> {
+  const link = await getUnitIntakeLink(unitId);
+  if (!link.cleanerPropertyId) return;
+  const { report } = await reportFor(link.cleanerPropertyId);
+  if (!report) return;
+  if (reopen) {
+    const rows = await cleaner<unknown[]>(
+      `owner_report_items?id=eq.${itemRowId}&report_id=eq.${report.id}&reopen_answered_at=is.null&or=(client_decision.eq.already_there,reopened_at.not.is.null)`,
+      { method: "PATCH", body: { reopened_at: new Date().toISOString(), reopen_reason: "not_found", client_decision: null } },
+    );
+    if (rows.length) await cleaner(`owner_reports?id=eq.${report.id}`, { method: "PATCH", body: { sent_at: null, sent_by: null } });
+  } else {
+    await cleaner(`owner_report_items?id=eq.${itemRowId}&report_id=eq.${report.id}&reopened_at=not.is.null&reopen_answered_at=is.null`, {
+      method: "PATCH",
+      body: { reopened_at: null, reopen_reason: null, client_decision: "already_there" },
+    });
+  }
+}
+
 export async function setGoLiveTick(unitId: string, key: string, state: GoLiveTick["state"] | null, by: string): Promise<void> {
   if (!BE_KEYS.has(key) && !isPartAKey(key)) throw new Error("Unknown check.");
   if (state && !["done", "yes", "no"].includes(state)) throw new Error("Unknown state.");
@@ -238,6 +273,13 @@ export async function setGoLiveTick(unitId: string, key: string, state: GoLiveTi
   const signed = await sb.from("onboarding_golive_signoffs").select("unit_id").eq("unit_id", unitId).maybeSingle();
   if (signed.error) throw new Error(GOLIVE_SQL);
   if (signed.data) throw new Error("Already signed off as ready to list.");
+  /* Part A "Couldn't find it" reopens that line for the client; changing it back undoes that. */
+  if (isPartAKey(key)) {
+    const prev = await sb.from("onboarding_golive_ticks").select("state").eq("unit_id", unitId).eq("item_key", key).maybeSingle();
+    const itemRowId = key.slice(2);
+    if (state === "no") await setReopen(unitId, itemRowId, true);
+    else if (prev.data?.state === "no") await setReopen(unitId, itemRowId, false);
+  }
   if (!state) {
     const { error } = await sb.from("onboarding_golive_ticks").delete().eq("unit_id", unitId).eq("item_key", key);
     if (error) throw error;
