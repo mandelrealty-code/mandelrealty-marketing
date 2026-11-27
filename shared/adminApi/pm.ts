@@ -33,6 +33,7 @@ import {
   getUnitIntakeLink,
   linkStravoProperty,
   markPortalLinkSent,
+  resetIntakeChecklist,
   searchStravoProperties,
 } from "../pm/intakeProgress.js";
 import { getClientReview, getGoLive, markReviewSent, setGoLiveTick, signOffGoLive, waiveReviewItem } from "../pm/ownerReview.js";
@@ -1796,6 +1797,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json({ ok: true, by });
           }
           return res.status(200).json(await signOffGoLive(unit, by));
+        }
+        if (op === "intake_reset") {
+          /* Admin-only: this API only accepts the partners' admin session. The typed name is re-checked on the server. */
+          if (!unit) return res.status(400).json({ error: "unit_id required." });
+          const typed = str(body.confirm_name) || str(body.confirmName);
+          if (!typed) return res.status(400).json({ error: "Type the property name to confirm." });
+          return res.status(200).json(await resetIntakeChecklist(unit, typed));
         }
         if (op === "ack_intake_flag") {
           if (!unit) return res.status(400).json({ error: "unit_id required." });

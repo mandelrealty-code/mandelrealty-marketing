@@ -26,6 +26,8 @@ type ProgressSnapshot = {
   total: number;
   answered: number;
   sections: { id: string; name: string; total: number; answered: number }[];
+  /** Photos and videos the onboarder skipped (checklist v2). */
+  skippedMedia: number;
 };
 
 /** Rows that are not checklist answers: the progress summary and the Screen B setup questions. */
@@ -59,7 +61,7 @@ function readSnapshot(answers: AnswerRow[]): ProgressSnapshot | null {
         }))
         .filter((x) => x.id)
     : [];
-  return { total, answered, sections };
+  return { total, answered, sections, skippedMedia: Number(o.skipped_media) || 0 };
 }
 
 /** Fixed 18 sections from Intake_Progress.html (totals sum to 140). */
@@ -170,6 +172,10 @@ export type IntakeProgressPayload = {
   leadId: string | null;
   ownerPhone: string | null;
   sections: { key: string; name: string; total: number; required?: boolean }[];
+  /** Photos and videos skipped in the walk (from the phone's progress summary). */
+  skippedMedia: number;
+  /** The cleaner property's name: what the admin types to confirm Reset. */
+  propertyName: string;
 };
 
 export type IntakeStreamPayload = {
@@ -178,6 +184,7 @@ export type IntakeStreamPayload = {
   /** The total the onboarder sees on their phone (0 until setup is done). */
   totalItems: number;
   isActive: boolean;
+  skippedMedia?: number;
 };
 
 async function cleanerGet<T>(pathAndQuery: string): Promise<T> {
@@ -568,6 +575,8 @@ function buildFromAnswers(
     leadId: meta.leadId,
     ownerPhone: meta.ownerPhone,
     sections,
+    skippedMedia: snapshot?.skippedMedia ?? 0,
+    propertyName: "",
   };
 }
 
@@ -595,13 +604,16 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
       leadId: link.leadId,
       ownerPhone: link.ownerPhone,
       sections: [],
+      skippedMedia: 0,
+      propertyName: "",
     };
   }
 
-  const [answers, answeredBy, acks] = await Promise.all([
+  const [answers, answeredBy, acks, propertyName] = await Promise.all([
     fetchAnswers(link.cleanerPropertyId),
     fetchOnboarderName(link.cleanerPropertyId),
     loadAckKeys(unitId),
+    cleanerPropertyName(link.cleanerPropertyId),
   ]);
 
   const payload = buildFromAnswers(answers, acks, {
@@ -612,6 +624,8 @@ export async function getIntakeProgress(unitId: string): Promise<IntakeProgressP
     leadId: link.leadId,
     ownerPhone: link.ownerPhone,
   });
+
+  payload.propertyName = propertyName;
 
   // Sign relative storage paths (best-effort; never write).
   payload.photos = await Promise.all(
@@ -656,6 +670,7 @@ export async function getIntakeProgressStream(unitId: string): Promise<IntakeStr
       lastActivityAt: latest,
       answeredItems: summary.answered,
       totalItems: summary.total,
+      skippedMedia: summary.skippedMedia,
       isActive: Number.isFinite(latestMs) && Date.now() - latestMs <= 5 * 60 * 1000,
     };
   }
@@ -796,4 +811,48 @@ export async function acknowledgeIntakeFlag(unitId: string, flagId: string, by =
   if (made?.id) {
     await sb.from("dashboard_actions").update({ actioned_at: now }).eq("id", made.id);
   }
+}
+
+/** The cleaner property's name (its address if it has none): what Reset asks to be typed. */
+async function cleanerPropertyName(propertyId: string): Promise<string> {
+  try {
+    const rows = await cleanerGet<{ name?: string | null; formatted_address?: string | null; address?: string | null }[]>(
+      `properties?id=eq.${encodeURIComponent(propertyId)}&select=name,formatted_address,address&limit=1`,
+    );
+    const p = rows[0];
+    return String(p?.name || p?.formatted_address || p?.address || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Admin-only Reset (Intake progress page): deletes every checklist answer for the unit's cleaner property, including
+ * Quick setup and the progress summary, so the onboarder starts again at Quick setup. Uploaded photos stay in storage,
+ * and owner reports are not touched. The typed name must match the cleaner property's name (checked here, not just in
+ * the browser). Service key, server-side only — same pattern as Waive.
+ */
+export async function resetIntakeChecklist(unitId: string, typedName: string): Promise<{ deleted: number; propertyName: string }> {
+  const link = await getUnitIntakeLink(unitId);
+  if (!link.cleanerPropertyId) throw new Error("This unit isn't linked to Stravo.");
+  const propertyName = await cleanerPropertyName(link.cleanerPropertyId);
+  if (!propertyName) throw new Error("Couldn't read the property's name from Stravo. Try again.");
+  if (typedName.trim().toLowerCase() !== propertyName.toLowerCase()) {
+    throw new Error(`Type the property name exactly: ${propertyName}`);
+  }
+  const key = cleanerServiceKey();
+  if (!key) throw new Error("CLEANER_SUPABASE_SERVICE_KEY is not set.");
+  const res = await fetch(
+    `${CLEANER_REST}/rest/v1/onboarding_item_answers?property_id=eq.${encodeURIComponent(link.cleanerPropertyId)}`,
+    {
+      method: "DELETE",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, Prefer: "return=representation", Accept: "application/json" },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Reset failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const rows = (await res.json().catch(() => [])) as unknown[];
+  return { deleted: Array.isArray(rows) ? rows.length : 0, propertyName };
 }

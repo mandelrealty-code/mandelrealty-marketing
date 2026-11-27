@@ -69,6 +69,10 @@ type IntakeData = {
   leadId: string | null;
   ownerPhone: string | null;
   sections: { key: string; name: string; total: number; required?: boolean }[];
+  /** Photos and videos the onboarder skipped (checklist v2). */
+  skippedMedia?: number;
+  /** The Stravo property's name: what Reset asks to be typed. */
+  propertyName?: string;
 };
 
 type StreamData = {
@@ -296,6 +300,12 @@ export default function IntakeProgress({
   const [stream, setStream] = useState<StreamData | null>(null);
   const [allActivity, setAllActivity] = useState(false);
   const visibleRef = useRef(true);
+  /** Admin-only Reset: clears every answer for this property in Stravo, after typing the property's name. */
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTyped, setResetTyped] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetErr, setResetErr] = useState("");
+  const [resetDone, setResetDone] = useState("");
 
   const load = async () => {
     if (!linked) return;
@@ -448,6 +458,24 @@ export default function IntakeProgress({
   const feed = allActivity ? feedAll : feedAll.slice(0, 10);
   const photoCount = d?.photoCount ?? photos.length;
 
+  const resetName = (data?.propertyName || "").trim();
+  const resetMatches = !!resetName && resetTyped.trim().toLowerCase() === resetName.toLowerCase();
+  const doReset = async () => {
+    if (!resetMatches || resetBusy) return;
+    setResetBusy(true);
+    setResetErr("");
+    try {
+      const r = await pmPost<{ deleted: number }>("onboarding", { op: "intake_reset", unit_id: unitId, confirm_name: resetTyped.trim() });
+      setResetOpen(false);
+      setResetDone(`Checklist reset: ${r.deleted} answer${r.deleted === 1 ? "" : "s"} cleared. The onboarder starts again at Quick setup.`);
+      void load();
+    } catch (e) {
+      setResetErr(e instanceof Error ? e.message : "Reset failed.");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   const ackFlag = async (flagId: string) => {
     try {
       await pmPost("onboarding", { op: "ack_intake_flag", unit_id: unitId, flag_id: flagId });
@@ -539,6 +567,10 @@ export default function IntakeProgress({
                   {formatActive(d?.activeMinutes)}
                 </b>
                 <span>active</span>
+              </div>
+              <div className="stat" style={(d?.skippedMedia ?? 0) > 0 ? { background: "var(--amber-s)", color: "var(--amber-d)" } : undefined}>
+                <b>{d?.skippedMedia ?? 0}</b>
+                <span style={(d?.skippedMedia ?? 0) > 0 ? { color: "var(--amber-d)" } : undefined}>photos / videos skipped</span>
               </div>
             </div>
           </div>
@@ -863,7 +895,70 @@ export default function IntakeProgress({
             </div>
           )}
         </div>
+
+        {resetDone ? <div className="err" role="status" style={{ background: "var(--tile)", color: "var(--ink)" }}>{resetDone}</div> : null}
+        {linked ? (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn"
+              style={{ color: "var(--red-d)", borderColor: "var(--red-s)" }}
+              onClick={() => {
+                setResetTyped("");
+                setResetErr("");
+                setResetOpen(true);
+              }}
+            >
+              Reset checklist
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {resetOpen ? (
+        <div className="ovl" onClick={() => !resetBusy && setResetOpen(false)} role="presentation">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="ip-reset-t"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 20, padding: 22, width: 440, maxWidth: "calc(100vw - 32px)", boxShadow: "0 24px 60px rgba(24,24,27,.25)" }}
+          >
+            <h2 id="ip-reset-t" style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Reset checklist?</h2>
+            <p style={{ margin: "6px 0 14px", fontSize: 14, color: "var(--muted)" }}>
+              This clears every answer for this property in Stravo, including Quick setup. The onboarder starts again at
+              Quick setup. Photos stay in storage. This cannot be undone.
+            </p>
+            <label htmlFor="ip-reset-name" style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
+              Type <b>{resetName || "the property name"}</b> to confirm
+            </label>
+            <input
+              id="ip-reset-name"
+              value={resetTyped}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(e) => setResetTyped(e.target.value)}
+              style={{ width: "100%", height: 44, padding: "0 12px", border: "1px solid var(--line)", borderRadius: 12, fontSize: 15, fontFamily: "inherit" }}
+            />
+            {!resetName ? <p style={{ fontSize: 13, color: "var(--amber-d)", margin: "8px 0 0" }}>Couldn't read the property's name from Stravo. Reload and try again.</p> : null}
+            {resetErr ? <p style={{ fontSize: 13, color: "var(--red-d)", margin: "8px 0 0" }}>{resetErr}</p> : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button type="button" className="btn" disabled={resetBusy} onClick={() => setResetOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={!resetMatches || resetBusy}
+                onClick={() => void doReset()}
+                style={{ background: resetMatches ? "var(--red)" : "#ececea", color: resetMatches ? "#fff" : "var(--muted)", borderColor: "transparent" }}
+              >
+                {resetBusy ? "Resetting…" : "Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {overlay?.t === "lb" && lbPhoto ? (
         <div className="ovl" onClick={() => setOverlay(null)} role="presentation">
